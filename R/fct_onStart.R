@@ -1,0 +1,27 @@
+#' onStart
+#'
+#' @description A onStart function for shiny app
+#'
+#' @noRd
+onStart <- function(){
+    ## set options
+    set_options()
+}
+
+#' set options
+#'
+#' @description set startup options
+#'
+#' @noRd
+set_options <- function(){
+
+    options(shiny.maxRequestSize=20000*1024^2)
+    options(shiny.usecairo = TRUE)
+    ##options(future.globals.maxSize = 8000 * 1024^2)
+    ##options(Seurat.object.assay.version = "v5")
+    ##plan("multicore", workers = 4)
+
+    ##RhpcBLASctl::blas_set_num_threads(1) # https://github.com/satijalab/seurat/issues/3991
+    ## global settings for spinners
+    ##options(spinner.type = 6, spinner.color = "#2c3e50", spinner.size= 0.5)
+}

@@ -1,0 +1,55 @@
+hr.setting {
+    border-top: 2px dashed black;
+    background-color: transparent;
+}
+
+.boxInput {
+    margin-top: 15px;
+    margin-right: 0px;
+    margin-left: 0px;
+    padding-left: 1rem;
+    padding-right: 1rem;
+    border: 2px solid black;
+    border-radius: 15px;
+}
+
+.boxResult {
+    margin-top: 15px;
+    margin-right: 0px;
+    margin-left: 0px;
+    padding-left: 1rem;
+    padding-right: 1rem;
+}
+
+/* custom selectize css */
+.selectize-control {
+    margin-bottom: 0px;
+}
+
+/* tooltip text alignment */
+.tooltip-inner {
+    text-align: left !important;
+}
+
+/* mainClusterPlot note div style, copied from regl-scatterplot multi-instance example */
+.mainClusterPlotNote {
+    position: absolute;
+    z-index: 2;
+    left: 50%;
+    bottom: 0.5rem;
+    transform: translate(-50%, 0);
+    padding-top: 0.2rem;
+    padding-bottom: 0.2rem;
+    padding-left: 0.4rem;
+    padding-right: 0.4rem;
+    font-size: 0.8rem;
+    font-weight: bold;
+    color: black;
+    background: transparent;
+    border-radius: 0.25rem;
+    border-style: solid;
+    border-width: 2px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s cubic-bezier(0.25, 0.1, 0.25, 1);
+}

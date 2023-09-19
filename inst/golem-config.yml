@@ -1,0 +1,5 @@
+default:
+  id: 01
+  name: scSpotlight
+  description: Perform cell clustering and identify marker genes using Seurat package
+  layout: navbar # fluid or navbar
