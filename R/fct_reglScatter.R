@@ -21,13 +21,13 @@ reglScatter <- function(elID, pointsData, colorsData, session){
 #' @return The return value, if any, from executing the function.
 #'
 #' @noRd
-reglScatter_reduction <- function(elID, pointsData, session){
-    x = list(
-        id = elID,
-        pointsData = pointsData
-    )
-    message(str(pointsData))
-    session$sendCustomMessage(type = "reglScatter_reduction", x)
+reglScatter_reduction <- function(pointsData, session){
+    ##x = list(
+    ##    ##id = elID,
+    ##    pointsData = pointsData
+    ##)
+    ##message(str(pointsData))
+    session$sendCustomMessage(type = "reglScatter_reduction", pointsData)
 }
 
 #' reglScatter_color
@@ -37,12 +37,12 @@ reglScatter_reduction <- function(elID, pointsData, session){
 #' @return The return value, if any, from executing the function.
 #'
 #' @noRd
-reglScatter_color <- function(elID, colorsData, session){
-    x = list(
-        id = elID,
-        colorsData = colorsData[["data"]],
-        catNames = colorsData[["catNames"]],
-        catColors = colorsData[["catColors"]]
-    )
-    session$sendCustomMessage(type = "reglScatter_color", x)
+reglScatter_color <- function(colorsData, session){
+    ##x = list(
+    ##    id = elID,
+    ##    colorsData = colorsData[["data"]],
+    ##    catNames = colorsData[["catNames"]],
+    ##    catColors = colorsData[["catColors"]]
+    ##)
+    session$sendCustomMessage(type = "reglScatter_color", colorsData)
 }

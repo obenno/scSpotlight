@@ -18,11 +18,9 @@ mod_mainClusterPlot_ui <- function(id){
          ## add resize property
          style = "resize:both;",
          card_body(
+             id = ns("clusterPlot"),
              height="600px",
              class = "align-items-center m-0 p-1",
-             as_fill_carrier(
-                 div(id = ns("clusterPlot"))
-             ),
              div(id = ns("note"), class = "mainClusterPlotNote")
          )
      )
@@ -63,12 +61,12 @@ mod_mainClusterPlot_server <- function(id, scatterReductionIndicator, scatterCol
         ##message("scatterReductionIndicator() is ", scatterReductionIndicator())
         ##message("scatterReductionInput() is ", is.null(scatterReductionInput()))
         req(scatterReductionIndicator() > 0)
-        reglScatter_reduction(ns("clusterPlot"), scatterReductionInput(), session)
+        reglScatter_reduction(scatterReductionInput(), session)
     }, priority = -100)
 
       observeEvent( scatterColorIndicator(), {
         req(scatterColorIndicator() > 0)
-        reglScatter_color(ns("clusterPlot"), scatterColorInput(), session)
+        reglScatter_color(scatterColorInput(), session)
     }, priority = -100)
   })
 }

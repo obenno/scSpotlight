@@ -26,15 +26,19 @@ app_server <- function(input, output, session) {
     ## Update scatterReductionInput only when scatterReductionIndicator changes
     observeEvent(scatterReductionIndicator(), {
         req(seuratObj())
-        d <- prepare_scatterReductionInput(seuratObj(), reduction = "umap")
+        d <- prepare_scatterReductionInput(seuratObj(),
+                                           reduction = "umap",
+                                           mode = "clusterOnly")
         message("Updating scatterReductionInput")
         scatterReductionInput(d)
     }, priority = -10)
 
-    ## Update scatterReductionInput only when scatterReductionIndicator changes
+    ## Update scatterColorInput only when scatterReductionIndicator changes
     observeEvent(scatterColorIndicator(), {
         req(seuratObj())
-        d <- prepare_scatterCatColorInput(seuratObj(), col_name = "seurat_clusters")
+        d <- prepare_scatterCatColorInput(seuratObj(),
+                                          col_name = "seurat_clusters",
+                                          mode = "clusterOnly")
         message("Updating scatterColorInput")
         scatterColorInput(d)
     }, priority = -10)

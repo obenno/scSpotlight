@@ -1,19 +1,11 @@
 import createScatterplot from 'regl-scatterplot';
 
-export function createReglScatterInstance(elID) {
+export function createReglScatterInstance(renderer, canvas) {
 
-    let widgetDev = document.querySelector('#' + elID);
-    console.log(widgetDev);
-    let canvas = document.createElement('canvas');
-    //let { width, height } = widgetDev.getBoundingClientRect();
-    //let width = "100%";
-    //let height = 400;
-    // Add canvas to widget container
-    widgetDev.appendChild(canvas);
-    //console.log("width: " + width);
-    //console.log("height: "+ height);
-    //define reglScatter options
+    // init reglScatter instance
+    // share a renderer created before invoking this function
     let scatterplot = createScatterplot({
+        renderer,
         canvas,
         //width,
         //height,
