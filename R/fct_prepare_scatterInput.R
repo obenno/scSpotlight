@@ -5,6 +5,7 @@
 #' @return A list of scatter reduction data transferred to javascript from shiny
 #'
 #' @import Seurat
+#' @importFrom dplyr pull
 #' @noRd
 prepare_scatterReductionInput <- function(obj, reduction,
                                           mode = "clusterOnly",
@@ -74,6 +75,7 @@ prepare_scatterReductionInput <- function(obj, reduction,
 #'
 #' @import Seurat
 #' @importFrom scales hue_pal
+#' @importFrom dplyr pull
 #' @noRd
 prepare_scatterCatColorInput <- function(obj, col_name,
                                          mode = "clusterOnly",
@@ -118,16 +120,23 @@ prepare_scatterCatColorInput <- function(obj, col_name,
     category <- as.factor(metaData$meta)
     catNames <- levels(category)
     levels(category) <- c(0:(length(levels(category))-1))
-    colors <- scales::hue_pal()(length(levels(category)))
+    catColors <- scales::hue_pal()(length(levels(category)))
 
     category <- category %>%
         as.character() %>%
         as.numeric()
 
     if(mode == "clusterOnly"){
-        catData <- list(category)
+        zData <- list(category)
+        ## dataZ_type encode colorBy option of the regl-scatterplot
+        zType <- c("category")
+        colors <- list(catColors)
     }else if(mode == "cluster+expr+noSplit"){
-        catData <- list(reduction_df, reduction_df)
+        expr <- FetchData(obj, feature) %>% pull()
+        exprColors <- grDevices::colorRampPalette(c("lightgrey", "#6450B5"))(100)
+        zData <- list(category, expr)
+        zType <- c("category", "expr")
+        colors <- list(catColors, exprColors)
     }else if(mode == "cluster+expr+twoSplit"){
         catData <- list()
     }else if(mode == "cluster+multiSplit"){
@@ -141,9 +150,10 @@ prepare_scatterCatColorInput <- function(obj, col_name,
         nCols = nCols,
         nRows = nRows,
         mode = mode,
-        catData = catData,
+        zData = zData,
         catNames = catNames,
-        catColors = colors,
+        colors = colors,
+        zType = zType,
         feature = feature
     )
     return(d)

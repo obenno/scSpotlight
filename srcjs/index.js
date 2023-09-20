@@ -34,6 +34,7 @@ var dataXY = [];
 // variable to store category and color data
 // z store translated value
 var dataZ = [];
+var dataZ_type = [];
 var dataColorName = null;
 var dataCategoryName = null;
 // variable to store expression data
@@ -159,13 +160,27 @@ const scaleDataXY = (dataXY) => {
   return data;
 };
 
-const populate_instance = (scatterplot, dataXY, dataZ, colorName) => {
-
-  let points = {
-    x: dataXY.X,
-    y: dataXY.Y,
-    z: dataZ
-  };
+const populate_instance = (scatterplot, dataXY, dataZ, zType, colorName) => {
+    // zType could be either "category" or "expr"
+    // regl-scatterplot will only treat float numbers of [0,1] as continuous value
+    let points = null;
+    if(zType == "expr"){
+        let minZ = d3.min(dataZ);
+        let maxZ = d3.max(dataZ);
+        let zScale = d3.scaleLinear([minZ, maxZ], [0, 1]);
+        let dataZ_converted = dataZ.map((e) => zScale(e));
+        points = {
+          x: dataXY.X,
+          y: dataXY.Y,
+          z: dataZ_converted
+        };
+    }else{
+        points = {
+          x: dataXY.X,
+          y: dataXY.Y,
+          z: dataZ
+        };
+    }
   // color will be assigned by R
 
   console.log(points);
@@ -247,13 +262,14 @@ Shiny.addCustomMessageHandler('reglScatter_reduction', (msg) => {
     // add parent-wrapper element, adjust rows and columns
     createGrid(mainClusterPlotElID, nCols, nRows);
     populate_grid("parent-wrapper", nCols, nRows);
-    let canvases = [document.getElementById(mainClusterPlotElID).querySelector("canvas")];
-    //console.log(canvases);
+    let canvases = Array.from( document.getElementById(mainClusterPlotElID).querySelectorAll("canvas") );
+    console.log(canvases);
     renderer.refresh();
 
     mainClusterPlot_scatterplots = canvases.map((canvas) =>
        createReglScatterInstance(renderer, canvas)
     );
+    console.log(mainClusterPlot_scatterplots.length);
     ////console.log(mainClusterPlot_scatterplots);
     ////console.log("here");
     //    let noteId = mainClusterPlot_noteID;
@@ -281,14 +297,15 @@ Shiny.addCustomMessageHandler('reglScatter_color', (msg) => {
     //let elID = msg.id;
     let scatterplot = null;
     let noteId= null;
-    
+
     // update color data
-    dataZ = msg.catData;
+    dataZ = msg.zData;
     dataCategoryName = msg.catNames;
-    //console.log(dataZ);
+    dataZ_type = msg.zType;
+    //console.log(dataZ_type);
     //console.log(dataCategoryName);
-    dataColorName = msg.catColors;
-    //console.log(dataColorName);
+    dataColorName = msg.colors;
+    console.log(dataColorName);
     //console.log(colors);
     //scatterplot_setColor(scatterplot, colors);
     //populate_instance(scatterplot, dataXY, dataZ,
@@ -296,6 +313,7 @@ Shiny.addCustomMessageHandler('reglScatter_color', (msg) => {
     //                  noteId);
 
     mainClusterPlot_scatterplots.forEach((sp, i) => {
-        populate_instance(sp, dataXY[i], dataZ[i], dataColorName);
+        console.log(i);
+        populate_instance(sp, dataXY[i], dataZ[i], dataZ_type[i], dataColorName[i]);
     });
 });
