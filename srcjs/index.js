@@ -35,6 +35,7 @@ var dataXY = [];
 // z store translated value
 var dataZ = [];
 var dataZ_type = [];
+var panelTitles = [];
 var dataColorName = null;
 var dataCategoryName = null;
 // variable to store expression data
@@ -121,12 +122,18 @@ const populate_grid = (gridElID, ncols, nrows) => {
     // add fill class
     canvas_wrapper.classList.add("html-fill-item");
     canvas_wrapper.classList.add("html-fill-container");
+    canvas_wrapper.style.position = "relative";
     // add border style for multiple panels
     if(ncols > 1){
         canvas_wrapper.style.borderWidth = "1px";
         canvas_wrapper.style.borderStyle = "solid";
         canvas_wrapper.style.borderColor = "#D3D3D3";
     }
+
+    const plotTitle = document.createElement("div");
+    plotTitle.classList.add("mainClusterPlotTitle");
+    canvas_wrapper.appendChild(plotTitle);
+
     const canvas = document.createElement("canvas");
     canvas_wrapper.appendChild(canvas);
     console.log(canvas_wrapper);
@@ -306,6 +313,7 @@ Shiny.addCustomMessageHandler('reglScatter_color', (msg) => {
     //console.log(dataCategoryName);
     dataColorName = msg.colors;
     console.log(dataColorName);
+    panelTitles = msg.panelTitles;
     //console.log(colors);
     //scatterplot_setColor(scatterplot, colors);
     //populate_instance(scatterplot, dataXY, dataZ,
@@ -316,4 +324,8 @@ Shiny.addCustomMessageHandler('reglScatter_color', (msg) => {
         console.log(i);
         populate_instance(sp, dataXY[i], dataZ[i], dataZ_type[i], dataColorName[i]);
     });
+
+    // Populate panel titles
+    document.querySelectorAll(".mainClusterPlotTitle")
+        .forEach((e,i) => { e.innerHTML = panelTitles[i]; });
 });

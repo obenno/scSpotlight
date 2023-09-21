@@ -53,3 +53,14 @@ hr.setting {
     opacity: 0;
     transition: opacity 0.15s cubic-bezier(0.25, 0.1, 0.25, 1);
 }
+
+/* clusterPlot panel title div */
+.mainClusterPlotTitle {
+    position: absolute;
+    z-index: 2;
+    top: 0.1rem;
+    left: 50%;
+    transform: translate(-50%, 0);
+    font-weight: 700;
+    font-size: 1.1rem;
+}
