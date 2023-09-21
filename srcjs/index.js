@@ -218,27 +218,23 @@ const populate_instance = (scatterplot, data_XY, data_Z, zType, colorName, panel
   scatterplot.set({ colorBy: 'z', opacity: opacity,
                     pointSize: pointSize, pointColor: colorName });
 
-  //console.log(dataCategoryName);
-  //console.log(dataColorName);
-    //console.log(noteId);
-    // console.log(labelData[panelIndex]);
-    if(zType == "category"){
-        scatterplot.subscribe('pointOver', (pointId) => {
-            showNote(
-                mainClusterPlot_noteID,
-                labelData[panelIndex][pointId],
-                dataColorName[panelIndex][dataZ[panelIndex][pointId]]
-            );
-        });
-    }else{
-        scatterplot.subscribe('pointOver', (pointId) => {
-            showNote(
-                mainClusterPlot_noteID,
-                labelData[panelIndex][pointId],
-                "#DCDCDC"
-            );
-        });
-    }
+  if(zType == "category"){
+      scatterplot.subscribe('pointOver', (pointId) => {
+          showNote(
+              mainClusterPlot_noteID,
+              labelData[panelIndex][pointId],
+              dataColorName[panelIndex][dataZ[panelIndex][pointId]]
+          );
+      });
+  }else{
+      scatterplot.subscribe('pointOver', (pointId) => {
+          showNote(
+              mainClusterPlot_noteID,
+              labelData[panelIndex][pointId],
+              "#DCDCDC"
+          );
+      });
+  }
   scatterplot.subscribe('pointOut', () => { hideNote(mainClusterPlot_noteID); });
   scatterplot.draw(points);
 };
@@ -324,13 +320,11 @@ Shiny.addCustomMessageHandler('reglScatter_color', (msg) => {
     plotMode = msg.mode;
     dataZ = msg.zData;
     console.log(dataZ);
-    //dataCategoryName = msg.catNames;
     dataZ_type = msg.zType;
+    console.log(dataZ_type);
     exprMin = msg.exprMin;
     exprMax = msg.exprMax;
     labelData = msg.labelData;
-    //console.log(dataZ_type);
-    //console.log(dataCategoryName);
     dataColorName = msg.colors;
     console.log(dataColorName);
     panelTitles = msg.panelTitles;

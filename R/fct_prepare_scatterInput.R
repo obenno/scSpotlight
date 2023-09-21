@@ -167,7 +167,7 @@ prepare_scatterCatColorInput <- function(obj, col_name,
     if(mode == "clusterOnly"){
         zData <- list(category)
         ## zType encode colorBy option of the regl-scatterplot
-        zType <- c("category")
+        zType <- list("category")
         colors <- list(catColors)
         panelTitles <- list("Category")
         labelData <- list(paste0("Cat: ", metaData$meta))
@@ -183,7 +183,7 @@ prepare_scatterCatColorInput <- function(obj, col_name,
         exprColors <- grDevices::colorRampPalette(c("lightgrey", "#6450B5"))(100)
 
         zData <- list(category, expr)
-        zType <- c("category", "expr")
+        zType <- list("category", "expr")
         colors <- list(catColors, exprColors)
         panelTitles <- list("Category", feature)
         ## expr value + category, as label data
@@ -250,7 +250,8 @@ prepare_scatterCatColorInput <- function(obj, col_name,
         metaData_splitList <- split(metaData$meta, split_vector)
 
         zData <- category_splitList
-        zType <- rep("category", length(zData))
+        zType <- rep("category", length(zData)) %>%
+            as.list()
         colors <- list()
         for(i in 1:length(zData)){
             colors[[i]] <- catColors
@@ -278,7 +279,8 @@ prepare_scatterCatColorInput <- function(obj, col_name,
         exprColors <- grDevices::colorRampPalette(c("lightgrey", "#6450B5"))(100)
 
         zData <- expr_splitList
-        zType <- rep("expr", length(zData))
+        zType <- rep("expr", length(zData)) %>%
+            as.list()
         colors <- list()
         for(i in 1:length(zData)){
             colors[[i]] <- exprColors
