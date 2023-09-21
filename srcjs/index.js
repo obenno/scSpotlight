@@ -39,8 +39,9 @@ var exprMin = null;
 var exprMax = null;
 var labelData = [];
 var panelTitles = [];
+var plotMode = null;
 var dataColorName = null;
-var dataCategoryName = null;
+//var dataCategoryName = null;
 // variable to store expression data
 var dataW = null;
 
@@ -174,23 +175,23 @@ const scaleDataXY = (dataXY) => {
   return data;
 };
 
-const populate_instance = (scatterplot, dataXY, dataZ, zType, colorName, panelIndex) => {
+const populate_instance = (scatterplot, data_XY, data_Z, zType, colorName, panelIndex) => {
     // zType could be either "category" or "expr"
     // regl-scatterplot will only treat float numbers of [0,1] as continuous value
     let points = null;
     if(zType == "expr"){
         let zScale = d3.scaleLinear([exprMin, exprMax], [0, 1]);
-        let dataZ_converted = dataZ.map((e) => zScale(e));
+        let data_Z_converted = data_Z.map((e) => zScale(e));
         points = {
-          x: dataXY.X,
-          y: dataXY.Y,
-          z: dataZ_converted
+          x: data_XY.X,
+          y: data_XY.Y,
+          z: data_Z_converted
         };
     }else{
         points = {
-          x: dataXY.X,
-          y: dataXY.Y,
-          z: dataZ
+          x: data_XY.X,
+          y: data_XY.Y,
+          z: data_Z
         };
     }
   // color will be assigned by R
@@ -201,16 +202,16 @@ const populate_instance = (scatterplot, dataXY, dataZ, zType, colorName, panelIn
   let opacity = 0.6;
   let pointSize = 3;
 
-  if(dataXY.X.length < 15000){
+  if(data_XY.X.length < 15000){
       opacity = 0.8;
       pointSize = 3;
-  }else if(dataXY.X.length > 50000){
+  }else if(data_XY.X.length > 50000){
       opacity = 0.4;
       pointSize = 1;
-  }else if(dataXY.X.length > 1000000){
+  }else if(data_XY.X.length > 1000000){
       opacity = 0.2;
       pointSize = 0.5;
-  }else if(dataXY.X.length > 2000000){
+  }else if(data_XY.X.length > 2000000){
       opacity = 0.2;
       pointSize = 0.2;
   }
@@ -220,14 +221,24 @@ const populate_instance = (scatterplot, dataXY, dataZ, zType, colorName, panelIn
   //console.log(dataCategoryName);
   //console.log(dataColorName);
     //console.log(noteId);
-   // console.log(labelData[panelIndex]);
-  scatterplot.subscribe('pointOver', (pointId) => {
-      showNote(
-          mainClusterPlot_noteID,
-          labelData[panelIndex][pointId],
-          "#DCDCDC"
-      );
-  });
+    // console.log(labelData[panelIndex]);
+    if(zType == "category"){
+        scatterplot.subscribe('pointOver', (pointId) => {
+            showNote(
+                mainClusterPlot_noteID,
+                labelData[panelIndex][pointId],
+                dataColorName[panelIndex][dataZ[panelIndex][pointId]]
+            );
+        });
+    }else{
+        scatterplot.subscribe('pointOver', (pointId) => {
+            showNote(
+                mainClusterPlot_noteID,
+                labelData[panelIndex][pointId],
+                "#DCDCDC"
+            );
+        });
+    }
   scatterplot.subscribe('pointOut', () => { hideNote(mainClusterPlot_noteID); });
   scatterplot.draw(points);
 };
@@ -310,9 +321,10 @@ Shiny.addCustomMessageHandler('reglScatter_color', (msg) => {
     let noteId= null;
 
     // update color data
+    plotMode = msg.mode;
     dataZ = msg.zData;
     console.log(dataZ);
-    dataCategoryName = msg.catNames;
+    //dataCategoryName = msg.catNames;
     dataZ_type = msg.zType;
     exprMin = msg.exprMin;
     exprMax = msg.exprMax;

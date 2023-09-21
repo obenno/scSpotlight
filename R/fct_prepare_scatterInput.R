@@ -139,6 +139,7 @@ prepare_scatterCatColorInput <- function(obj, col_name,
 
     ## seurat assay v5 syntax
     metaData <- obj[[col_name]]
+    cells <- rownames(metaData)
     colnames(metaData) <- "meta"
 
     category <- as.factor(metaData$meta)
@@ -170,6 +171,7 @@ prepare_scatterCatColorInput <- function(obj, col_name,
         colors <- list(catColors)
         panelTitles <- list("Category")
         labelData <- list(paste0("Cat: ", metaData$meta))
+        cellData <- list(cells)
     }else if(mode == "cluster+expr+noSplit"){
         validate(
             need(feature.is.valid(obj, feature), "Feature is invalid")
@@ -187,6 +189,7 @@ prepare_scatterCatColorInput <- function(obj, col_name,
         ## expr value + category, as label data
         labels <- paste0("Cat: ",metaData$meta, " Expr: ", signif(expr, 3))
         labelData <- list(labels, labels)
+        cellData <- list(cells, cells)
     }else if(mode == "cluster+expr+twoSplit"){
         validate(
             need(feature.is.valid(obj, feature), "Feature is invalid"),
@@ -205,6 +208,7 @@ prepare_scatterCatColorInput <- function(obj, col_name,
             pull()
         category_splitList <- split(category, split_vector)
         metaData_splitList <- split(metaData$meta, split_vector)
+        cellData_splitList <- split(cells, split_vector)
 
         expr <- FetchData(obj, feature) %>% pull()
         exprMin <- min(expr)
@@ -215,10 +219,12 @@ prepare_scatterCatColorInput <- function(obj, col_name,
         ## four panels
         zData <- list()
         labelData <- list()
+        cellData <- list()
         for(i in 1:length(category_splitList)){
             zData <- c(zData, category_splitList[i], expr_splitList[i])
             labels <- paste0("Cat: ", metaData_splitList[[i]], " Expr: ", signif(expr_splitList[[i]], 3))
             labelData <- c(labelData, list(labels, labels))
+            cellData <- c(cellData, cellData_splitList[i], cellData_splitList[i])
         }
         zType <- c("category", "expr", "category", "expr")
         colors <- list(catColors, exprColors, catColors, exprColors)
@@ -253,6 +259,7 @@ prepare_scatterCatColorInput <- function(obj, col_name,
 
         labelData <- metaData_splitList %>%
             lapply(function(x) paste0("Cat: ", x))
+        cellData <- split(cells, split_vector)
     }else if(mode == "cluster+expr+multiSplit"){
         validate(
             need(feature.is.valid(obj, feature), "Feature is invalid"),
@@ -280,11 +287,12 @@ prepare_scatterCatColorInput <- function(obj, col_name,
 
         labelData <- expr_splitList %>%
             lapply(function(x) paste0("Cat: ", signif(x, 3)))
-
+        cellData <- split(cells, split_vector)
     }
     ## remove list element names to ensure it will be translated to a list not object
     names(zData) <- NULL
     names(labelData) <- NULL
+    names(cellData) <- NULL
     d <- list(
         nCols = nCols,
         nRows = nRows,
@@ -294,6 +302,7 @@ prepare_scatterCatColorInput <- function(obj, col_name,
         zType = zType,
         panelTitles = panelTitles,
         labelData = labelData,
+        cellData = cellData,
         feature = feature,
         exprMin = exprMin,
         exprMax = exprMax
