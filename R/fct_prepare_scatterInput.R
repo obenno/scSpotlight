@@ -9,12 +9,21 @@
 #'
 #' @import Seurat
 #' @importFrom dplyr pull
+#' @importFrom shiny validate need
 #' @noRd
 prepare_scatterReductionInput <- function(obj, reduction,
                                           mode = "clusterOnly",
                                           split.by = NULL){
 
     ## Define five plotting mode, each with different numbers of panels
+    mode_supported <- c("clusterOnly",
+                        "cluster+expr+noSplit",
+                        "cluster+expr+twoSplit",
+                        "cluster+multiSplit",
+                        "cluster+expr+multiSplit")
+    validate(
+        need(mode %in% mode_supported, "Plotting mode is not supported")
+    )
 
     ## Get nPanels
     nPanels <- get_nPanels(mode = mode,
@@ -39,22 +48,53 @@ prepare_scatterReductionInput <- function(obj, reduction,
     }else if(mode == "cluster+expr+noSplit"){
         pointsData <- list(reduction_df, reduction_df)
     }else if(mode == "cluster+expr+twoSplit"){
-        need()
-        pointsData <- list()
+        validate(
+            need(split.is.valid(obj, split.by), "split.by is invalid")
+        )
+
+        split.by.levelNumber <- obj[[split.by]] %>%
+            pull() %>%
+            unique() %>%
+            length()
+        validate(
+            need(split.by.levelNumber == 2, "split.by has more than 2 levels")
+        )
+
+        split_vector <- obj[[split.by]] %>%
+            pull()
+        reduction_splitList <- split(reduction_df, split_vector)
+        ## four panels
+        pointsData <- rep(reduction_splitList, each = 2)
     }else if(mode == "cluster+multiSplit"){
-        pointsData <- list()
+        validate(
+            need(split.is.valid(obj, split.by), "split.by is invalid")
+        )
+
+        split_vector <- obj[[split.by]] %>%
+            pull()
+        reduction_splitList <- split(reduction_df, split_vector)
+        ## Many panels
+        pointsData <- reduction_splitList
     }else if(mode == "cluster+expr+multiSplit"){
-        pointsData <- list()
-    }else{
-        pointsData <- list()
+        validate(
+            need(split.is.valid(obj, split.by), "split.by is invalid")
+        )
+
+        split_vector <- obj[[split.by]] %>%
+            pull()
+        reduction_splitList <- split(reduction_df, split_vector)
+        ## Many panels
+        pointsData <- reduction_splitList
     }
+    ## remove list element names to ensure it will be translated to a list not object
+    names(pointsData) <- NULL
     reduction_data <- list(
         nCols = nCols,
         nRows = nRows,
         mode = mode,
         pointsData  = pointsData
     )
-    ##if(mode = "clusterOnly"){}
+
     return(reduction_data)
 }
 
@@ -68,11 +108,21 @@ prepare_scatterReductionInput <- function(obj, reduction,
 #' @import Seurat
 #' @importFrom scales hue_pal
 #' @importFrom dplyr pull
+#' @importFrom shiny need validate
 #' @noRd
 prepare_scatterCatColorInput <- function(obj, col_name,
                                          mode = "clusterOnly",
                                          split.by = NULL,
                                          feature = NULL){
+
+    mode_supported <- c("clusterOnly",
+                        "cluster+expr+noSplit",
+                        "cluster+expr+twoSplit",
+                        "cluster+multiSplit",
+                        "cluster+expr+multiSplit")
+    validate(
+        need(mode %in% mode_supported, "Plotting mode is not supported")
+    )
 
     ## Get panel numbers
     nPanels <- get_nPanels(mode = mode,
@@ -103,47 +153,152 @@ prepare_scatterCatColorInput <- function(obj, col_name,
     ## Data of each panel were combined into a list
     ## Compulsory data:
     ## zData: values encode category (integer) or expression value (seurat data slot)
-    ## zType: indicate zData type
+    ## zType: indicates zData type (category or expr)
     ## colos: color codes for each panel
     ## panelTitles: titles of each panel
+    ## exprMin: expression min (for colorScale in javascript)
+    ## exprMax: expression max (for colorScale in javascript)
+
+    exprMin <- NULL
+    exprMax <- NULL
+    labelData <- NULL
+
     if(mode == "clusterOnly"){
         zData <- list(category)
         ## zType encode colorBy option of the regl-scatterplot
         zType <- c("category")
         colors <- list(catColors)
         panelTitles <- list("Category")
+        labelData <- list(paste0("Cat: ", metaData$meta))
     }else if(mode == "cluster+expr+noSplit"){
-        if(feature.is.valid(obj, feature)){
-            expr <- FetchData(obj, feature) %>% pull()
-            exprColors <- grDevices::colorRampPalette(c("lightgrey", "#6450B5"))(100)
-        }else{
-            ## Throw errors, modify later
-            stop("feature is invalid")
-        }
+        validate(
+            need(feature.is.valid(obj, feature), "Feature is invalid")
+        )
+
+        expr <- FetchData(obj, feature) %>% pull()
+        exprMin <- min(expr)
+        exprMax <- max(expr)
+        exprColors <- grDevices::colorRampPalette(c("lightgrey", "#6450B5"))(100)
+
         zData <- list(category, expr)
         zType <- c("category", "expr")
         colors <- list(catColors, exprColors)
         panelTitles <- list("Category", feature)
+        ## expr value + category, as label data
+        labels <- paste0("Cat: ",metaData$meta, " Expr: ", signif(expr, 3))
+        labelData <- list(labels, labels)
     }else if(mode == "cluster+expr+twoSplit"){
-        catData <- list()
+        validate(
+            need(feature.is.valid(obj, feature), "Feature is invalid"),
+            need(split.is.valid(obj, split.by), "split.by is invalid")
+        )
+
+        split.by.levelNumber <- obj[[split.by]] %>%
+            pull() %>%
+            unique() %>%
+            length()
+        validate(
+            need(split.by.levelNumber == 2, "split.by has more than 2 levels")
+        )
+
+        split_vector <- obj[[split.by]] %>%
+            pull()
+        category_splitList <- split(category, split_vector)
+        metaData_splitList <- split(metaData$meta, split_vector)
+
+        expr <- FetchData(obj, feature) %>% pull()
+        exprMin <- min(expr)
+        exprMax <- max(expr)
+        expr_splitList <- split(expr, split_vector)
+
+        exprColors <- grDevices::colorRampPalette(c("lightgrey", "#6450B5"))(100)
+        ## four panels
+        zData <- list()
+        labelData <- list()
+        for(i in 1:length(category_splitList)){
+            zData <- c(zData, category_splitList[i], expr_splitList[i])
+            labels <- paste0("Cat: ", metaData_splitList[[i]], " Expr: ", signif(expr_splitList[[i]], 3))
+            labelData <- c(labelData, list(labels, labels))
+        }
+        zType <- c("category", "expr", "category", "expr")
+        colors <- list(catColors, exprColors, catColors, exprColors)
+        panelTitles <- list()
+        panelColNames <- c("category", feature)
+        panelRowNames <- names(category_splitList)
+        for(i in 1:length(panelRowNames)){
+            panelTitles <- c(panelTitles,
+                             paste(panelRowNames[i], panelColNames[1], sep = " : "),
+                             paste(panelRowNames[i], panelColNames[2], sep = " : "))
+        }
+        panelTitles <- panelTitles %>% as.list()
+
     }else if(mode == "cluster+multiSplit"){
-        catData <- list()
+        validate(
+            need(feature.is.valid(obj, feature), "Feature is invalid"),
+            need(split.is.valid(obj, split.by), "split.by is invalid")
+        )
+
+        split_vector <- obj[[split.by]] %>%
+            pull()
+        category_splitList <- split(category, split_vector)
+        metaData_splitList <- split(metaData$meta, split_vector)
+
+        zData <- category_splitList
+        zType <- rep("category", length(zData))
+        colors <- list()
+        for(i in 1:length(zData)){
+            colors[[i]] <- catColors
+        }
+        panelTitles <- names(category_splitList) %>% as.list()
+
+        labelData <- metaData_splitList %>%
+            lapply(function(x) paste0("Cat: ", x))
     }else if(mode == "cluster+expr+multiSplit"){
-        catData <- list()
-    }else{
-        catData <- list()
+        validate(
+            need(feature.is.valid(obj, feature), "Feature is invalid"),
+            need(split.is.valid(obj, split.by), "split.by is invalid")
+        )
+
+        split_vector <- obj[[split.by]] %>%
+            pull()
+        category_splitList <- split(category, split_vector)
+
+        expr <- FetchData(obj, feature) %>% pull()
+        exprMin <- min(expr)
+        exprMax <- max(expr)
+        expr_splitList <- split(expr, split_vector)
+
+        exprColors <- grDevices::colorRampPalette(c("lightgrey", "#6450B5"))(100)
+
+        zData <- expr_splitList
+        zType <- rep("expr", length(zData))
+        colors <- list()
+        for(i in 1:length(zData)){
+            colors[[i]] <- exprColors
+        }
+        panelTitles <- paste(names(category_splitList), feature, sep=" : ") %>% as.list()
+
+        labelData <- expr_splitList %>%
+            lapply(function(x) paste0("Cat: ", signif(x, 3)))
+
     }
+    ## remove list element names to ensure it will be translated to a list not object
+    names(zData) <- NULL
+    names(labelData) <- NULL
     d <- list(
         nCols = nCols,
         nRows = nRows,
         mode = mode,
         zData = zData,
-        catNames = catNames,
         colors = colors,
         zType = zType,
         panelTitles = panelTitles,
-        feature = feature
+        labelData = labelData,
+        feature = feature,
+        exprMin = exprMin,
+        exprMax = exprMax
     )
+
     return(d)
 }
 
@@ -153,15 +308,26 @@ prepare_scatterCatColorInput <- function(obj, col_name,
 #'
 #' @import Seurat
 #' @importFrom dplyr pull
+#' @importFrom shiny validate need
 #' @noRd
 get_nPanels <- function(mode, obj, split.by = FALSE){
+
+    mode_supported <- c("clusterOnly",
+                        "cluster+expr+noSplit",
+                        "cluster+expr+twoSplit",
+                        "cluster+multiSplit",
+                        "cluster+expr+multiSplit")
+    validate(
+        need(mode %in% mode_supported, "Plotting mode is not supported")
+    )
+
     nPanels = switch(
         mode,
         "clusterOnly" = 1,
         "cluster+expr+noSplit" = 2,
         "cluster+expr+twoSplit" = 4,
-        "cluster+multiSplit" = obj[[split.by]] %>% pull %>% unqiue,
-        "cluster+expr+multiSplit" = obj[[split.by]] %>% pull %>% unique
+        "cluster+multiSplit" = obj[[split.by]] %>% pull %>% unique %>% length,
+        "cluster+expr+multiSplit" = obj[[split.by]] %>% pull %>% unique %>% length
     )
     return(nPanels)
 }

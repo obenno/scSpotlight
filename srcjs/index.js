@@ -35,6 +35,9 @@ var dataXY = [];
 // z store translated value
 var dataZ = [];
 var dataZ_type = [];
+var exprMin = null;
+var exprMax = null;
+var labelData = [];
 var panelTitles = [];
 var dataColorName = null;
 var dataCategoryName = null;
@@ -99,8 +102,12 @@ const createGrid = (elID, ncols, nrows) => {
     let el = document.createElement("div");
     el.id = "parent-wrapper";
     el.style.display = 'grid';
-    el.style.gridTemplateColumns = `repeat(${ncols}, minmax(0, 1fr))`;
-    el.style.gridTemplateRows = `repeat(${nrows}, minmax(0, 1fr))`;
+
+    // use a min size 300px, in case too may panels
+    el.style.gridTemplateColumns = `repeat(${ncols}, minmax(300px, 1fr))`;
+    el.style.gridTemplateRows = `repeat(${nrows}, minmax(300px, 1fr))`;
+    //el.style.gridTemplateColumns = `repeat(${ncols}, minmax(0px, 1fr))`;
+    //el.style.gridTemplateRows = `repeat(${nrows}, minmax(0px, 1fr))`;
     el.style.gap = '0.2rem';
     el.style.width = "100%";
     el.style.height = "100%";
@@ -136,14 +143,14 @@ const populate_grid = (gridElID, ncols, nrows) => {
 
     const canvas = document.createElement("canvas");
     canvas_wrapper.appendChild(canvas);
-    console.log(canvas_wrapper);
+    //console.log(canvas_wrapper);
 
     const gridEl = document.getElementById(gridElID);
 
     for (let i = 0; i < ncols * nrows; i++) {
-        console.log(i);
+        //console.log(i);
         const newCanvas = canvas_wrapper.cloneNode({deep: true});
-        console.log(newCanvas);
+        //console.log(newCanvas);
         gridEl.appendChild(newCanvas);
     }
 };
@@ -167,14 +174,12 @@ const scaleDataXY = (dataXY) => {
   return data;
 };
 
-const populate_instance = (scatterplot, dataXY, dataZ, zType, colorName) => {
+const populate_instance = (scatterplot, dataXY, dataZ, zType, colorName, panelIndex) => {
     // zType could be either "category" or "expr"
     // regl-scatterplot will only treat float numbers of [0,1] as continuous value
     let points = null;
     if(zType == "expr"){
-        let minZ = d3.min(dataZ);
-        let maxZ = d3.max(dataZ);
-        let zScale = d3.scaleLinear([minZ, maxZ], [0, 1]);
+        let zScale = d3.scaleLinear([exprMin, exprMax], [0, 1]);
         let dataZ_converted = dataZ.map((e) => zScale(e));
         points = {
           x: dataXY.X,
@@ -214,32 +219,33 @@ const populate_instance = (scatterplot, dataXY, dataZ, zType, colorName) => {
 
   //console.log(dataCategoryName);
   //console.log(dataColorName);
-  //console.log(noteId);
-  //scatterplot.subscribe('pointOver', (pointId) => {
-  //    if(dataZ){
-  //        showNote(
-  //            noteId,
-  //            dataCategoryName[dataZ[pointId]],
-  //            dataColorName[dataZ[pointId]]
-  //        );
-  //    }
-  //});
-    //scatterplot.subscribe('pointOut', () => { hideNote(noteId); });
-    scatterplot.draw(points);
+    //console.log(noteId);
+   // console.log(labelData[panelIndex]);
+  scatterplot.subscribe('pointOver', (pointId) => {
+      showNote(
+          mainClusterPlot_noteID,
+          labelData[panelIndex][pointId],
+          "#DCDCDC"
+      );
+  });
+  scatterplot.subscribe('pointOut', () => { hideNote(mainClusterPlot_noteID); });
+  scatterplot.draw(points);
 };
 
 
 // note manipulation to mimic tooltips
 const showNote = (noteId, text, color) => {
-  let noteEl = document.getElementById(noteId);
-  noteEl.style.opacity = 1;
-  noteEl.style.background = color;
-  noteEl.textContent = text;
+    let noteEl = document.getElementById(noteId);
+    noteEl.style.display = null;
+    noteEl.style.opacity = 0.8;
+    noteEl.style.background = color;
+    noteEl.textContent = text;
 };
 
 const hideNote = (noteId) => {
-  let noteEl = document.getElementById(noteId);
-  noteEl.style.opacity = 0;
+    let noteEl = document.getElementById(noteId);
+    noteEl.style.display = "none";
+  //noteEl.style.opacity = 0;
 };
 
 //Shiny.addCustomMessageHandler('reglScatter', (msg) => {
@@ -270,7 +276,7 @@ Shiny.addCustomMessageHandler('reglScatter_reduction', (msg) => {
     createGrid(mainClusterPlotElID, nCols, nRows);
     populate_grid("parent-wrapper", nCols, nRows);
     let canvases = Array.from( document.getElementById(mainClusterPlotElID).querySelectorAll("canvas") );
-    console.log(canvases);
+    //console.log(canvases);
     renderer.refresh();
 
     mainClusterPlot_scatterplots = canvases.map((canvas) =>
@@ -301,28 +307,25 @@ Shiny.addCustomMessageHandler('reglScatter_reduction', (msg) => {
 
 Shiny.addCustomMessageHandler('reglScatter_color', (msg) => {
 
-    //let elID = msg.id;
-    let scatterplot = null;
     let noteId= null;
 
     // update color data
     dataZ = msg.zData;
+    console.log(dataZ);
     dataCategoryName = msg.catNames;
     dataZ_type = msg.zType;
+    exprMin = msg.exprMin;
+    exprMax = msg.exprMax;
+    labelData = msg.labelData;
     //console.log(dataZ_type);
     //console.log(dataCategoryName);
     dataColorName = msg.colors;
     console.log(dataColorName);
     panelTitles = msg.panelTitles;
-    //console.log(colors);
-    //scatterplot_setColor(scatterplot, colors);
-    //populate_instance(scatterplot, dataXY, dataZ,
-    //                  dataColorName,
-    //                  noteId);
 
     mainClusterPlot_scatterplots.forEach((sp, i) => {
         console.log(i);
-        populate_instance(sp, dataXY[i], dataZ[i], dataZ_type[i], dataColorName[i]);
+        populate_instance(sp, dataXY[i], dataZ[i], dataZ_type[i], dataColorName[i], i);
     });
 
     // Populate panel titles

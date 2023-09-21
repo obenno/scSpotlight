@@ -28,8 +28,8 @@ app_server <- function(input, output, session) {
         req(seuratObj())
         d <- prepare_scatterReductionInput(seuratObj(),
                                            reduction = "umap",
-                                           mode = "cluster+expr+noSplit",
-                                           split.by = NULL)
+                                           mode = "cluster+expr+twoSplit",
+                                           split.by = "stim")
         message("Updating scatterReductionInput")
         scatterReductionInput(d)
     }, priority = -10)
@@ -39,8 +39,8 @@ app_server <- function(input, output, session) {
         req(seuratObj())
         d <- prepare_scatterCatColorInput(seuratObj(),
                                           col_name = "seurat_clusters",
-                                          mode = "cluster+expr+noSplit",
-                                          split.by = NULL,
+                                          mode = "cluster+expr+twoSplit",
+                                          split.by = "stim",
                                           feature = "IDO1")
         message("Updating scatterColorInput")
         scatterColorInput(d)

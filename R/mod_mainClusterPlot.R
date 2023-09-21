@@ -21,7 +21,7 @@ mod_mainClusterPlot_ui <- function(id){
              id = ns("clusterPlot"),
              height="600px",
              class = "align-items-center m-0 p-1",
-             div(id = ns("note"), class = "mainClusterPlotNote")
+             div(id = ns("note"), class = "mainClusterPlotNote shadow")
          )
      )
   )
