@@ -182,18 +182,18 @@ right_sidebar_ui <- function(){
     ##right_sidebar <- tagList()
     right_sidebar <- accordion(
         id = "right_sidebar",
+        ## Reduction Update
         accordion_panel(
             title = "Reduction",
             value = "analysis_reduction",
             icon = bsicons::bs_icon("signpost"),
-            list(),
-            ##reduction_options,
+            mod_UpdateReduction_ui("reductionUpdate"),
             class = "bg-light text-black"
         ),
         accordion_panel(
             title = "Category",
             value = "analysis_category",
-            icon = bsicons::bs_icon("signpost"),
+            icon = bsicons::bs_icon("qr-code"),
             list(),
             ##category_options,
             class = "bg-light text-black"

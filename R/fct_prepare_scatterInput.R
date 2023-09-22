@@ -120,6 +120,7 @@ prepare_scatterCatColorInput <- function(obj, col_name,
                         "cluster+expr+twoSplit",
                         "cluster+multiSplit",
                         "cluster+expr+multiSplit")
+    metaCols <- obj[[]] %>% colnames
     validate(
         need(mode %in% mode_supported, "Plotting mode is not supported")
     )

@@ -33,29 +33,6 @@ mod_mainClusterPlot_ui <- function(id){
 mod_mainClusterPlot_server <- function(id, scatterReductionIndicator, scatterColorIndicator, scatterReductionInput, scatterColorInput){
   moduleServer( id, function(input, output, session){
       ns <- session$ns
-      ## since the plot div id will be changed when calling module,
-      ## send the id to js for initializing scatterplot instance
-    ## data <- reactive({
-    ##     req(input$dataInput)
-    ##     d <- read_tsv(input$dataInput$datapath,
-    ##                   col_names = TRUE)
-    ##     d <- d %>%
-    ##         column_to_rownames("NAME") %>%
-    ##         select(X, Y, cell_type__ontology_label)
-    ##       colnames(d) <- c('X', 'Y', 'meta')
-    ##       category <- as.factor(d$meta)
-    ##       levels(category) <- c(0:(length(levels(category))-1))
-    ##       colors <- scales::hue_pal()(length(levels(category)))
-    ##       ##names(colors) <- levels(category)
-    ##       d <- d %>% mutate(Z = as.numeric(category)-1) %>%
-    ##           select(X, Y, Z)
-    ##       list(
-    ##           pointsData = d,
-    ##           colors = colors
-    ##       )
-    ##       ##d <- d[1:5000,]
-    ##  })
-
     ## Plotting with the last priority
     observeEvent( scatterReductionIndicator(), {
         ##message("scatterReductionIndicator() is ", scatterReductionIndicator())

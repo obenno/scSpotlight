@@ -21,14 +21,33 @@ app_server <- function(input, output, session) {
     ##focusedFeature <- reactiveVal()
 
     ## Reads input data and save to a seuratObj
-    seuratObj <- mod_dataInput_server("dataInput", objIndicator, metaIndicator, scatterReductionIndicator, scatterColorIndicator)
+    ##seuratObj <- mod_dataInput_server("dataInput", objIndicator, metaIndicator, scatterReductionIndicator, scatterColorIndicator)
+    seuratObj <- mod_dataInput_server("dataInput", objIndicator)
+
+
+    ## Update reductions
+    selectedReduction <- mod_UpdateReduction_server("reductionUpdate",
+                                                    seuratObj,
+                                                    scatterReductionIndicator,
+                                                    scatterColorIndicator)
+
+    observeEvent(selectedReduction(), {
+        message("Selected reduciton is ", selectedReduction())
+        message("scatterReductionIndicator() is ", scatterReductionIndicator())
+        message("scatterColorIndicator() is ", scatterColorIndicator())
+    })
+
 
     ## Update scatterReductionInput only when scatterReductionIndicator changes
     observeEvent(scatterReductionIndicator(), {
         req(seuratObj())
+        validate(
+            need(selectedReduction() %in% Reductions(seuratObj()),
+                 paste0(selectedReduction(), " is not in object reductions"))
+        )
         d <- prepare_scatterReductionInput(seuratObj(),
-                                           reduction = "umap",
-                                           mode = "cluster+multiSplit",
+                                           reduction = selectedReduction(),
+                                           mode = "clusterOnly",
                                            split.by = "stim")
         message("Updating scatterReductionInput")
         scatterReductionInput(d)
@@ -37,14 +56,18 @@ app_server <- function(input, output, session) {
     ## Update scatterColorInput only when scatterReductionIndicator changes
     observeEvent(scatterColorIndicator(), {
         req(seuratObj())
+        validate(
+            need(selectedReduction() %in% Reductions(seuratObj()),
+                 paste0(selectedReduction(), " is not in object reductions"))
+        )
         d <- prepare_scatterCatColorInput(seuratObj(),
                                           col_name = "seurat_clusters",
-                                          mode = "cluster+multiSplit",
+                                          mode = "clusterOnly",
                                           split.by = "stim",
                                           feature = "IDO1")
         message("Updating scatterColorInput")
         scatterColorInput(d)
-    }, priority = -10)
+    }, priority = -20)
 
     ## Draw cluster plot
     mod_mainClusterPlot_server("mainClusterPlot",
@@ -52,4 +75,5 @@ app_server <- function(input, output, session) {
                                scatterColorIndicator,
                                scatterReductionInput,
                                scatterColorInput)
+
 }

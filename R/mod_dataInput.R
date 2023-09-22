@@ -42,8 +42,9 @@ mod_dataInput_inputUI <- function(id){
 #' 
 #' @noRd
 mod_dataInput_server <- function(id,
-                                 objIndicator, metaIndicator,
-                                 scatterReductionIndicator, scatterColorIndicator){
+                                 objIndicator){
+                                 ##metaIndicator,
+                                 ##scatterReductionIndicator, scatterColorIndicator){
   moduleServer( id, function(input, output, session){
       ns <- session$ns
       data <- reactive({
@@ -53,9 +54,6 @@ mod_dataInput_server <- function(id,
 
       observeEvent(data(),{
           objIndicator(objIndicator()+1)
-          metaIndicator(metaIndicator()+1)
-          scatterReductionIndicator(scatterReductionIndicator()+1)
-          scatterColorIndicator(scatterColorIndicator()+1)
       })
 
       return(data)
