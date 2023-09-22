@@ -57,11 +57,11 @@ mod_UpdateReduction_server <- function(id,
           scatterColorIndicator(scatterColorIndicator()+1)
       })
 
-      selectionReduction <- reactive({
+      selectedReduction <- reactive({
           input$reduction
       })
 
-      return(selectionReduction)
+      return(selectedReduction)
   })
 }
 

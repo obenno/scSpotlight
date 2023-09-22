@@ -33,11 +33,11 @@ app_ui <- function(request) {
         nav_panel(title = "Home", "Landing Page", icon = icon("house")),
         sca_navPanel,
         ##nav_panel(title = "Recluster", "Here for reclustering the subset cells of your data", icon = icon("compress-alt")),
-        tags$link(rel = "stylesheet", type = "text/css", href = "www/css/fira-sans.css"),
-        tags$link(rel = "stylesheet", type = "text/css", href = "www/css/app.css"),
+        ##tags$link(rel = "stylesheet", type = "text/css", href = "www/css/fira-sans.css"),
+        ##tags$link(rel = "stylesheet", type = "text/css", href = "www/css/app.css"),
         useShinyjs(),
         ##use_waitress(),
-        tags$script(src = "www/js/myscript.js") # custom javascript code here
+        ##tags$script(src = "www/js/myscript.js") # custom javascript code here
     )
     ## modify some elements' attributes
     ui <- tagAppendAttributes(ui, .cssSelector = ".navbar", class = c("pt-1", "pb-1"))
@@ -190,7 +190,7 @@ right_sidebar_ui <- function(){
             mod_UpdateReduction_ui("reductionUpdate"),
             class = "bg-light text-black"
         ),
-        ##category options
+        ## Category options
         accordion_panel(
             title = "Category",
             value = "analysis_category",
@@ -198,12 +198,12 @@ right_sidebar_ui <- function(){
             mod_UpdateCategory_ui("categoryUpdate"),
             class = "bg-light text-black"
         ),
+        ## Input FeatureList
         accordion_panel(
             title = "Feature Expression",
             value = "analysis_features",
             icon = bsicons::bs_icon("bar-chart-line"),
-            list(),
-            ##feature_options,
+            mod_InputFeature_ui("inputFeatures"),
             class = "bg-light text-black"
         ),
         accordion_panel(

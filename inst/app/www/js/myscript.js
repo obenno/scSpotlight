@@ -9,3 +9,18 @@ $( document ).ready(function() {
         return new bootstrap.Tooltip(tooltipTriggerEl);
     });
 });
+
+
+// session$sendCustomMessage('show-packer', 'hello packer!')
+//Shiny.addCustomMessageHandler('invokeTooltips', (msg) => {
+//    
+//    //$( document ).ready(function() {
+//    console.log( "msg: " + msg );
+//        // activate bootstrap tooltip
+//    let tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+//    let tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+//        return new bootstrap.Tooltip(tooltipTriggerEl);
+//    });
+//    //});
+//
+//});

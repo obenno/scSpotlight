@@ -1,0 +1,221 @@
+#' InputFeature UI Function
+#'
+#' @description A shiny Module.
+#'
+#' @param id,input,output,session Internal parameters for {shiny}.
+#'
+#' @noRd 
+#'
+#' @importFrom shiny NS tagList
+#' @importFrom shinyWidgets switchInput
+mod_InputFeature_ui <- function(id){
+    ns <- NS(id)
+    tagList(
+        selectInput(
+            ns("featureInputMode"),
+            "Choose Input Mode",
+            choices = c("Manual Input", "Upload Feature List"),
+            selected = "Manual Input",
+            multiple = FALSE,
+            selectize = TRUE,
+            width = NULL
+        ),
+        uiOutput(ns("featureInputUI")),
+        uiOutput(ns("uploadedFeatureSet")),
+        span(
+            "Calculate Program Expression Score", style = "display: inline-block; margin-bottom: 0.5rem",
+            infoIcon("This will use AddModuleScore() function to generate program expression score. ref: Tirosh et al, Science (2016)", "left")
+        ),
+        switchInput(
+            inputId = ns("moduleScore"),
+            label = NULL,
+            size = "mini",
+            value = FALSE
+        )
+        ##uiOutput("exprCutoff")
+
+    )
+}
+
+#' InputFeature Server Functions
+#'
+#' @importFrom stringr str_detect
+#' @importFrom readr read_tsv read_csv
+#' @importFrom readxl read_excel
+#' @importFrom htmltools tagAppendAttributes
+#' @importFrom shinyWidgets updateSwitchInput
+#' @import shiny
+#' @noRd
+mod_InputFeature_server <- function(id){
+  moduleServer( id, function(input, output, session){
+      ns <- session$ns
+
+      output$featureInputUI <- renderUI({
+
+          if(input$featureInputMode == "Manual Input"){
+              ui <- tagList(
+                  textAreaInput(
+                      ns("features"),
+                      "Input Gene Names",
+                      value = NULL,
+                      width = NULL,
+                      height = "200px",
+                      placeholder = paste("MS4A1", "GNLY","CD3E", "CD14",
+                                          "FCGR3A", "LYZ", "PPBP", sep="\n")
+                  ),
+                  actionButton(
+                      ns("clearFeature"),
+                      "Clear",
+                      style = "position:relative; float:left",
+                      class = "border border-1 border-primary shadow mb-2"
+                  ),
+                  actionButton(
+                      ns("checkFeature"),
+                      "Check",
+                      style = "position:relative; float:right",
+                      class = "border border-1 border-primary shadow mb-2"
+                  )
+              )
+          }else{
+              ui <- tagList(
+                  fileInput(
+                      ns("featureList"),
+                      "or Upload Gene Set List",
+                      multiple = FALSE,
+                      width = "100%",
+                      accept = c(".xlsx", ".csv", ".tsv", ".txt")
+                  )
+              )
+          }
+
+          ## Need to invoke bootstrap tooltip again for new constructed tooltips
+          ##session$sendCustomMessage("invokeTooltips", "")
+
+          return(ui)
+      })
+
+      observeEvent(input$clearFeature, {
+          message("clicked clear")
+          updateTextAreaInput(
+              session = session,
+              inputId = "features",
+              label = "Input Gene Names",
+              value = ""
+          )
+      })
+
+      observeEvent(input$featureInputMode, {
+          updateSwitchInput(
+              session = session,
+              inputId = "moduleScore",
+              value = FALSE
+          )
+      })
+
+      uploadedFeatureList <- reactive({
+          if(!is.null(input$featureList)){
+              if(str_detect(input$featureList$name, "\\.(tsv|txt)$")){
+                  featureList <- read_tsv(input$featureList$datapath, col_names = c("geneSet", "geneName"))
+              }else if(str_detect(input$featureList$name, "\\.csv$")){
+                  featureList <- read_csv(input$featureList$datapath, col_names = c("geneSet", "geneName"))
+              }else if(str_detect(input$featureList$name, "\\.xlsx$")){
+                  featureList <- read_excel(input$featureList$datapath, col_names = c("geneSet", "geneName"))
+              }else{
+                  featureList <- NULL
+              }
+          }else{
+              featureList <- NULL
+          }
+          featureList
+      })
+
+      output$uploadedFeatureSet <- renderUI({
+
+          if(isTruthy(uploadedFeatureList()) &&
+             input$featureInputMode == "Upload Feature List"){
+
+              selectedGeneSet <- unique(uploadedFeatureList()$geneSet)[1]
+              geneSet <- unique(uploadedFeatureList()$geneSet)
+
+              selectInput(
+                  ns("geneSet"),
+                  "Choose Gene Set",
+                  choices = geneSet,
+                  selected = selectedGeneSet,
+                  multiple = FALSE,
+                  selectize = TRUE,
+                  width = NULL
+              ) %>%
+                  tagAppendAttributes(class = c("mb-1"))
+          }else{
+              NULL
+          }
+
+      })
+
+      inputFeatureList <- eventReactive(input$checkFeature, {
+
+          if(isTruthy(input$features)){
+              inputFeatureList <- input$features %>%
+                  strsplit(split = "\n") %>%
+                  unlist()
+              inputFeatureList <- inputFeatureList[inputFeatureList != ""] %>%
+                  unique()
+          }else{
+              inputFeatureList <- NULL
+          }
+          inputFeatureList
+
+      })
+
+
+      ## selectedFeatures return user input feature list or uploaded list
+      ## feature not included in the dataset will be discarded
+      userInputFeatures <- reactive({
+
+          if(input$featureInputMode == "Upload Feature List" &&
+             isTruthy(input$geneSet)){
+              userInputFeatures <- uploadedFeatureList() %>%
+                  filter(`geneSet` == input$geneSet) %>%
+                  pull(`geneName`)
+          }else if(input$featureInputMode == "Manual Input" &&
+                   isTruthy(inputFeatureList())){
+              userInputFeatures <- inputFeatureList()
+          }else{
+              userInputFeatures <- NULL
+          }
+          ##intersect(selectedFeatures, rownames(seuratObj_final()))
+      })
+
+      return(userInputFeatures)
+      ## Check if any group of genes not in the dataset
+      ##geneSet <- unique(uploadedFeatureList()$geneSet)
+      ##removedGroup <- c()
+      ##for(i in geneSet){
+      ##    genes <- uploadedFeatureList() %>%
+      ##        filter(`geneSet` == {{ i }}) %>%
+      ##        pull(`geneName`)
+      ##    if(!any(genes %in% rownames(seuratObj_final()))){
+      ##        removedGroup <- c(removedGroup, i)
+      ##    }
+      ##}
+      ##geneSet <- setdiff(geneSet, removedGroup)
+      ##if(length(removedGroup)>0){
+      ##    showNotification(
+      ##        ui = paste0("Group ", paste(removedGroup, collapse = ", "), " has no feature detected."),
+      ##        action = NULL,
+      ##        duration = 3,
+      ##        closeButton = TRUE,
+      ##        type = "default",
+      ##        session = session
+      ##    )
+      ##}
+
+  })
+}
+
+## To be copied in the UI
+# mod_InputFeature_ui("FeaturePlot_1")
+
+## To be copied in the server
+# mod_InputFeature_server("FeaturePlot_1")
