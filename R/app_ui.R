@@ -190,12 +190,12 @@ right_sidebar_ui <- function(){
             mod_UpdateReduction_ui("reductionUpdate"),
             class = "bg-light text-black"
         ),
+        ##category options
         accordion_panel(
             title = "Category",
             value = "analysis_category",
             icon = bsicons::bs_icon("qr-code"),
-            list(),
-            ##category_options,
+            mod_UpdateCategory_ui("categoryUpdate"),
             class = "bg-light text-black"
         ),
         accordion_panel(

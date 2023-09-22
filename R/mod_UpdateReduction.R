@@ -29,7 +29,7 @@ mod_UpdateReduction_server <- function(id,
                                        obj,
                                        scatterReductionIndicator, scatterColorIndicator){
 
-    moduleServer( id, function(input, output, session){
+  moduleServer( id, function(input, output, session){
       ns <- session$ns
 
       obj_reduction <- reactive({

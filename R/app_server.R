@@ -31,12 +31,18 @@ app_server <- function(input, output, session) {
                                                     scatterReductionIndicator,
                                                     scatterColorIndicator)
 
-    observeEvent(selectedReduction(), {
-        message("Selected reduciton is ", selectedReduction())
+    ## Update category
+    categoryInfo <- mod_UpdateCategory_server("categoryUpdate",
+                                              seuratObj,
+                                              scatterReductionIndicator,
+                                              scatterColorIndicator)
+
+    observeEvent(list(categoryInfo$group.by(), categoryInfo$split.by()), {
+        message("Selected group.by is ", categoryInfo$group.by())
+        message("Selected split.by is ", categoryInfo$split.by())
         message("scatterReductionIndicator() is ", scatterReductionIndicator())
         message("scatterColorIndicator() is ", scatterColorIndicator())
     })
-
 
     ## Update scatterReductionInput only when scatterReductionIndicator changes
     observeEvent(scatterReductionIndicator(), {
@@ -48,7 +54,7 @@ app_server <- function(input, output, session) {
         d <- prepare_scatterReductionInput(seuratObj(),
                                            reduction = selectedReduction(),
                                            mode = "clusterOnly",
-                                           split.by = "stim")
+                                           split.by = categoryInfo$split.by())
         message("Updating scatterReductionInput")
         scatterReductionInput(d)
     }, priority = -10)
@@ -61,9 +67,9 @@ app_server <- function(input, output, session) {
                  paste0(selectedReduction(), " is not in object reductions"))
         )
         d <- prepare_scatterCatColorInput(seuratObj(),
-                                          col_name = "seurat_clusters",
+                                          col_name = categoryInfo$group.by(),
                                           mode = "clusterOnly",
-                                          split.by = "stim",
+                                          split.by = categoryInfo$split.by(),
                                           feature = "IDO1")
         message("Updating scatterColorInput")
         scatterColorInput(d)
