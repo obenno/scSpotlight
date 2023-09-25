@@ -45,6 +45,7 @@ app_server <- function(input, output, session) {
     })
 
     ## Input Features
+    selectedFeature <- reactiveVal(NULL)
     filteredInputFeatures <- mod_InputFeature_server("inputFeatures", seuratObj)
 
     ##observeEvent(userInputFeatures(), {
@@ -54,6 +55,9 @@ app_server <- function(input, output, session) {
         message("Filtered Input Features are: ", paste(filteredInputFeatures(), collapse=", "))
         scatterReductionIndicator(scatterReductionIndicator()+1)
         scatterColorIndicator(scatterColorIndicator()+1)
+        if(isTruthy(filteredInputFeatures())){
+            selectedFeature(filteredInputFeatures()[1])
+        }
     }, priority = -10, ignoreNULL = FALSE)
 
     plottingMode <- reactive({
@@ -61,7 +65,6 @@ app_server <- function(input, output, session) {
         req(selectedReduction())
         req(categoryInfo$group.by())
         ##req(categoryInfo$split.by())
-        message("starting plotting mode")
         if(isTruthy(filteredInputFeatures()) && categoryInfo$split.by() == "None"){
             mode <- "cluster+expr+noSplit"
         }else if(isTruthy(filteredInputFeatures()) &&
@@ -114,7 +117,7 @@ app_server <- function(input, output, session) {
                                           col_name = categoryInfo$group.by(),
                                           mode = plottingMode(),
                                           split.by = categoryInfo$split.by(),
-                                          feature = filteredInputFeatures()[1])
+                                          feature = selectedFeature())
 
         scatterColorInput(d)
         message("Finished Updating scatterColorInput")

@@ -123,16 +123,17 @@ const clearMainPlotEl = () => {
     }
 };
 
-const populate_grid = (gridElID, ncols, nrows) => {
+const populate_grid = (gridElID, nPanels) => {
     // populate grid div with canvases
     // each canvas is wrapped by a fill div
+    // use nPanels instead of ncols and nrows to handle both even and odd number of panel
     const canvas_wrapper = document.createElement("div");
     // add fill class
     canvas_wrapper.classList.add("html-fill-item");
     canvas_wrapper.classList.add("html-fill-container");
     canvas_wrapper.style.position = "relative";
     // add border style for multiple panels
-    if(ncols > 1){
+    if(nPanels > 1){
         canvas_wrapper.style.borderWidth = "1px";
         canvas_wrapper.style.borderStyle = "solid";
         canvas_wrapper.style.borderColor = "#D3D3D3";
@@ -148,7 +149,7 @@ const populate_grid = (gridElID, ncols, nrows) => {
 
     const gridEl = document.getElementById(gridElID);
 
-    for (let i = 0; i < ncols * nrows; i++) {
+    for (let i = 0; i < nPanels; i++) {
         //console.log(i);
         const newCanvas = canvas_wrapper.cloneNode({deep: true});
         //console.log(newCanvas);
@@ -275,13 +276,19 @@ Shiny.addCustomMessageHandler('reglScatter_reduction', (msg) => {
 
     // Only process XY data and init canvases in this function
     console.log(msg);
-    let nCols = msg.nCols;
-    let nRows = msg.nRows;
+    let nPanels = msg.nPanels;
+    let nCols = null;
+    if(nPanels >= 2){
+        nCols = 2;
+    }else{
+        nCols = 1;
+    }
+    let nRows = Math.ceil(nPanels/nCols);
     // remove all elements in mainClusterPlot element
     clearMainPlotEl();
     // add parent-wrapper element, adjust rows and columns
     createGrid(mainClusterPlotElID, nCols, nRows);
-    populate_grid("parent-wrapper", nCols, nRows);
+    populate_grid("parent-wrapper", nPanels);
     let canvases = Array.from( document.getElementById(mainClusterPlotElID).querySelectorAll("canvas") );
     //console.log(canvases);
     renderer.refresh();

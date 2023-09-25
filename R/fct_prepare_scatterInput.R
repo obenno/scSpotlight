@@ -93,8 +93,9 @@ prepare_scatterReductionInput <- function(obj, reduction,
     ## remove list element names to ensure it will be translated to a list not object
     names(pointsData) <- NULL
     reduction_data <- list(
-        nCols = nCols,
-        nRows = nRows,
+        nPanels = nPanels,
+        ##nCols = nCols,
+        ##nRows = nRows,
         mode = mode,
         pointsData  = pointsData
     )
@@ -249,7 +250,6 @@ prepare_scatterCatColorInput <- function(obj, col_name,
 
     }else if(mode == "cluster+multiSplit"){
         validate(
-            need(feature.is.valid(obj, feature), "Feature is invalid"),
             need(split.is.valid(obj, split.by), "split.by is invalid")
         )
 
@@ -297,7 +297,7 @@ prepare_scatterCatColorInput <- function(obj, col_name,
         panelTitles <- paste(names(category_splitList), feature, sep=" : ") %>% as.list()
 
         labelData <- expr_splitList %>%
-            lapply(function(x) paste0("Cat: ", signif(x, 3)))
+            lapply(function(x) paste0("Expr: ", signif(x, 3)))
         cellData <- split(cells, split_vector)
     }
     ## remove list element names to ensure it will be translated to a list not object
@@ -305,8 +305,9 @@ prepare_scatterCatColorInput <- function(obj, col_name,
     names(labelData) <- NULL
     names(cellData) <- NULL
     d <- list(
-        nCols = nCols,
-        nRows = nRows,
+        nPanels = nPanels,
+        ##nCols = nCols,
+        ##nRows = nRows,
         mode = mode,
         zData = zData,
         colors = colors,
