@@ -45,42 +45,27 @@ app_server <- function(input, output, session) {
     })
 
     ## Input Features
-    userInputFeatures <- mod_InputFeature_server("inputFeatures")
+    filteredInputFeatures <- mod_InputFeature_server("inputFeatures", seuratObj)
 
-    ## Check if featuers exist in the object
-    filteredInputFeatures <- reactive({
-
-        req(userInputFeatures())
-        req(seuratObj())
-        genes <- rownames(seuratObj())
-        featuresNotDetected <- setdiff(userInputFeatures(), genes)
-        if(length(featuresNotDetected)>0){
-            showNotification(
-                ui = paste0("Features not detected: ", paste0(featuresNotDetected, collapse = ", ")),
-                action = NULL,
-                duration = 3,
-                closeButton = TRUE,
-                type = "default",
-                session = session
-            )
-        }
-        filteredFeatures <- intersect(userInputFeatures(), genes)
-    })
-
-    observeEvent(userInputFeatures(), {
-        message("User Input Features are: ", paste(userInputFeatures(), collapse=", "))
-    })
+    ##observeEvent(userInputFeatures(), {
+    ##    message("User Input Features are: ", paste(userInputFeatures(), collapse=", "))
+    ##}, priority=-10)
+    observeEvent(filteredInputFeatures(), {
+        message("Filtered Input Features are: ", paste(filteredInputFeatures(), collapse=", "))
+        scatterReductionIndicator(scatterReductionIndicator()+1)
+        scatterColorIndicator(scatterColorIndicator()+1)
+    }, priority = -10, ignoreNULL = FALSE)
 
     plottingMode <- reactive({
         req(seuratObj())
         req(selectedReduction())
         req(categoryInfo$group.by())
         ##req(categoryInfo$split.by())
-
-        if(isTruthy(filteredInputFeatures()) && !isTruthy(categoryInfo$split.by())){
+        message("starting plotting mode")
+        if(isTruthy(filteredInputFeatures()) && categoryInfo$split.by() == "None"){
             mode <- "cluster+expr+noSplit"
         }else if(isTruthy(filteredInputFeatures()) &&
-                 isTruthy(categoryInfo$split.by())){
+                 categoryInfo$split.by() != "None"){
             split.by.length <- seuratObj()[[categoryInfo$split.by()]] %>%
                 pull() %>%
                 unique() %>%
@@ -91,11 +76,12 @@ app_server <- function(input, output, session) {
                 mode <- "cluster+expr+multiSplit"
             }
         }else if(!isTruthy(filteredInputFeatures()) &&
-                 isTruthy(categoryInfo$split.by())){
+                 categoryInfo$split.by() != "None"){
             mode <- "cluster+multiSplit"
         }else{
             mode <- "clusterOnly"
         }
+        message("Plotting mode is :", mode)
         return(mode)
     })
 
@@ -113,6 +99,7 @@ app_server <- function(input, output, session) {
                                            split.by = categoryInfo$split.by())
 
         scatterReductionInput(d)
+        message("Finished Updating scatterReductionInput")
     }, priority = -10)
 
     ## Update scatterColorInput only when scatterReductionIndicator changes
@@ -123,14 +110,14 @@ app_server <- function(input, output, session) {
                  paste0(selectedReduction(), " is not in object reductions"))
         )
         message("Updating scatterColorInput")
-        message("plottingMode(): ", plottingMode())
         d <- prepare_scatterCatColorInput(seuratObj(),
                                           col_name = categoryInfo$group.by(),
                                           mode = plottingMode(),
                                           split.by = categoryInfo$split.by(),
-                                          feature = userInputFeatures()[1])
+                                          feature = filteredInputFeatures()[1])
 
         scatterColorInput(d)
+        message("Finished Updating scatterColorInput")
     }, priority = -20)
 
     ## Draw cluster plot

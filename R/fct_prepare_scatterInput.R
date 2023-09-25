@@ -16,7 +16,7 @@ prepare_scatterReductionInput <- function(obj, reduction,
                                           split.by = NULL){
 
     ## Tranlate 'split.by = None' to NULL
-    if(split.by == "None"){
+    if(isTruthy(split.by) && split.by == "None"){
         split.by <- NULL
     }
     ## Define five plotting mode, each with different numbers of panels
@@ -120,7 +120,7 @@ prepare_scatterCatColorInput <- function(obj, col_name,
                                          feature = NULL){
 
     ## Tranlate 'split.by = None' to NULL
-    if(split.by == "None"){
+    if(isTruthy(split.by) && split.by == "None"){
         split.by <- NULL
     }
     mode_supported <- c("clusterOnly",

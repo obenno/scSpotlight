@@ -46,9 +46,10 @@ mod_InputFeature_ui <- function(id){
 #' @importFrom shinyWidgets updateSwitchInput
 #' @import shiny
 #' @noRd
-mod_InputFeature_server <- function(id){
+mod_InputFeature_server <- function(id, obj){
   moduleServer( id, function(input, output, session){
       ns <- session$ns
+
 
       output$featureInputUI <- renderUI({
 
@@ -66,15 +67,15 @@ mod_InputFeature_server <- function(id){
                   actionButton(
                       ns("clearFeature"),
                       "Clear",
-                      style = "position:relative; float:left",
-                      class = "border border-1 border-primary shadow mb-2"
-                  ),
-                  actionButton(
-                      ns("checkFeature"),
-                      "Check",
                       style = "position:relative; float:right",
                       class = "border border-1 border-primary shadow mb-2"
-                  )
+                  )##,
+                  ##actionButton(
+                  ##    ns("checkFeature"),
+                  ##    "Check",
+                  ##    style = "position:relative; float:right",
+                  ##    class = "border border-1 border-primary shadow mb-2"
+                  ##)
               )
           }else{
               ui <- tagList(
@@ -92,16 +93,6 @@ mod_InputFeature_server <- function(id){
           ##session$sendCustomMessage("invokeTooltips", "")
 
           return(ui)
-      })
-
-      observeEvent(input$clearFeature, {
-          message("clicked clear")
-          updateTextAreaInput(
-              session = session,
-              inputId = "features",
-              label = "Input Gene Names",
-              value = ""
-          )
       })
 
       observeEvent(input$featureInputMode, {
@@ -153,21 +144,30 @@ mod_InputFeature_server <- function(id){
 
       })
 
-      inputFeatureList <- eventReactive(input$checkFeature, {
-
+      ## Not sure if the reactiveVal inited here is global, guess not
+      inputFeatureList <- reactive({
           if(isTruthy(input$features)){
-              inputFeatureList <- input$features %>%
+              featureList <- input$features %>%
                   strsplit(split = "\n") %>%
                   unlist()
-              inputFeatureList <- inputFeatureList[inputFeatureList != ""] %>%
+              featureList <- featureList[featureList != ""] %>%
                   unique()
           }else{
-              inputFeatureList <- NULL
+              featureList <- NULL
           }
-          inputFeatureList
-
+          ##message("inputFeatureList is ", inputFeatureList())
       })
 
+      observeEvent(input$clearFeature, {
+
+          updateTextAreaInput(
+              session = session,
+              inputId = "features",
+              label = "Input Gene Names",
+              value = ""
+          )
+
+      }, priority = 10)
 
       ## selectedFeatures return user input feature list or uploaded list
       ## feature not included in the dataset will be discarded
@@ -178,16 +178,42 @@ mod_InputFeature_server <- function(id){
               userInputFeatures <- uploadedFeatureList() %>%
                   filter(`geneSet` == input$geneSet) %>%
                   pull(`geneName`)
-          }else if(input$featureInputMode == "Manual Input" &&
-                   isTruthy(inputFeatureList())){
+          }else if(input$featureInputMode == "Manual Input"){ ##&&
+                   ##isTruthy(inputFeatureList())){
+              ##message("inputFeatureList() is ", inputFeatureList())
               userInputFeatures <- inputFeatureList()
           }else{
               userInputFeatures <- NULL
           }
+          userInputFeatures
           ##intersect(selectedFeatures, rownames(seuratObj_final()))
+      }) %>% debounce(millis = 1000)
+
+      ## Check if featuers exist in the object
+      filteredInputFeatures <- reactive({
+          req(obj())
+          if(isTruthy(userInputFeatures())){
+              genes <- rownames(obj())
+              featuresNotDetected <- setdiff(userInputFeatures(), genes)
+              if(length(featuresNotDetected)>0){
+                  showNotification(
+                      ui = paste0("Features not detected: ", paste0(featuresNotDetected, collapse = ", ")),
+                      action = NULL,
+                      duration = 3,
+                      closeButton = TRUE,
+                      type = "default",
+                      session = session
+                  )
+              }
+              filteredFeatures <- intersect(userInputFeatures(), genes)
+          }else{
+              filteredFeatures <- NULL
+          }
+          return(filteredFeatures)
       })
 
-      return(userInputFeatures)
+      return(filteredInputFeatures)
+
       ## Check if any group of genes not in the dataset
       ##geneSet <- unique(uploadedFeatureList()$geneSet)
       ##removedGroup <- c()
