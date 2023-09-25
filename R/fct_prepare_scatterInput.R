@@ -179,7 +179,7 @@ prepare_scatterCatColorInput <- function(obj, col_name,
         ## zType encode colorBy option of the regl-scatterplot
         zType <- list("category")
         colors <- list(catColors)
-        panelTitles <- list("Category")
+        panelTitles <- list(col_name)
         labelData <- list(paste0("Cat: ", metaData$meta))
         cellData <- list(cells)
     }else if(mode == "cluster+expr+noSplit"){
@@ -195,7 +195,7 @@ prepare_scatterCatColorInput <- function(obj, col_name,
         zData <- list(category, expr)
         zType <- list("category", "expr")
         colors <- list(catColors, exprColors)
-        panelTitles <- list("Category", feature)
+        panelTitles <- list(col_name, feature)
         ## expr value + category, as label data
         labels <- paste0("Cat: ",metaData$meta, " Expr: ", signif(expr, 3))
         labelData <- list(labels, labels)
