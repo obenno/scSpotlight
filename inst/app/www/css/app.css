@@ -55,6 +55,7 @@ hr.setting {
 }
 
 /* clusterPlot panel title div */
+/* css style is from regl-scatterplot example */
 .mainClusterPlotTitle {
     position: absolute;
     z-index: 2;
@@ -63,4 +64,76 @@ hr.setting {
     transform: translate(-50%, 0);
     font-weight: 700;
     font-size: 1rem;
+}
+
+
+/* mainClusterPlot info */
+#info {
+    position: absolute;
+    z-index: 1;
+    bottom: 0.5rem;
+    left: 0.5rem;
+    width: 2rem;
+    padding: 0.5rem;
+    font-size: 0.9rem;
+    background-color: rgba(var(--bs-secondary-rgb), 0.9);
+    border-radius: 0.2rem;
+    transition: background 0.15s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+#info:focus,
+#info:focus-within {
+    pointer-events: none;
+    outline: none;
+    color: #fff;
+    width: 16rem;
+}
+
+#info-title {
+    padding: 0;
+    margin: 0;
+    width: 1rem;
+    font-size: 0.9rem;
+    line-height: 1rem;
+    text-align: center;
+    color: #fff;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+#info-title:hover {
+    font-weight: 700;
+}
+
+#info-title:before {
+    content: 'i';
+}
+
+#info:focus #info-title,
+#info:focus-within #info-title {
+    color: #fff;
+    padding-top: 0.5rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    text-align: left;
+    width: 16rem;
+}
+
+#info:focus #info-title:before,
+#info:focus-within #info-title:before {
+    content: 'info';
+    font-weight: 700;
+}
+
+#info-content {
+    display: none;
+}
+
+#info:focus #info-content,
+#info:focus-within #info-content {
+    display: block;
+    pointer-events: auto;
 }
