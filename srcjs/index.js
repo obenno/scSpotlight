@@ -345,3 +345,7 @@ Shiny.addCustomMessageHandler('reglScatter_color', (msg) => {
     document.querySelectorAll(".mainClusterPlotTitle")
         .forEach((e,i) => { e.innerHTML = panelTitles[i]; });
 });
+
+Shiny.addCustomMessageHandler('reglScatter_removeGrid', (msg) => {
+    clearMainPlotEl();
+});

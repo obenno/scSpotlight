@@ -45,89 +45,19 @@ app_server <- function(input, output, session) {
     })
 
     ## Input Features
-    selectedFeature <- reactiveVal(NULL)
+    ##selectedFeature <- reactiveVal(NULL)
     filteredInputFeatures <- mod_InputFeature_server("inputFeatures", seuratObj)
-
-    ##observeEvent(userInputFeatures(), {
-    ##    message("User Input Features are: ", paste(userInputFeatures(), collapse=", "))
-    ##}, priority=-10)
-    observeEvent(filteredInputFeatures(), {
-        message("Filtered Input Features are: ", paste(filteredInputFeatures(), collapse=", "))
-        scatterReductionIndicator(scatterReductionIndicator()+1)
-        scatterColorIndicator(scatterColorIndicator()+1)
-        if(isTruthy(filteredInputFeatures())){
-            selectedFeature(filteredInputFeatures()[1])
-        }
-    }, priority = -10, ignoreNULL = FALSE)
-
-    plottingMode <- reactive({
-        req(seuratObj())
-        req(selectedReduction())
-        req(categoryInfo$group.by())
-        ##req(categoryInfo$split.by())
-        if(isTruthy(filteredInputFeatures()) && categoryInfo$split.by() == "None"){
-            mode <- "cluster+expr+noSplit"
-        }else if(isTruthy(filteredInputFeatures()) &&
-                 categoryInfo$split.by() != "None"){
-            split.by.length <- seuratObj()[[categoryInfo$split.by()]] %>%
-                pull() %>%
-                unique() %>%
-                length()
-            if(split.by.length <= 2){
-                mode <- "cluster+expr+twoSplit"
-            }else{
-                mode <- "cluster+expr+multiSplit"
-            }
-        }else if(!isTruthy(filteredInputFeatures()) &&
-                 categoryInfo$split.by() != "None"){
-            mode <- "cluster+multiSplit"
-        }else{
-            mode <- "clusterOnly"
-        }
-        message("Plotting mode is :", mode)
-        return(mode)
-    })
-
-    ## Update scatterReductionInput only when scatterReductionIndicator changes
-    observeEvent(scatterReductionIndicator(), {
-        req(seuratObj())
-        validate(
-            need(selectedReduction() %in% Reductions(seuratObj()),
-                 paste0(selectedReduction(), " is not in object reductions"))
-        )
-        message("Updating scatterReductionInput")
-        d <- prepare_scatterReductionInput(seuratObj(),
-                                           reduction = selectedReduction(),
-                                           mode = plottingMode(),
-                                           split.by = categoryInfo$split.by())
-
-        scatterReductionInput(d)
-        message("Finished Updating scatterReductionInput")
-    }, priority = -10)
-
-    ## Update scatterColorInput only when scatterReductionIndicator changes
-    observeEvent(scatterColorIndicator(), {
-        req(seuratObj())
-        validate(
-            need(selectedReduction() %in% Reductions(seuratObj()),
-                 paste0(selectedReduction(), " is not in object reductions"))
-        )
-        message("Updating scatterColorInput")
-        d <- prepare_scatterCatColorInput(seuratObj(),
-                                          col_name = categoryInfo$group.by(),
-                                          mode = plottingMode(),
-                                          split.by = categoryInfo$split.by(),
-                                          feature = selectedFeature())
-
-        scatterColorInput(d)
-        message("Finished Updating scatterColorInput")
-    }, priority = -20)
 
     ## Draw cluster plot
     mod_mainClusterPlot_server("mainClusterPlot",
+                               seuratObj,
                                scatterReductionIndicator,
                                scatterColorIndicator,
                                scatterReductionInput,
-                               scatterColorInput)
+                               scatterColorInput,
+                               selectedReduction,
+                               categoryInfo$group.by,
+                               categoryInfo$split.by,
+                               filteredInputFeatures)
 
 }
