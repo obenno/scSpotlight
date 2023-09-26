@@ -115,6 +115,50 @@ const createGrid = (elID, ncols, nrows) => {
     parentEl.appendChild(el);
 };
 
+const createInfoWidget = (elID) => {
+
+    let parentEl = document.getElementById(elID);
+    let infoEl = document.createElement("div");
+    infoEl.id = "info";
+    infoEl.setAttribute("tabindex", "0");
+    let infoTitleEl = document.createElement("div");
+    infoTitleEl.id = "info-title";
+    let infoContentEl = document.createElement("div");
+    infoContentEl.id = "info-content";
+    let introduction = ["Pan: Click and drag your mouse.",
+                        "Zoom: Scroll vertically.",
+                        `Rotate: While pressing <kbd>ALT</kbd>, click and drag your mouse.`,
+                        `Lasso: Pressing <kbd>SHIFT</kbd> and drag your mouse.`];
+
+    for(let i = 0; i< introduction.length; ++i){
+        let li = document.createElement('li');
+        li.innerHTML = introduction[i];
+        infoContentEl.appendChild(li);
+    }
+
+    infoEl.appendChild(infoContentEl);
+    infoEl.appendChild(infoTitleEl);
+    parentEl.appendChild(infoEl);
+};
+
+const createGoBackWidget = (elID) => {
+
+    let parentEl = document.getElementById(elID);
+    let iconSVG = `<svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" class="bi bi-arrow-bar-left" viewBox="0 0 16 16" style="position:relative;">
+  <path fill-rule="evenodd" d="M12.5 15a.5.5 0 0 1-.5-.5v-13a.5.5 0 0 1 1 0v13a.5.5 0 0 1-.5.5ZM10 8a.5.5 0 0 1-.5.5H3.707l2.147 2.146a.5.5 0 0 1-.708.708l-3-3a.5.5 0 0 1 0-.708l3-3a.5.5 0 1 1 .708.708L3.707 7.5H9.5a.5.5 0 0 1 .5.5Z"/>
+</svg>`;
+    let iconEl = document.createElement("div");
+    iconEl.id = "goBack";
+    iconEl.style.width = "2rem";
+    iconEl.style.height = "2rem";
+    iconEl.sytle.position = "absolute";
+    iconEl.style.zIndex = 1;
+    iconEl.style.bottom = "0.5rem";
+    iconEl.style.left = "3rem";
+    iconEl.style.padding = "0.5rem";
+    parentEl.appendChild(iconEl);
+};
+
 const clearMainPlotEl = () => {
     // used to remove "parent-wrapper" div
     let el = document.getElementById("parent-wrapper");
@@ -317,6 +361,8 @@ Shiny.addCustomMessageHandler('reglScatter_reduction', (msg) => {
 
     dataXY = msg.pointsData.map((d) => scaleDataXY(d));
 
+    // add info icon element
+    createInfoWidget("parent-wrapper");
 });
 
 Shiny.addCustomMessageHandler('reglScatter_color', (msg) => {
@@ -348,4 +394,9 @@ Shiny.addCustomMessageHandler('reglScatter_color', (msg) => {
 
 Shiny.addCustomMessageHandler('reglScatter_removeGrid', (msg) => {
     clearMainPlotEl();
+});
+
+Shiny.addCustomMessageHandler('reglScatter_addGoBack', (msg) => {
+    // Go Back widget will only be added when receiving shiny signals
+    createGoBackWidget("parent-wrapper");
 });
