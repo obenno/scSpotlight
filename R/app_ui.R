@@ -94,7 +94,7 @@ scaffold_sca_mainUI <- function(){
             width = 300
         ),
         layout_sidebar(
-            sidebar(
+            sidebar = sidebar(
                 right_sidebar_ui(),
                 fill = TRUE,
                 fillable = TRUE,
