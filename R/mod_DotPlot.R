@@ -26,7 +26,7 @@ mod_DotPlot_server <- function(id,
   moduleServer( id, function(input, output, session){
     ns <- session$ns
 
-    output$dotPlot <- renderPlot({
+    output$dotPlot <- renderCachedPlot({
         validate(
             need(obj(), "DotPlot will be shown here when seuratObj is ready.")
         )
@@ -69,6 +69,14 @@ mod_DotPlot_server <- function(id,
             xlab("")+
             theme(axis.text.x = element_text(angle=45, hjust=1, vjust = 0.5))
         p
+    },
+    cacheKeyExpr = {
+        list(
+            obj(),
+            split.by(),
+            group.by(),
+            inputFeatures()
+        )
     })
   })
 }

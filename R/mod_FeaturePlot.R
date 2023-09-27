@@ -54,7 +54,7 @@ mod_FeaturePlot_server <- function(id,
 
                 shinyjs::show("multiFeaturePlot")
 
-                output$multiFeaturePlot <- renderPlot({
+                output$multiFeaturePlot <- renderCachedPlot({
                     req(obj())
                     validate(
                         need(reduction(), "redcution not defined"),
@@ -76,7 +76,21 @@ mod_FeaturePlot_server <- function(id,
                         combine = TRUE
                     )
                     p
-                })
+                },
+                cacheKeyExpr = {
+                    list(
+                        obj(),
+                        split.by(),
+                        inputFeatures(),
+                        reduction()
+                    )
+                }##,
+                ##sizePolicy = sizeGrowthRatio(
+                ##    width = min(length(inputFeatures()), 3)*480,
+                ##    height = ceiling(length(inputFeatures())/3)*480,
+                ##    growthRate = 1.2
+                ##)
+                )
             }else{
                 message("should be no output")
                 output$multiFeaturePlot <- NULL
