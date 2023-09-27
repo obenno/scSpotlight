@@ -222,7 +222,6 @@ right_sidebar_ui <- function(){
 #' This will include two plots, main cluster plot and the feature plot, with each
 #' in a separate box div
 #'
-#' @importFrom bslib layout_columns
 #' @noRd
 mainPlots_ui <- function(){
     ##taegList()
