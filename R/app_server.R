@@ -53,16 +53,22 @@ app_server <- function(input, output, session) {
     })
 
     ## Draw cluster plot
-    mod_mainClusterPlot_server("mainClusterPlot",
-                               seuratObj,
-                               scatterReductionIndicator,
-                               scatterColorIndicator,
-                               scatterReductionInput,
-                               scatterColorInput,
-                               selectedReduction,
-                               categoryInfo$group.by,
-                               categoryInfo$split.by,
-                               filteredInputFeatures,
-                               goBackButton)
+    selectedFeature <- mod_mainClusterPlot_server("mainClusterPlot",
+                                                  seuratObj,
+                                                  scatterReductionIndicator,
+                                                  scatterColorIndicator,
+                                                  scatterReductionInput,
+                                                  scatterColorInput,
+                                                  selectedReduction,
+                                                  categoryInfo$group.by,
+                                                  categoryInfo$split.by,
+                                                  filteredInputFeatures,
+                                                  goBackButton)
 
+    ## Draw VlnPlot
+    mod_VlnPlot_server("vlnPlot",
+                       seuratObj,
+                       categoryInfo$group.by,
+                       categoryInfo$split.by,
+                       selectedFeature)
 }

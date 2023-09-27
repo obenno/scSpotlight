@@ -240,7 +240,7 @@ infoBox_ui <- function(){
         ##title = "",
         nav_panel(
             title = "VlnPlot",
-            tagList(),
+            mod_VlnPlot_ui("vlnPlot")
             ##plotOutput("vlnPlot") %>% withSpinner(fill_container = T)
         ),
         ## seurat5 VariableFeaturePlot() has bug on pulling data

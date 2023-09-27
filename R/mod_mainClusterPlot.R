@@ -197,6 +197,8 @@ mod_mainClusterPlot_server <- function(id,
           }
 
       }, priority = -100)
+
+      return(reactive(selectedFeature()))
   })
 }
 
