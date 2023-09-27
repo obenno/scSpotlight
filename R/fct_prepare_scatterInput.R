@@ -239,7 +239,7 @@ prepare_scatterCatColorInput <- function(obj, col_name,
         zType <- c("category", "expr", "category", "expr")
         colors <- list(catColors, exprColors, catColors, exprColors)
         panelTitles <- list()
-        panelColNames <- c("category", feature)
+        panelColNames <- c(col_name, feature)
         panelRowNames <- names(category_splitList)
         for(i in 1:length(panelRowNames)){
             panelTitles <- c(panelTitles,

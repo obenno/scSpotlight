@@ -48,6 +48,12 @@ app_server <- function(input, output, session) {
     ##selectedFeature <- reactiveVal(NULL)
     filteredInputFeatures <- mod_InputFeature_server("inputFeatures", seuratObj)
 
+    goBackButton <- reactive({
+        ## goBack cannot be read directly in module
+        ## has to be parsed by reactive()
+        input$goBack
+    })
+
     ## Draw cluster plot
     mod_mainClusterPlot_server("mainClusterPlot",
                                seuratObj,
@@ -58,6 +64,7 @@ app_server <- function(input, output, session) {
                                selectedReduction,
                                categoryInfo$group.by,
                                categoryInfo$split.by,
-                               filteredInputFeatures)
+                               filteredInputFeatures,
+                               goBackButton)
 
 }

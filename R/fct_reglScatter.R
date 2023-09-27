@@ -53,3 +53,10 @@ reglScatter_color <- function(colorsData, session){
 reglScatter_removeGrid <- function(session){
     session$sendCustomMessage(type = "reglScatter_removeGrid", "")
 }
+
+#' reglScatter_addGoBack
+#'
+#' @noRd
+reglScatter_addGoBack <- function(session){
+    session$sendCustomMessage(type = "reglScatter_addGoBack", "")
+}

@@ -79,10 +79,11 @@ mod_UpdateCategory_server <- function(id,
               choices = c("None", obj_meta()),
               selected = NULL
           )
-      })
+      }, priority = 20)
 
       observeEvent(input$group.by, {
           scatterColorIndicator(scatterColorIndicator()+1)
+          ##scatterColorIndicator(scatterColorIndicator()+1)
       })
 
       observeEvent(input$split.by, {

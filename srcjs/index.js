@@ -149,14 +149,15 @@ const createGoBackWidget = (elID) => {
 </svg>`;
     let iconEl = document.createElement("div");
     iconEl.id = "goBack";
-    iconEl.style.width = "2rem";
-    iconEl.style.height = "2rem";
-    iconEl.sytle.position = "absolute";
-    iconEl.style.zIndex = 1;
-    iconEl.style.bottom = "0.5rem";
-    iconEl.style.left = "3rem";
-    iconEl.style.padding = "0.5rem";
+    iconEl.innerHTML = iconSVG;
+    iconEl.onclick = tellShinyGoBack;
     parentEl.appendChild(iconEl);
+};
+
+const tellShinyGoBack = () => {
+    // Tell shiny to go back;
+    console.log("Executing go back code");
+    Shiny.setInputValue("goBack", 1);
 };
 
 const clearMainPlotEl = () => {
@@ -399,4 +400,6 @@ Shiny.addCustomMessageHandler('reglScatter_removeGrid', (msg) => {
 Shiny.addCustomMessageHandler('reglScatter_addGoBack', (msg) => {
     // Go Back widget will only be added when receiving shiny signals
     createGoBackWidget("parent-wrapper");
+    // Reset goBack value when creating goBackWidget
+    Shiny.setInputValue("goBack", null);
 });

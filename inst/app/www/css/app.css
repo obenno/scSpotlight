@@ -137,3 +137,18 @@ hr.setting {
     display: block;
     pointer-events: auto;
 }
+
+
+/* go back button style */
+#goBack {
+    position: absolute;
+    z-index: 1;
+    top: 0.5rem;
+    left: 0.5rem;
+    width: 2rem;
+    height: 2rem;
+    padding: 0.3rem;
+    color: #fff;
+    background-color: rgba(var(--bs-secondary-rgb), 0.9);
+    border-radius: 0.2rem;
+}

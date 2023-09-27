@@ -6,7 +6,7 @@
 #'
 #' @noRd
 #'
-#' @importFrom shiny NS tagList 
+#' @importFrom shiny NS tagList
 mod_mainClusterPlot_ui <- function(id){
   ns <- NS(id)
   tagList(
@@ -30,7 +30,7 @@ mod_mainClusterPlot_ui <- function(id){
 
 #' mainClusterPlot Server Functions
 #'
-#' @noRd 
+#' @noRd
 mod_mainClusterPlot_server <- function(id,
                                        obj,
                                        scatterReductionIndicator, scatterColorIndicator,
@@ -38,25 +38,48 @@ mod_mainClusterPlot_server <- function(id,
                                        selectedReduction,
                                        group.by,
                                        split.by,
-                                       filteredInputFeatures){
+                                       filteredInputFeatures,
+                                       goBack){
   moduleServer( id, function(input, output, session){
       ns <- session$ns
 
       selectedFeature <- reactiveVal(NULL)
       observeEvent(filteredInputFeatures(), {
+          ##req(filteredInputFeatures())
           message("Filtered Input Features are: ", paste(filteredInputFeatures(), collapse=", "))
-          ##scatterReductionIndicator(scatterReductionIndicator()+1)
-          ##scatterColorIndicator(scatterColorIndicator()+1)
-          ##if(isTruthy(filteredInputFeatures())){
-          ##    selectedFeature(filteredInputFeatures()[1])
+          ## Reset selectedFeature() when filteredInputFeatures() changes
+          if(length(filteredInputFeatures())==1){
+              selectedFeature(filteredInputFeatures()[1])
+          }else if(!isTruthy(filteredInputFeatures())){
+              ## If filteredInputFeatures() was changed to NULL
+              ## reset selectedFeature also
+              selectedFeature(NULL)
+              ##if(isTruthy(goBack())){
+              ##    scatterReductionIndicator(scatterReductionIndicator()+1)
+              ##    scatterColorIndicator(scatterColorIndicator()+1)
+              ##}
+          }
+          ##if(!isTruthy(filteredInputFeatures())){
+          ##    message("filteredInputFeatures() changed to NULL")
+          ##    scatterReductionIndicator(scatterReductionIndicator()+1)
+          ##    scatterColorIndicator(scatterColorIndicator()+1)
           ##}
-      }, priority = 10, ignoreNULL = FALSE)
+      }, priority = 20, ignoreNULL = FALSE)
+
+      observeEvent(selectedFeature(), {
+
+          if(isTruthy(selectedFeature())){
+              scatterColorIndicator(scatterColorIndicator()+1)
+              message("selectedFeature() changed colorIndicator: ", scatterColorIndicator())
+          }
+
+      }, priority = 10, ignoreNULL = FALSE) ## ignore shall be adjusted
 
       plottingMode <- reactive({
           req(obj())
           req(selectedReduction())
-          req(group.by())
-          ##req(categoryInfo$split.by())
+          req(split.by())
+
           if(isTruthy(filteredInputFeatures()) && split.by() == "None"){
               mode <- "cluster+expr+noSplit"
           }else if(isTruthy(filteredInputFeatures()) &&
@@ -80,6 +103,11 @@ mod_mainClusterPlot_server <- function(id,
           return(mode)
       })
 
+      observeEvent(plottingMode(), {
+          message("Plotting mode changed and indicator increased")
+          scatterReductionIndicator(scatterReductionIndicator()+1)
+          scatterColorIndicator(scatterColorIndicator()+1)
+      }, priority = -10)
 
       ## Update scatterReductionInput only when scatterReductionIndicator changes
       observeEvent(scatterReductionIndicator(), {
@@ -96,7 +124,7 @@ mod_mainClusterPlot_server <- function(id,
 
           scatterReductionInput(d)
           message("Finished Updating scatterReductionInput")
-      }, priority = -10)
+      }, priority = -20)
 
       ## Update scatterColorInput only when scatterReductionIndicator changes
       observeEvent(scatterColorIndicator(), {
@@ -114,7 +142,7 @@ mod_mainClusterPlot_server <- function(id,
 
           scatterColorInput(d)
           message("Finished Updating scatterColorInput")
-      }, priority = -20)
+      }, priority = -30)
 
       ## Plotting with the last priority
       ##observeEvent( scatterReductionIndicator(), {
@@ -129,17 +157,40 @@ mod_mainClusterPlot_server <- function(id,
       ##    reglScatter_color(scatterColorInput(), session)
       ##}, priority = -100)
 
+      ## input$goBack was set in javacript code
+      observeEvent(goBack(), {
+          message("goBack is ", goBack())
+          selectedFeature(NULL)
+          message("selectedFeature() is NULL")
+      }, ignoreNULL= TRUE, priority = 20)
 
 
       ## Invoke multiFeaturePlot module
-      observe({
-          if(is.null(selectedFeature()) && length(filteredInputFeatures())>1){
-              mod_FeaturePlot_server("featurePlot",
-                                     obj,
-                                     selectedReduction,
-                                     split.by,
-                                     selectedFeature,
-                                     filteredInputFeatures)
+      mod_FeaturePlot_server("featurePlot",
+                             obj,
+                             selectedReduction,
+                             split.by,
+                             selectedFeature,
+                             filteredInputFeatures)
+      observeEvent(list(
+          ## Include trigger events
+          selectedReduction(),
+          group.by(),
+          split.by(),
+          selectedFeature(),
+          filteredInputFeatures()##,
+          ##goBack()
+      ), {
+          ## Update plots when group.by and split.by changes
+          req(group.by(), split.by())
+          if(isTruthy(filteredInputFeatures()) && length(filteredInputFeatures())>1){
+              if(!is.null(selectedFeature())){
+                  message("Plotting clusters")
+                  reglScatter_reduction(scatterReductionInput(), session)
+                  reglScatter_color(scatterColorInput(), session)
+                  ## Add goBack button and goBack() value
+                  reglScatter_addGoBack(session)
+              }
           }else{
               reglScatter_reduction(scatterReductionInput(), session)
               reglScatter_color(scatterColorInput(), session)
@@ -152,6 +203,6 @@ mod_mainClusterPlot_server <- function(id,
 
 ## To be copied in the UI
 # mod_mainClusterPlot_ui("mainClusterPlot_1")
-    
+
 ## To be copied in the server
 # mod_mainClusterPlot_server("mainClusterPlot_1")
