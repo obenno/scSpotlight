@@ -6,7 +6,9 @@
 #'
 #' @noRd 
 #'
-#' @importFrom shiny NS tagList 
+#' @importFrom shiny NS tagList
+#' @importFrom ggplot2 theme
+#' @import Seurat
 mod_VlnPlot_ui <- function(id){
   ns <- NS(id)
   tagList(
