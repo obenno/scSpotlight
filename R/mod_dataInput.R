@@ -42,21 +42,22 @@ mod_dataInput_inputUI <- function(id){
 #' 
 #' @noRd
 mod_dataInput_server <- function(id,
+                                 obj,
                                  objIndicator){
-                                 ##metaIndicator,
-                                 ##scatterReductionIndicator, scatterColorIndicator){
-  moduleServer( id, function(input, output, session){
+    moduleServer( id, function(input, output, session){
       ns <- session$ns
-      data <- reactive({
+
+      observe({
           req(input$dataInput)
           seuratObj <- readRDS(input$dataInput$datapath)
+          obj(seuratObj)
       })
 
-      observeEvent(data(),{
+      observeEvent(obj(),{
+          req(obj())
           objIndicator(objIndicator()+1)
       })
 
-      return(data)
   })
 }
 

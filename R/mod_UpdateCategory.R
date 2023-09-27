@@ -87,6 +87,7 @@ mod_UpdateCategory_server <- function(id,
       })
 
       observeEvent(input$split.by, {
+          req(obj())
           scatterReductionIndicator(scatterReductionIndicator()+1)
           scatterColorIndicator(scatterColorIndicator()+1)
       })

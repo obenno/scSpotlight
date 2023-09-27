@@ -33,6 +33,7 @@ mod_UpdateReduction_server <- function(id,
       ns <- session$ns
 
       obj_reduction <- reactive({
+          req(obj())
           k <- Reductions(obj())
           idx <- na.omit(match(c("umap", "tsne", "pca"), k))
           ordered_reduction <- k[c(idx, setdiff(1:length(k), idx))]
@@ -53,11 +54,13 @@ mod_UpdateReduction_server <- function(id,
       })
 
       observeEvent(input$reduction, {
+          req(obj())
           scatterReductionIndicator(scatterReductionIndicator()+1)
           scatterColorIndicator(scatterColorIndicator()+1)
       })
 
       selectedReduction <- reactive({
+          req(obj())
           input$reduction
       })
 

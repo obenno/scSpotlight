@@ -10,19 +10,17 @@ app_server <- function(input, output, session) {
     ##session$sendCustomMessage(type = "reglScatter_mainClusterPlot", "")
 
     ## setup universal status indicator
-    ##seuratObj <- reactiveVal()
+    seuratObj <- reactiveVal(NULL)
     objIndicator <- reactiveVal(0)
     metaIndicator <- reactiveVal(0)
     scatterReductionIndicator <- reactiveVal(0)
     scatterColorIndicator <- reactiveVal(0)
     scatterReductionInput <- reactiveVal(NULL)
     scatterColorInput <- reactiveVal(NULL)
-    ##selectedFeatures <- reactiveVal()
-    ##focusedFeature <- reactiveVal()
 
     ## Reads input data and save to a seuratObj
     ##seuratObj <- mod_dataInput_server("dataInput", objIndicator, metaIndicator, scatterReductionIndicator, scatterColorIndicator)
-    seuratObj <- mod_dataInput_server("dataInput", objIndicator)
+    mod_dataInput_server("dataInput", seuratObj, objIndicator)
 
 
     ## Update reductions
