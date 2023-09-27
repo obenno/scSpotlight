@@ -22,6 +22,7 @@ set_options <- function(){
     ##plan("multicore", workers = 4)
 
     ##RhpcBLASctl::blas_set_num_threads(1) # https://github.com/satijalab/seurat/issues/3991
+
     ## global settings for spinners
-    ##options(spinner.type = 6, spinner.color = "#2c3e50", spinner.size= 0.5)
+    options(spinner.type = 3, spinner.color.background = "#ffffff", spinner.color = "#2c3e50", spinner.size= 0.5)
 }

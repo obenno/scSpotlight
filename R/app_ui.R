@@ -240,8 +240,7 @@ infoBox_ui <- function(){
         ##title = "",
         nav_panel(
             title = "VlnPlot",
-            mod_VlnPlot_ui("vlnPlot")
-            ##plotOutput("vlnPlot") %>% withSpinner(fill_container = T)
+            mod_VlnPlot_ui("vlnPlot") %>% withSpinner(fill_container = T)
         ),
         ## seurat5 VariableFeaturePlot() has bug on pulling data
         ##nav_panel(
@@ -255,8 +254,7 @@ infoBox_ui <- function(){
         ),
         nav_panel(
             title = "DotPlot",
-            mod_DotPlot_ui("dotPlot")
-            ##plotOutput("dotPlot") %>% withSpinner(fill_container = T)
+            mod_DotPlot_ui("dotPlot") %>% withSpinner(fill_container = T)
         ),
         nav_panel(
             title = "DEG Heatmap",

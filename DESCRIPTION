@@ -16,6 +16,7 @@ Imports:
     magrittr,
     readr,
     shiny (>= 1.7.4),
+    shinycssloaders,
     shinyjs,
     tibble
 Encoding: UTF-8
