@@ -255,7 +255,7 @@ infoBox_ui <- function(){
         ),
         nav_panel(
             title = "DotPlot",
-            tagList(),
+            mod_DotPlot_ui("dotPlot")
             ##plotOutput("dotPlot") %>% withSpinner(fill_container = T)
         ),
         nav_panel(

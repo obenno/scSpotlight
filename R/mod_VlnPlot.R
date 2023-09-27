@@ -31,6 +31,7 @@ mod_VlnPlot_server <- function(id,
         validate(
             need(obj(), "VlnPlot will be shown here when seuratObj is ready")
         )
+        req(group.by() != "None")
         ##req(selectedAssay())
         ## Visualize QC metrics as a violin plot
         if(group.by() == "orig.ident"){
