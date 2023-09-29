@@ -89,7 +89,9 @@ mod_FeaturePlot_server <- function(id,
                         ##ncol = min(length(inputFeatures()), 3),
                         ncol = min(length(features), 3),
                         cols = c("lightgrey", "#5D3FD3"),
-                        combine = TRUE
+                        combine = TRUE,
+                        raster = FALSE ## It seems that raster is not supported by shiny
+                        ##raster.dpi = c(144,144)
                     )
                     p
                     ##})

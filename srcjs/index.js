@@ -94,6 +94,14 @@ document.addEventListener('DOMContentLoaded', function () {
 
 }, false);
 
+// R waiter package spinners
+// keep the style exactly the same with R function
+var waiterSpinner = {
+  id: "parent-wrapper",
+  html: '<div class="loaderz-05" style = "color:var(--bs-primary);"></div>',
+  color: '#ffffff',
+  image: ''
+};
 
 // function to create grid view in the element (mainClusterPlot div)
 // here will always be div "parent-wrapper"
@@ -319,6 +327,9 @@ const hideNote = (noteId) => {
 
 Shiny.addCustomMessageHandler('reglScatter_reduction', (msg) => {
 
+    // Add spinners for the plot
+    // waiter is from R waiter package
+    waiter.show(waiterSpinner);
     // Only process XY data and init canvases in this function
     console.log(msg);
     let nPanels = msg.nPanels;
@@ -364,9 +375,16 @@ Shiny.addCustomMessageHandler('reglScatter_reduction', (msg) => {
 
     // add info icon element
     createInfoWidget("parent-wrapper");
+
+    // hide spinner
+    waiter.hide('parent-wrapper');
 });
 
 Shiny.addCustomMessageHandler('reglScatter_color', (msg) => {
+
+    // Add spinners for the plot
+    // waiter is from R waiter package
+    waiter.show(waiterSpinner);
 
     let noteId= null;
 
@@ -391,6 +409,9 @@ Shiny.addCustomMessageHandler('reglScatter_color', (msg) => {
     // Populate panel titles
     document.querySelectorAll(".mainClusterPlotTitle")
         .forEach((e,i) => { e.innerHTML = panelTitles[i]; });
+
+    // hide spinner
+    waiter.hide('parent-wrapper');
 });
 
 Shiny.addCustomMessageHandler('reglScatter_removeGrid', (msg) => {
