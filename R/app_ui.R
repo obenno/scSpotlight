@@ -6,6 +6,7 @@
 #' @import bslib
 #' @import bsicons
 #' @import shinyjs
+#' @import waiter
 #' @importFrom htmltools tagAppendAttributes
 #' @noRd
 app_ui <- function(request) {
@@ -35,7 +36,8 @@ app_ui <- function(request) {
         ##nav_panel(title = "Recluster", "Here for reclustering the subset cells of your data", icon = icon("compress-alt")),
         ##tags$link(rel = "stylesheet", type = "text/css", href = "www/css/fira-sans.css"),
         ##tags$link(rel = "stylesheet", type = "text/css", href = "www/css/app.css"),
-        useShinyjs(),
+        useShinyjs()##,
+        ##useWaiter()
         ##use_waitress(),
         ##tags$script(src = "www/js/myscript.js") # custom javascript code here
     )
@@ -49,6 +51,7 @@ app_ui <- function(request) {
     tagList(
         ## Leave this function for adding external resources
         golem_add_external_resources(),
+        useWaiter(),
         ## Your application UI logic
         ui
     )
@@ -182,6 +185,7 @@ right_sidebar_ui <- function(){
     ##right_sidebar <- tagList()
     right_sidebar <- accordion(
         id = "right_sidebar",
+        open = c("analysis_reduction", "analysis_category", "analysis_features"),
         ## Reduction Update
         accordion_panel(
             title = "Reduction",
@@ -224,7 +228,6 @@ right_sidebar_ui <- function(){
 #'
 #' @noRd
 mainPlots_ui <- function(){
-    ##taegList()
     mod_mainClusterPlot_ui("mainClusterPlot")
 }
 
@@ -239,7 +242,7 @@ infoBox_ui <- function(){
         ##title = "",
         nav_panel(
             title = "VlnPlot",
-            mod_VlnPlot_ui("vlnPlot") %>% withSpinner(fill_container = T)
+            mod_VlnPlot_ui("vlnPlot")
         ),
         ## seurat5 VariableFeaturePlot() has bug on pulling data
         ##nav_panel(
@@ -253,18 +256,19 @@ infoBox_ui <- function(){
         ),
         nav_panel(
             title = "DotPlot",
-            mod_DotPlot_ui("dotPlot") %>% withSpinner(fill_container = T)
+            mod_DotPlot_ui("dotPlot")
         ),
         nav_panel(
             title = "DEG Heatmap",
             tagList(),
-            ##plotOutput("DEG_heatmap") %>% withSpinner(fill_container = T)
+            ##plotOutut("DEG_heatmap") %>% withSpinner(fill_container = T)
         ),
         nav_panel(
             title = "DEG List",
-            tagList(),
+            tagList()
             ##DTOutput("DEG_list", width = "100%", height = "auto", fill = TRUE) %>% withSpinner(fill_container = T)
-        )
+        ),
+        wrapper = function(...) {card_body(..., class = "p-2") }
     )
 
     bottom_box <- tagAppendAttributes(bottom_box,

@@ -49,7 +49,9 @@ mod_dataInput_server <- function(id,
 
       observe({
           req(input$dataInput)
+          waiter_show(html = waiting_screen(), color = "var(--bs-primary)")
           seuratObj <- readRDS(input$dataInput$datapath)
+          waiter_hide()
           obj(seuratObj)
       })
 

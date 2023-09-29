@@ -152,3 +152,9 @@ hr.setting {
     background-color: rgba(var(--bs-secondary-rgb), 0.9);
     border-radius: 0.2rem;
 }
+
+
+/* rewrite gap style in siderbar layout main */
+.bslib-gap-spacing {
+    gap: 0;
+}

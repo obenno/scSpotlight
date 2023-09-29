@@ -7,17 +7,20 @@
 #' @noRd 
 #'
 #' @importFrom shiny NS tagList
-#' @importFrim shinyjs hide show
+#' @importFrom shinyjs hide show hidden
+#' @importFrom promises future_promise
+#' @importFrom waiter withWaiter
 mod_FeaturePlot_ui <- function(id){
     ns <- NS(id)
+
     tagList(
         shinyjs::hidden(
-        plotOutput(
-            ns("multiFeaturePlot"),
-            dblclick = dblclickOpts(
-                id = ns("multiFeaturePlot_dblclick")
+            plotOutput(
+                ns("multiFeaturePlot"),
+                dblclick = dblclickOpts(
+                    id = ns("multiFeaturePlot_dblclick")
+                )
             )
-        ) ##%>% withSpinner(fill_container = T)
         )
     )
 }
@@ -33,6 +36,8 @@ mod_FeaturePlot_server <- function(id,
                                    inputFeatures){
     moduleServer( id, function(input, output, session){
         ns <- session$ns
+
+        w <- Waiter$new(id = ns("multiFeaturePlot"))
 
         ## Then draw multiFeaturePlot
         observeEvent(list(
@@ -53,7 +58,8 @@ mod_FeaturePlot_server <- function(id,
                 )
 
                 shinyjs::show("multiFeaturePlot")
-
+                ## show spinner
+                w$show()
                 output$multiFeaturePlot <- renderCachedPlot({
                     req(obj())
                     validate(
@@ -66,16 +72,27 @@ mod_FeaturePlot_server <- function(id,
                     }else{
                         split.by <- split.by()
                     }
+
+                    seuratObj <- obj()
+                    features <- inputFeatures()
+                    selectedReduction <- reduction()
+                    message("featureplot reduction is ", selectedReduction)
+                    message("featureplot split.by is ", split.by)
+                    ##future_promise({
                     p <- FeaturePlot(
-                        obj(),
-                        features = inputFeatures(),
-                        reduction = reduction(),
+                        seuratObj,
+                        features = features,
+                        ##features = inputFeatures(),
+                        ##reduction = reduction(),
+                        reduction = selectedReduction,
                         split.by = split.by,
-                        ncol = min(length(inputFeatures()), 3),
+                        ##ncol = min(length(inputFeatures()), 3),
+                        ncol = min(length(features), 3),
                         cols = c("lightgrey", "#5D3FD3"),
                         combine = TRUE
                     )
                     p
+                    ##})
                 },
                 cacheKeyExpr = {
                     list(
@@ -84,13 +101,18 @@ mod_FeaturePlot_server <- function(id,
                         inputFeatures(),
                         reduction()
                     )
-                }##,
+                },
+                cache = "session"
+                ##,
                 ##sizePolicy = sizeGrowthRatio(
                 ##    width = min(length(inputFeatures()), 3)*480,
                 ##    height = ceiling(length(inputFeatures())/3)*480,
                 ##    growthRate = 1.2
                 ##)
                 )
+                on.exit({
+                    w$hide()
+                })
             }else{
                 message("should be no output")
                 output$multiFeaturePlot <- NULL

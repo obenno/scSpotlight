@@ -8,10 +8,15 @@
 #'
 #' @importFrom shiny NS tagList
 #' @import ggplot2
+#' @importFrom waiter withWaiter
 mod_DotPlot_ui <- function(id){
   ns <- NS(id)
   tagList(
-      plotOutput(ns("dotPlot"))
+      plotOutput(ns("dotPlot")) %>%
+      withWaiter(
+          html = waiter::spin_loaders(5, color = "var(--bs-primary)"),
+          color = "#ffffff"
+      )
   )
 }
 
@@ -77,7 +82,8 @@ mod_DotPlot_server <- function(id,
             group.by(),
             inputFeatures()
         )
-    })
+    },
+    cache = "session")
   })
 }
 

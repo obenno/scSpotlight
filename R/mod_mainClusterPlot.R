@@ -31,6 +31,8 @@ mod_mainClusterPlot_ui <- function(id){
 #' mainClusterPlot Server Functions
 #'
 #' @noRd
+#'
+#' @importFrom promises future_promise %...>% %...!%
 mod_mainClusterPlot_server <- function(id,
                                        obj,
                                        scatterReductionIndicator, scatterColorIndicator,
@@ -42,7 +44,8 @@ mod_mainClusterPlot_server <- function(id,
                                        goBack){
   moduleServer( id, function(input, output, session){
       ns <- session$ns
-
+      ## waiter spinner for mainClusterPlot
+      w <- Waiter$new(id = ns("clusterPlot"))
       selectedFeature <- reactiveVal(NULL)
       observeEvent(filteredInputFeatures(), {
           ##req(filteredInputFeatures())
@@ -67,7 +70,9 @@ mod_mainClusterPlot_server <- function(id,
       }, priority = 20, ignoreNULL = FALSE)
 
       observeEvent(selectedFeature(), {
-
+          req(obj())
+          ## show spinner when evaluating selectedFeature()
+          w$show()
           if(isTruthy(selectedFeature())){
               scatterColorIndicator(scatterColorIndicator()+1)
               message("selectedFeature() changed colorIndicator: ", scatterColorIndicator())
@@ -172,6 +177,8 @@ mod_mainClusterPlot_server <- function(id,
                              split.by,
                              selectedFeature,
                              filteredInputFeatures)
+
+
       observeEvent(list(
           ## Include trigger events
           selectedReduction(),
@@ -183,6 +190,7 @@ mod_mainClusterPlot_server <- function(id,
       ), {
           ## Update plots when group.by and split.by changes
           req(group.by(), split.by())
+          ##w$show()
           if(isTruthy(filteredInputFeatures()) && length(filteredInputFeatures())>1){
               if(!is.null(selectedFeature())){
                   message("Plotting clusters")
@@ -195,7 +203,9 @@ mod_mainClusterPlot_server <- function(id,
               reglScatter_reduction(scatterReductionInput(), session)
               reglScatter_color(scatterColorInput(), session)
           }
-
+          on.exit({
+              w$hide()
+          })
       }, priority = -100)
 
       return(reactive(selectedFeature()))

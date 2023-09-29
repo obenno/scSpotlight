@@ -6,10 +6,10 @@
 \usage{
 withSpinner(
   ui_element,
-  type = getOption("spinner.type", default = 1),
-  color = getOption("spinner.color", default = "#0275D8"),
-  size = getOption("spinner.size", default = 1),
-  color.background = getOption("spinner.color.background"),
+  type = getOption("spinner.type", default = 3),
+  color = getOption("spinner.color", default = "#2c3e50"),
+  size = getOption("spinner.size", default = 0.5),
+  color.background = getOption("spinner.color.background", "#ffffff"),
   custom.css = FALSE,
   proxy.height = NULL,
   id = NULL,

@@ -4,7 +4,7 @@
 #'
 #' candidate font: Rajdhani
 #'
-#' @importFrom bslib bs_theme
+#' @importFrom bslib bs_theme bs_add_variables
 #'
 #' @noRd
 global_theme <- function(){
@@ -34,6 +34,18 @@ infoIcon <- function(info, placement = "auto"){
         bsicons::bs_icon("info-circle-fill", size = "1.2em", class = "text-primary")
     )
 }
+
+#' Default waiter loading screen
+#'
+#' @importFrom waiter spin_folding_cube
+#' @noRd
+waiting_screen <- function(){
+    tagList(
+        spin_folding_cube(),
+        h4("Data Loading...")
+  )
+}
+
 #' Function to theme plotly figures
 #'
 #' @importFrom plotly config
@@ -57,10 +69,10 @@ config_plotly_fig <- function(fig){
 #' @import shinycssloaders
 withSpinner <- function(
     ui_element,
-    type = getOption("spinner.type", default = 1),
-    color = getOption("spinner.color", default = "#0275D8"),
-    size = getOption("spinner.size", default = 1),
-    color.background = getOption("spinner.color.background"),
+    type = getOption("spinner.type", default = 3),
+    color = getOption("spinner.color", default = "#2c3e50"),
+    size = getOption("spinner.size", default = 0.5),
+    color.background = getOption("spinner.color.background", "#ffffff"),
     custom.css = FALSE,
     proxy.height = NULL,
     id = NULL,

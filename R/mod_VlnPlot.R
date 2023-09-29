@@ -8,14 +8,20 @@
 #'
 #' @importFrom shiny NS tagList
 #' @importFrom ggplot2 theme
+#' @importFrom promises future_promise
+#' @importFrom waiter withWaiter
 #' @import Seurat
 mod_VlnPlot_ui <- function(id){
   ns <- NS(id)
   tagList(
-      plotOutput(ns("vlnPlot"))
+      plotOutput(ns("vlnPlot")) %>%
+      withWaiter(
+          html = waiter::spin_loaders(5, color = "var(--bs-primary)"),
+          color = "#ffffff"
+      )
   )
 }
-    
+
 #' VlnPlot Server Functions
 #'
 #' @noRd 
@@ -27,7 +33,9 @@ mod_VlnPlot_server <- function(id,
   moduleServer( id, function(input, output, session){
     ns <- session$ns
 
-    output$vlnPlot <- renderPlot({
+    ##outputOptions(output, "vlnPlot", priority = -100)
+    output$vlnPlot <- renderCachedPlot({
+
         validate(
             need(obj(), "VlnPlot will be shown here when seuratObj is ready")
         )
@@ -49,35 +57,68 @@ mod_VlnPlot_server <- function(id,
             pull() %>% is.numeric()
         if(groupBy_number){
             group.by <- "orig.ident"
-        }
-        if(isTruthy(selectedFeature())){
-            p <- VlnPlot(obj(),
-                         features = selectedFeature(),
-                         stack = FALSE,
-                         pt.size = 2,
-                         ##idents = NULL,
-                         alpha = 0.4,
-                         group.by = group.by(),
-                         split.by = split.by)
         }else{
-            p <- VlnPlot(obj(),
-                         features = c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent.rp"),
-                         ncol = vln_ncol,
-                         stack = FALSE,
-                         pt.size = 2,
-                         ##idents = NULL,
-                         alpha = 0.4,
-                         group.by = group.by(),
-                         split.by = split.by)
+            group.by <- group.by()
         }
 
-        if(isTruthy(split.by)){
-            p <- p+theme(legend.position = "right")
-        }else{
-            p <- p+NoLegend()
-        }
-        p
-    })
+        ## future_promise cannot utilize reactive expressions
+        obj <- obj()
+        selectedFeature <- selectedFeature()
+        ## pt.size has huge impact on plotting time
+        ## use different pt.size and alpha when object has different input cells
+        cellNum <- Cells(obj()) %>% length()
+        ##future_promise({
+            if(cellNum < 20000){
+                pt.size <- 2
+                alpha <- 0.4
+            }else if(cellNum < 100000){
+                pt.size <- 1
+                alpha <- 0.4
+            }else if(cellNum < 200000){
+                pt.size <- 0.5
+                alpha <- 0.4
+            }else{
+                pt.size <- 0.2
+                alpha <- 0.2
+            }
+            if(isTruthy(selectedFeature)){
+                p <- VlnPlot(obj,
+                             features = selectedFeature,
+                             stack = FALSE,
+                             pt.size = pt.size,
+                             ##idents = NULL,
+                             alpha = alpha,
+                             group.by = group.by,
+                             split.by = split.by)
+            }else{
+                p <- VlnPlot(obj,
+                             features = c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent.rp"),
+                             ncol = vln_ncol,
+                             stack = FALSE,
+                             pt.size = pt.size,
+                             ##idents = NULL,
+                             alpha = alpha,
+                             group.by = group.by,
+                             split.by = split.by)
+            }
+
+            if(isTruthy(split.by)){
+                p <- p+theme(legend.position = "right")
+            }else{
+                p <- p+NoLegend()
+            }
+            p
+       ##})
+    },
+    cacheKeyExpr = {
+        list(
+            obj(),
+            split.by(),
+            group.by(),
+            selectedFeature()
+        )
+    },
+    cache = "session")
   })
 }
     
