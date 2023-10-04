@@ -65,6 +65,18 @@ app_server <- function(input, output, session) {
                                                   filteredInputFeatures,
                                                   goBackButton)
 
+    ## infoBox needs to be collapsed by default
+    observeEvent(input$infoBox_show, {
+        message("input$infoBox_show is ", input$infoBox_show)
+        if(input$infoBox_show){
+            message("show infoBox")
+            show_infoBox(session)
+        }else{
+            message("collapse infoBox")
+            ## default value of input$infoBox_show is FALSE
+            collapse_infoBox(session)
+        }
+    }, priority = 100) # high priority for UI components
     ## Draw VlnPlot
     mod_VlnPlot_server("vlnPlot",
                        seuratObj,

@@ -234,6 +234,8 @@ mainPlots_ui <- function(){
 #' Function for bottom info box ui
 #'
 #' @noRd
+#'
+#' @importFrom shinyWidgets prettySwitch
 infoBox_ui <- function(){
     bottom_box <- navset_card_pill(
         id = "bottom_box",
@@ -268,8 +270,40 @@ infoBox_ui <- function(){
             tagList()
             ##DTOutput("DEG_list", width = "100%", height = "auto", fill = TRUE) %>% withSpinner(fill_container = T)
         ),
+        nav_spacer(),
+        nav_item(
+            tags$button(
+                id = "infoBox_show",
+                type = "button",
+                class = "border-0",
+                style = "background-color: rgba(255,255,255,0)",
+                `data-bs-toggle` = "collapse",
+                `data-bs-target` = "#infoBox_content",
+                `aria-expanded` = "false",
+                `aria-controls` = "infoBox_content",
+                bsicons::bs_icon("arrows-angle-expand")
+            )
+            ##prettySwitch(
+            ##    inputId = "infoBox_show",
+            ##    label = "",
+            ##    status = "primary",
+            ##    value = FALSE,
+            ##    inline = TRUE,
+            ##    fill = TRUE
+            ##)
+        ),
         wrapper = function(...) {card_body(..., class = "p-2") }
     )
+
+    ## Add id to infoBox
+    bottom_box <- tagAppendAttributes(bottom_box,
+                                      id = "infoBox")
+
+    ## Add collapse class to tab-content
+    bottom_box <- tagAppendAttributes(bottom_box,
+                                      .cssSelector = ".tab-content",
+                                      id = "infoBox_content",
+                                      class = "collapse")
 
     bottom_box <- tagAppendAttributes(bottom_box,
                                       class = c("border", "border-2",

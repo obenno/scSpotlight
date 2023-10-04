@@ -3,6 +3,7 @@ import 'shiny';
 import { createReglScatterInstance } from './modules/reglScatter.js';
 import createScatterplot, { createRenderer } from 'regl-scatterplot';
 import * as d3 from "d3";
+import { resize_infoBox, update_collapse_icon } from './modules/collapse_infoBox.js';
 
 // In shiny server use:
 // session$sendCustomMessage('show-packer', 'hello packer!')
@@ -51,6 +52,27 @@ const renderer = createRenderer();
 // code below will ensure the functions were invoked after all the shiny content loaded
 // thus here init scatterplot instance
 document.addEventListener('DOMContentLoaded', function () {
+
+
+    // init infoBox size to shrinked
+    resize_infoBox(56);
+    document.getElementById("infoBox").querySelector(".bslib-full-screen-enter").style.display = "none";
+    // Add event listener to infoBox collapsing icon
+    const collapsing_icon = document.getElementById("infoBox_show");
+    collapsing_icon.addEventListener("click", function() {
+        update_collapse_icon();
+        if(collapsing_icon.classList.contains("collapsed")){
+            resize_infoBox(56);
+            // hide full screen button
+            document.getElementById("infoBox").querySelector(".bslib-full-screen-enter").style.display = "none";
+        }else{
+            resize_infoBox(250);
+            // show full screen button
+            document.getElementById("infoBox").querySelector(".bslib-full-screen-enter").style.display = "";
+        }
+    });
+
+
     // do something here ...
     //mainClusterPlot_scatterplot = createReglScatterInstance(mainClusterPlotElID);
     // Add resize function to mainClusterPlot device
@@ -424,3 +446,14 @@ Shiny.addCustomMessageHandler('reglScatter_addGoBack', (msg) => {
     // Reset goBack value when creating goBackWidget
     Shiny.setInputValue("goBack", null);
 });
+
+
+// Handler for collapsing and show infoBox
+Shiny.addCustomMessageHandler('collapse_infoBox', (msg) => {
+    collapse_infoBox();
+});
+
+Shiny.addCustomMessageHandler('show_infoBox', (msg) => {
+    show_infoBox();
+});
+
