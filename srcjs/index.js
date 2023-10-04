@@ -447,13 +447,3 @@ Shiny.addCustomMessageHandler('reglScatter_addGoBack', (msg) => {
     Shiny.setInputValue("goBack", null);
 });
 
-
-// Handler for collapsing and show infoBox
-Shiny.addCustomMessageHandler('collapse_infoBox', (msg) => {
-    collapse_infoBox();
-});
-
-Shiny.addCustomMessageHandler('show_infoBox', (msg) => {
-    show_infoBox();
-});
-
