@@ -335,11 +335,33 @@ const hideNote = (noteId) => {
 
 
 const createLegendEl = (legendIndex) => {
-    // dataColorName[0] will always be a color array of the "category" panel
+    // panel one colors data will always be "category" panel
     // and contains all of the category colors
-    let color = dataColorName[0][legendIndex];
-    let title = dataCategoryName[legendIndex];
-    let number = dataCategoryCellNum[legendIndex];
+
+    // But when there is only one category level and one panel
+    // it will return a unnested array
+    // thus we will have to test dataColorName[0]
+    let panelOneColors = [];
+    if(Array.isArray(dataColorName[0])){
+        panelOneColors = dataColorName[0];
+    }else{
+        panelOneColors.push(dataColorName[0]);
+    }
+    let titleData = [];
+    if(Array.isArray(dataCategoryName)){
+        titleData = dataCategoryName;
+    }else{
+        titleData.push(dataCategoryName);
+    }
+    let cellNumberData = [];
+    if(Array.isArray(dataCategoryCellNum)){
+        cellNumberData = dataCategoryCellNum;
+    }else{
+        cellNumberData.push(dataCategoryCellNum);
+    }
+    let color = panelOneColors[legendIndex];
+    let title = titleData[legendIndex];
+    let number = cellNumberData[legendIndex];
     // legend style modified from broad single cell portal viewer
     const scatterLegend = document.createElement("div");
     scatterLegend.classList.add("scatter-legend");
@@ -488,6 +510,8 @@ Shiny.addCustomMessageHandler('reglScatter_color', (msg) => {
     dataCategoryName = msg.catNames;
     dataCategoryCellNum = msg.catCellNums;
     console.log(dataColorName);
+    console.log(dataCategoryName);
+    console.log(dataCategoryCellNum);
     panelTitles = msg.panelTitles;
 
     mainClusterPlot_scatterplots.forEach((sp, i) => {
@@ -509,7 +533,16 @@ Shiny.addCustomMessageHandler('reglScatter_color', (msg) => {
         });
         const category_accordion_body = category_accordion[0].querySelector(".accordion-body");
         category_accordion_body.querySelectorAll(".scatter-legend").forEach((e) => e.remove());
-        dataColorName[0].forEach((e,i) => {
+        // By default the category panels will contain all of the category colors even
+        // it doesn't contain any scatter belonging to that category
+        // Thus here we will use the panel 1 colors data to construct legends
+        let panelOneColors = [];
+        if(Array.isArray(dataColorName[0])){
+            panelOneColors = dataColorName[0];
+        }else{
+            panelOneColors.push(dataColorName[0]);
+        }
+        panelOneColors.forEach((e,i) => {
             let legendEl = createLegendEl(i);
             let legendIndex = i;
             // Add hover events
