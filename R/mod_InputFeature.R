@@ -20,7 +20,38 @@ mod_InputFeature_ui <- function(id){
             selectize = TRUE,
             width = NULL
         ),
-        uiOutput(ns("featureInputUI")),
+        textAreaInput(
+            ns("features"),
+            "Input Gene Names",
+            value = NULL,
+            width = NULL,
+            height = "200px",
+            placeholder = paste("MS4A1", "GNLY","CD3E", "CD14",
+                                "FCGR3A", "LYZ", "PPBP", sep="\n")
+        ),
+        div(
+            ## button needs to be wrapped in a div element to make
+            ## the float:right style work
+            actionButton(
+                ns("clearFeature"),
+                "Clear",
+                style = "position:relative; float:right;",
+                class = "border border-1 border-primary shadow mb-2"
+            )
+        ),
+        ##actionButton(
+        ##    ns("checkFeature"),
+        ##    "Check",
+        ##    style = "position:relative; float:right",
+        ##    class = "border border-1 border-primary shadow mb-2"
+        ##),
+        shinyjs::hidden(fileInput(
+            ns("featureList"),
+            "or Upload Gene Set List",
+            multiple = FALSE,
+            width = "100%",
+            accept = c(".xlsx", ".csv", ".tsv", ".txt")
+        )),
         uiOutput(ns("uploadedFeatureSet")),
         span(
             "Calculate Program Expression Score", style = "display: inline-block; margin-bottom: 0.5rem",
@@ -50,52 +81,16 @@ mod_InputFeature_server <- function(id, obj){
   moduleServer( id, function(input, output, session){
       ns <- session$ns
 
-
-      output$featureInputUI <- renderUI({
-
-          if(input$featureInputMode == "Manual Input"){
-              ui <- tagList(
-                  textAreaInput(
-                      ns("features"),
-                      "Input Gene Names",
-                      value = NULL,
-                      width = NULL,
-                      height = "200px",
-                      placeholder = paste("MS4A1", "GNLY","CD3E", "CD14",
-                                          "FCGR3A", "LYZ", "PPBP", sep="\n")
-                  ),
-                  actionButton(
-                      ns("clearFeature"),
-                      "Clear",
-                      style = "position:relative; float:right",
-                      class = "border border-1 border-primary shadow mb-2"
-                  )##,
-                  ##actionButton(
-                  ##    ns("checkFeature"),
-                  ##    "Check",
-                  ##    style = "position:relative; float:right",
-                  ##    class = "border border-1 border-primary shadow mb-2"
-                  ##)
-              )
-          }else{
-              ui <- tagList(
-                  fileInput(
-                      ns("featureList"),
-                      "or Upload Gene Set List",
-                      multiple = FALSE,
-                      width = "100%",
-                      accept = c(".xlsx", ".csv", ".tsv", ".txt")
-                  )
-              )
-          }
-
-          ## Need to invoke bootstrap tooltip again for new constructed tooltips
-          ##session$sendCustomMessage("invokeTooltips", "")
-
-          return(ui)
-      })
-
       observeEvent(input$featureInputMode, {
+          if(input$featureInputMode == "Manual Input"){
+              shinyjs::show("features")
+              shinyjs::show("clearFeature")
+              shinyjs::hide("featureList")
+          }else{
+              shinyjs::hide("features")
+              shinyjs::hide("clearFeature")
+              shinyjs::show("featureList")
+          }
           updateSwitchInput(
               session = session,
               inputId = "moduleScore",
