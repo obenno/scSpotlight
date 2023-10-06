@@ -42,7 +42,9 @@ var labelData = [];
 var panelTitles = [];
 var plotMode = null;
 var dataColorName = null;
-//var dataCategoryName = null;
+var dataCategoryName = null;
+var dataCategoryCellNum = null;
+//var highlightPointsIndex = null;
 // variable to store expression data
 var dataW = null;
 
@@ -331,6 +333,69 @@ const hideNote = (noteId) => {
   //noteEl.style.opacity = 0;
 };
 
+
+const createLegendEl = (legendIndex) => {
+    // dataColorName[0] will always be a color array of the "category" panel
+    // and contains all of the category colors
+    let color = dataColorName[0][legendIndex];
+    let title = dataCategoryName[legendIndex];
+    let number = dataCategoryCellNum[legendIndex];
+    // legend style modified from broad single cell portal viewer
+    const scatterLegend = document.createElement("div");
+    scatterLegend.classList.add("scatter-legend");
+    scatterLegend.id = "legend_" + legendIndex;
+
+    const colorBlock = document.createElement("div");
+    colorBlock.classList.add("scatter-legend-icon");
+    colorBlock.style.backgroundColor = color;
+
+    const labelEl = document.createElement("span");
+    labelEl.classList.add("legend-label");
+    labelEl.title = title;
+    labelEl.innerHTML = title;
+
+    const numberEl = document.createElement("span");
+    numberEl.classList.add("num-points");
+    numberEl.title = number + " points in the group";
+    numberEl.innerHTML = number;
+
+    const entryEl = document.createElement("div");
+    entryEl.classList.add("scatter-legend-entry");
+    entryEl.appendChild(labelEl);
+    entryEl.appendChild(numberEl);
+
+    scatterLegend.appendChild(colorBlock);
+    scatterLegend.appendChild(entryEl);
+
+    return scatterLegend;
+};
+
+const highlight_index = (legendIndex) => {
+    // return a array of highlight points index array
+    let pointsIndex = [];
+    pointsIndex = dataZ.map((e,i) => {
+        let out = [];
+        if(dataZ_type[i] == "category"){
+            e.forEach((el, index) => {
+                if(el == legendIndex){
+                    out.push(index);
+                }
+            });
+        }
+        return out;
+    });
+    // Copy the category index to expr panel
+    // to ensure mode "cluster+expr+noSplit" and "cluster+expr+twoSplit" also
+    // have highlighted points in the expr panel
+    for(let i = 0; i < pointsIndex.length; i++){
+        if(pointsIndex[i].length == 0 && dataZ_type[i] == "expr" && dataZ_type[i-1] == "category"){
+            pointsIndex[i] = pointsIndex[i-1];
+        }
+    }
+    console.log(pointsIndex);
+    return pointsIndex;
+};
+
 //Shiny.addCustomMessageHandler('reglScatter', (msg) => {
 //
 //    //let elID = msg.id;
@@ -420,6 +485,8 @@ Shiny.addCustomMessageHandler('reglScatter_color', (msg) => {
     exprMax = msg.exprMax;
     labelData = msg.labelData;
     dataColorName = msg.colors;
+    dataCategoryName = msg.catNames;
+    dataCategoryCellNum = msg.catCellNums;
     console.log(dataColorName);
     panelTitles = msg.panelTitles;
 
@@ -431,6 +498,50 @@ Shiny.addCustomMessageHandler('reglScatter_color', (msg) => {
     // Populate panel titles
     document.querySelectorAll(".mainClusterPlotTitle")
         .forEach((e,i) => { e.innerHTML = panelTitles[i]; });
+
+    // Add cluster legends, no legend for "cluster+expr+multiSplit" mode
+    if(plotMode != "cluster+expr+multiSplit"){
+        const accordions = document.querySelectorAll(".accordion-item");
+        const category_accordion = [...accordions].filter((e) => {
+            if(e.dataset.value == "analysis_category"){
+                return e;
+            }
+        });
+        const category_accordion_body = category_accordion[0].querySelector(".accordion-body");
+        category_accordion_body.querySelectorAll(".scatter-legend").forEach((e) => e.remove());
+        dataColorName[0].forEach((e,i) => {
+            let legendEl = createLegendEl(i);
+            let legendIndex = i;
+            // Add hover events
+            // note do not use mouseover and mouseout event
+            legendEl.onmouseenter = (event) => {
+                event.target.style.borderColor = "black";
+                event.target.style.borderWidth = "2px";
+                console.log("enter event triggered");
+                let pointsIndex = highlight_index(legendIndex);
+                mainClusterPlot_scatterplots.forEach((sp, index) => {
+                    sp.select(pointsIndex[index]);
+                });
+            };
+            legendEl.onmouseleave = (event) => {
+                event.target.style.borderColor = "#D3D3D3";
+                event.target.style.borderWidth = "1px";
+                console.log("leave event triggered");
+                // deselect all points
+                mainClusterPlot_scatterplots.forEach((sp, index) => {
+                    sp.deselect();
+                });
+            };
+            category_accordion_body.appendChild(legendEl);
+        });
+
+    }else{
+        // remove all legendEls
+        let legendEls = document.querySelectorAll(".scatter-legend");
+        if(legendEls.length > 0){
+            legendEls.forEach((e) => e.remove());
+        }
+    }
 
     // hide spinner
     waiter.hide('parent-wrapper');

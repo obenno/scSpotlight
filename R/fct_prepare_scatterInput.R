@@ -154,6 +154,7 @@ prepare_scatterCatColorInput <- function(obj, col_name,
 
     category <- as.factor(metaData$meta)
     catNames <- levels(category)
+    catCellNums <- countCells(obj, col_name, catNames)
     levels(category) <- c(0:(length(levels(category))-1))
     catColors <- scales::hue_pal()(length(levels(category)))
 
@@ -311,6 +312,8 @@ prepare_scatterCatColorInput <- function(obj, col_name,
         mode = mode,
         zData = zData,
         colors = colors,
+        catNames = catNames,
+        catCellNums = catCellNums,
         zType = zType,
         panelTitles = panelTitles,
         labelData = labelData,
@@ -388,4 +391,17 @@ feature.is.valid <- function(obj, feature){
         return(FALSE)
     }
 
+}
+
+#' countCells
+#'
+#' @import Seurat
+#' @importFrom dplyr pull
+#'
+#' @noRd
+countCells <- function(obj, col_name, catNames){
+    k <- obj[[col_name]] %>%
+        pull() %>%
+        table()
+    k[catNames] %>% as.numeric()
 }

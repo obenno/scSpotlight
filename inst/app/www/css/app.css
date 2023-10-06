@@ -158,3 +158,44 @@ hr.setting {
 .bslib-gap-spacing {
     gap: 0;
 }
+
+
+/* scatter plot legend css */
+/* modified from broad single cell portal */
+.scatter-legend {
+    margin-bottom: 0.2rem;
+    border: 1px solid #DDD;
+    border-radius: 3px;
+    align-items: bottom;
+}
+
+.scatter-legend-icon {
+    width: 30px;
+    height: 30px;
+    margin: 0 10px 0 0px;
+    float: left;
+    border-radius: 2px 0 0 2px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.scatter-legend-entry {
+    position: relative;
+    display: flex;
+    top: 5px;
+    white-space: pre;
+}
+
+.scatter-legend-entry .legend-label {
+    display: inline-block;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    margin-right: 5px;
+}
+
+.scatter-legend-entry .num-points {
+    margin-left: auto;
+    margin-right: 5px;
+}
