@@ -1,14 +1,15 @@
 Package: scSpotlight
-Title: An Amazing Shiny App
+Title: An Single Cell Analysis Shiny App
 Version: 0.0.0.9000
 Authors@R: 
-    person(given = "firstname",
-           family = "lastname",
+    person(given = "Zhixia",
+           family = "Xiao",
            role = c("aut", "cre"),
-           email = "your@email.com")
-Description: What the package does (one paragraph).
+           email = "obennoname@gmail.com")
+Description: A single cell analysis (viewer) app based on Seurat.
 License: What license is it under?
 Imports: 
+    BPCells,
     config (>= 0.3.2),
     dplyr,
     future,
@@ -17,6 +18,7 @@ Imports:
     magrittr,
     promises,
     readr,
+    Seurat,
     shiny (>= 1.7.4),
     shinycssloaders,
     shinyjs,

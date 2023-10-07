@@ -2,6 +2,7 @@
 
 export("%>%")
 export(run_app)
+import(BPCells)
 import(Seurat)
 import(bsicons)
 import(bslib)

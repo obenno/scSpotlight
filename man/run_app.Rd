@@ -9,6 +9,8 @@ run_app(
   options = list(),
   enableBookmarking = NULL,
   uiPattern = "/",
+  dataDir = NULL,
+  runningMode = "viewer",
   ...
 )
 }

@@ -4,12 +4,12 @@
 \name{scSpotlight-package}
 \alias{scSpotlight}
 \alias{scSpotlight-package}
-\title{scSpotlight: An Amazing Shiny App}
+\title{scSpotlight: An Single Cell Analysis Shiny App}
 \description{
-What the package does (one paragraph).
+A single cell analysis (viewer) app based on Seurat.
 }
 \author{
-\strong{Maintainer}: firstname lastname \email{your@email.com}
+\strong{Maintainer}: Zhixia Xiao \email{obennoname@gmail.com}
 
 }
 \keyword{internal}

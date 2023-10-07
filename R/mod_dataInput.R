@@ -52,10 +52,11 @@ mod_dataInput_inputUI <- function(id){
 ##}
 
 #' dataInput Server Functions
+#'
+#' @import Seurat
+#' @import BPCells
+#' @import shiny
 #' @importFrom readr read_tsv
-#' @importFrom scales hue_pal
-#' @importFrom dplyr select
-#' @importFrom shiny req
 #' 
 #' @noRd
 mod_dataInput_server <- function(id,
@@ -77,11 +78,15 @@ mod_dataInput_server <- function(id,
                     session = session
                 )
             }else{
+                ## set working directory to the dataDir
+                ## to ensure BPCells matrix path is correct
+                setwd(dataDir)
                 updateSelectInput(
                     session,
                     inputId = "dataDirFile",
                     choices = list.files(path = dataDir,
-                                         pattern = ".rds"),
+                                         pattern = ".rds",
+                                         recursive = TRUE),
                     selected = ""
                 )
             }

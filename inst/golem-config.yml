@@ -1,5 +1,6 @@
 default:
-  id: 01
+  id: 1
   name: scSpotlight
   description: Perform cell clustering and identify marker genes using Seurat package
-
+dev:
+  golem_wd: /data

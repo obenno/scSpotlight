@@ -21,7 +21,7 @@ set_options <- function(){
     options(shiny.usecairo = TRUE)
 
     options(future.globals.maxSize = 20 * 1000 * 1024^2)
-    ##options(Seurat.object.assay.version = "v5")
+    options(Seurat.object.assay.version = "v5")
     plan("multicore", workers = future::availableCores())
 
     ##RhpcBLASctl::blas_set_num_threads(1) # https://github.com/satijalab/seurat/issues/3991
