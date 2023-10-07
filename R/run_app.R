@@ -12,17 +12,19 @@ run_app <- function(
   options = list(),
   enableBookmarking = NULL,
   uiPattern = "/",
+  dataDir = NULL,
+  runningMode = "viewer", # process mode or viewer mode
   ...
 ) {
   with_golem_options(
     app = shinyApp(
-      ui = app_ui(),
+      ui = app_ui,
       server = app_server,
       onStart = onStart,
       options = options,
       enableBookmarking = enableBookmarking,
       uiPattern = uiPattern
     ),
-    golem_opts = list(...)
+    golem_opts = list(dataDir = dataDir, runningMode = runningMode, ...)
   )
 }
