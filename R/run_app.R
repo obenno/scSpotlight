@@ -13,7 +13,7 @@ run_app <- function(
   enableBookmarking = NULL,
   uiPattern = "/",
   dataDir = NULL,
-  runningMode = "viewer", # process mode or viewer mode
+  runningMode = "viewer", # processing mode or viewer mode
   ...
 ) {
   with_golem_options(

@@ -133,48 +133,63 @@ scaffold_sca_mainUI <- function(){
 #' @importFrom bslib accordion_panel
 #' @noRd
 left_sidebar_ui <- function(){
-    ##combined_settings <- mod_left_sidebar_accordion_ui("left_sidebar_accordion")
-    ## accodion for left side bar
-    combined_settings <- accordion(
-        id = "left_sidebar",
-        accordion_panel(
-            "File Input",
-            icon = bsicons::bs_icon("file-earmark-arrow-up"),
-            mod_dataInput_inputUI("dataInput"),
-            class = "bg-light text-black"
-         ),
-       accordion_panel(
-          "Cell Filtering",
-          icon = bsicons::bs_icon("filter"),
-          list(),
-          class = "bg-light text-black"
-       ),
-       accordion_panel(
-          "Clustering Settings",
-          icon = bsicons::bs_icon("sliders"),
-          list(),
-          class = "bg-light text-black"
-       ),
-       accordion_panel(
-          "Cell Cycling",
-          icon = bsicons::bs_icon("clock-history"),
-          list(),
-          class = "bg-light text-black"
-       ),
-       accordion_panel(
-          "Find Markers",
-          icon = bsicons::bs_icon("bar-chart-steps"),
-          list(),
-          class = "bg-light text-black"
-       ),
-       accordion_panel(
-          "Download Result",
-          icon = bsicons::bs_icon("cloud-download"),
-          output_settings = list(),
-          class = "bg-light text-black"
-       )
-    )
 
+    ## accodion for left side bar
+    runningMode <- golem::get_golem_options("runningMode")
+    if(runningMode == "viewer"){
+        combined_settings <- accordion(
+            id = "left_sidebar",
+            accordion_panel(
+                "File Input",
+                icon = bsicons::bs_icon("file-earmark-arrow-up"),
+                mod_dataInput_inputUI("dataInput"),
+                class = "bg-light text-black"
+            )
+        )
+    }else if(runningMode == "processing"){
+        combined_settings <- accordion(
+            id = "left_sidebar",
+            accordion_panel(
+                "File Input",
+                icon = bsicons::bs_icon("file-earmark-arrow-up"),
+                mod_dataInput_inputUI("dataInput"),
+                class = "bg-light text-black"
+            ),
+            accordion_panel(
+                "Cell Filtering",
+                icon = bsicons::bs_icon("filter"),
+                list(),
+                class = "bg-light text-black"
+            ),
+            accordion_panel(
+                "Clustering Settings",
+                icon = bsicons::bs_icon("sliders"),
+                list(),
+                class = "bg-light text-black"
+            ),
+            accordion_panel(
+                "Cell Cycling",
+                icon = bsicons::bs_icon("clock-history"),
+                list(),
+                class = "bg-light text-black"
+            ),
+            accordion_panel(
+                "Find Markers",
+                icon = bsicons::bs_icon("bar-chart-steps"),
+                list(),
+                class = "bg-light text-black"
+            ),
+            accordion_panel(
+                "Download Result",
+                icon = bsicons::bs_icon("cloud-download"),
+                output_settings = list(),
+                class = "bg-light text-black"
+            )
+        )
+    }else{
+        stop("runningMode not supported")
+    }
+    return(combined_settings)
 }
 
 
@@ -182,43 +197,80 @@ left_sidebar_ui <- function(){
 #'
 #' @noRd
 right_sidebar_ui <- function(){
-    ##right_sidebar <- tagList()
-    right_sidebar <- accordion(
-        id = "right_sidebar",
-        open = c("analysis_reduction", "analysis_category", "analysis_features"),
-        ## Reduction Update
-        accordion_panel(
-            title = "Reduction",
-            value = "analysis_reduction",
-            icon = bsicons::bs_icon("signpost"),
-            mod_UpdateReduction_ui("reductionUpdate"),
-            class = "bg-light text-black"
-        ),
-        ## Category options
-        accordion_panel(
-            title = "Category",
-            value = "analysis_category",
-            icon = bsicons::bs_icon("qr-code"),
-            mod_UpdateCategory_ui("categoryUpdate"),
-            class = "bg-light text-black"
-        ),
-        ## Input FeatureList
-        accordion_panel(
-            title = "Feature Expression",
-            value = "analysis_features",
-            icon = bsicons::bs_icon("bar-chart-line"),
-            mod_InputFeature_ui("inputFeatures"),
-            class = "bg-light text-black"
-        ),
-        accordion_panel(
-            title = "Rename Clusters",
-            value = "rename_options",
-            icon = bsicons::bs_icon("tags"),
-            list(),
-            ##rename_options,
-            class = "bg-light text-black"
+
+    runningMode <- golem::get_golem_options("runningMode")
+
+    if(runningMode == "viewer"){
+        right_sidebar <- accordion(
+            id = "right_sidebar",
+            open = c("analysis_reduction", "analysis_category", "analysis_features"),
+            ## Reduction Update
+            accordion_panel(
+                title = "Reduction",
+                value = "analysis_reduction",
+                icon = bsicons::bs_icon("signpost"),
+                mod_UpdateReduction_ui("reductionUpdate"),
+                class = "bg-light text-black"
+            ),
+            ## Category options
+            accordion_panel(
+                title = "Category",
+                value = "analysis_category",
+                icon = bsicons::bs_icon("qr-code"),
+                mod_UpdateCategory_ui("categoryUpdate"),
+                class = "bg-light text-black"
+            ),
+            ## Input FeatureList
+            accordion_panel(
+                title = "Feature Expression",
+                value = "analysis_features",
+                icon = bsicons::bs_icon("bar-chart-line"),
+                mod_InputFeature_ui("inputFeatures"),
+                class = "bg-light text-black"
+            )
         )
-    )
+    }else if(runningMode == "processing"){
+
+        right_sidebar <- accordion(
+            id = "right_sidebar",
+            open = c("analysis_reduction", "analysis_category", "analysis_features"),
+            ## Reduction Update
+            accordion_panel(
+                title = "Reduction",
+                value = "analysis_reduction",
+                icon = bsicons::bs_icon("signpost"),
+                mod_UpdateReduction_ui("reductionUpdate"),
+                class = "bg-light text-black"
+            ),
+            ## Category options
+            accordion_panel(
+                title = "Category",
+                value = "analysis_category",
+                icon = bsicons::bs_icon("qr-code"),
+                mod_UpdateCategory_ui("categoryUpdate"),
+                class = "bg-light text-black"
+            ),
+            ## Input FeatureList
+            accordion_panel(
+                title = "Feature Expression",
+                value = "analysis_features",
+                icon = bsicons::bs_icon("bar-chart-line"),
+                mod_InputFeature_ui("inputFeatures"),
+                class = "bg-light text-black"
+            ),
+            accordion_panel(
+                title = "Rename Clusters",
+                value = "rename_options",
+                icon = bsicons::bs_icon("tags"),
+                list(),
+                ##rename_options,
+                class = "bg-light text-black"
+            )
+        )
+    }else{
+        stop("runningMode not supported")
+    }
+    return(right_sidebar)
 }
 
 #' function for main scatter plots
@@ -237,63 +289,97 @@ mainPlots_ui <- function(){
 #'
 #' @importFrom shinyWidgets prettySwitch
 infoBox_ui <- function(){
-    bottom_box <- navset_card_pill(
-        id = "bottom_box",
-        full_screen = TRUE,
-        height = "200px",
-        ##title = "",
-        nav_panel(
-            title = "VlnPlot",
-            mod_VlnPlot_ui("vlnPlot")
-        ),
-        ## seurat5 VariableFeaturePlot() has bug on pulling data
-        ##nav_panel(
-        ##    title = "HVGPlot",
-        ##    plotOutput("HVGPlot") %>% withSpinner(fill_container = T)
-        ##),
-        nav_panel(
-            title = "ElbowPlot",
-            tagList(),
-            ##plotOutput("elbowPlot") %>% withSpinner(fill_container = T)
-        ),
-        nav_panel(
-            title = "DotPlot",
-            mod_DotPlot_ui("dotPlot")
-        ),
-        nav_panel(
-            title = "DEG Heatmap",
-            tagList(),
-            ##plotOutut("DEG_heatmap") %>% withSpinner(fill_container = T)
-        ),
-        nav_panel(
-            title = "DEG List",
-            tagList()
-            ##DTOutput("DEG_list", width = "100%", height = "auto", fill = TRUE) %>% withSpinner(fill_container = T)
-        ),
-        nav_spacer(),
-        nav_item(
-            tags$button(
-                id = "infoBox_show",
-                type = "button",
-                class = "border-0",
-                style = "background-color: rgba(255,255,255,0)",
-                `data-bs-toggle` = "collapse",
-                `data-bs-target` = "#infoBox_content",
-                `aria-expanded` = "false",
-                `aria-controls` = "infoBox_content",
-                bsicons::bs_icon("arrows-angle-expand")
-            )
-            ##prettySwitch(
-            ##    inputId = "infoBox_show",
-            ##    label = "",
-            ##    status = "primary",
-            ##    value = FALSE,
-            ##    inline = TRUE,
-            ##    fill = TRUE
-            ##)
-        ),
-        wrapper = function(...) {card_body(..., class = "p-2") }
-    )
+
+    runningMode <- golem::get_golem_options("runningMode")
+
+    if(runningMode == "viewer"){
+        bottom_box <- navset_card_pill(
+            id = "bottom_box",
+            full_screen = TRUE,
+            height = "200px",
+            ##title = "",
+            nav_panel(
+                title = "VlnPlot",
+                mod_VlnPlot_ui("vlnPlot")
+            ),
+            ## seurat5 VariableFeaturePlot() has bug on pulling data
+            ##nav_panel(
+            ##    title = "HVGPlot",
+            ##    plotOutput("HVGPlot") %>% withSpinner(fill_container = T)
+            ##),
+            nav_panel(
+                title = "DotPlot",
+                mod_DotPlot_ui("dotPlot")
+            ),
+            nav_spacer(),
+            nav_item(
+                tags$button(
+                         id = "infoBox_show",
+                         type = "button",
+                         class = "border-0",
+                         style = "background-color: rgba(255,255,255,0)",
+                         `data-bs-toggle` = "collapse",
+                         `data-bs-target` = "#infoBox_content",
+                         `aria-expanded` = "false",
+                         `aria-controls` = "infoBox_content",
+                         bsicons::bs_icon("arrows-angle-expand")
+                     )
+            ),
+            wrapper = function(...) {card_body(..., class = "p-2") }
+        )
+    }else if(runningMode == "processing"){
+        bottom_box <- navset_card_pill(
+            id = "bottom_box",
+            full_screen = TRUE,
+            height = "200px",
+            ##title = "",
+            nav_panel(
+                title = "VlnPlot",
+                mod_VlnPlot_ui("vlnPlot")
+            ),
+            ## seurat5 VariableFeaturePlot() has bug on pulling data
+            ##nav_panel(
+            ##    title = "HVGPlot",
+            ##    plotOutput("HVGPlot") %>% withSpinner(fill_container = T)
+            ##),
+            nav_panel(
+                title = "ElbowPlot",
+                tagList(),
+                ##plotOutput("elbowPlot") %>% withSpinner(fill_container = T)
+                ),
+            nav_panel(
+                title = "DotPlot",
+                mod_DotPlot_ui("dotPlot")
+            ),
+            nav_panel(
+                title = "DEG Heatmap",
+                tagList(),
+                ##plotOutut("DEG_heatmap") %>% withSpinner(fill_container = T)
+                ),
+            nav_panel(
+                title = "DEG List",
+                tagList()
+                ##DTOutput("DEG_list", width = "100%", height = "auto", fill = TRUE) %>% withSpinner(fill_container = T)
+            ),
+            nav_spacer(),
+            nav_item(
+                tags$button(
+                         id = "infoBox_show",
+                         type = "button",
+                         class = "border-0",
+                         style = "background-color: rgba(255,255,255,0)",
+                         `data-bs-toggle` = "collapse",
+                         `data-bs-target` = "#infoBox_content",
+                         `aria-expanded` = "false",
+                         `aria-controls` = "infoBox_content",
+                         bsicons::bs_icon("arrows-angle-expand")
+                     )
+            ),
+            wrapper = function(...) {card_body(..., class = "p-2") }
+        )
+    }else{
+        stop("runningMode is not supported")
+    }
 
     ## Add id to infoBox
     bottom_box <- tagAppendAttributes(bottom_box,
