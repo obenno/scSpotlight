@@ -15,7 +15,10 @@ mod_VlnPlot_ui <- function(id){
   ns <- NS(id)
   tagList(
       plotOutput(ns("vlnPlot")) %>%
-      withWaiter(
+      ##withWaiter()
+      ##withSpinner(fill_container = T)
+      withWaiterOnElement(
+          target_element_ID = ns("vlnPlot"), # defined in infoBox_ui()
           html = waiter::spin_loaders(5, color = "var(--bs-primary)"),
           color = "#ffffff"
       )
@@ -29,7 +32,7 @@ mod_VlnPlot_server <- function(id,
                                obj,
                                group.by,
                                split.by,
-                               selectedFeature){
+                              selectedFeature){
   moduleServer( id, function(input, output, session){
     ns <- session$ns
 

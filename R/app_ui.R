@@ -389,7 +389,8 @@ infoBox_ui <- function(){
     bottom_box <- tagAppendAttributes(bottom_box,
                                       .cssSelector = ".tab-content",
                                       id = "infoBox_content",
-                                      class = "collapse")
+                                      class = "collapse",
+                                      style = "position: relative") # Add relative position to ensure that waiter spinner overlay works properly
 
     bottom_box <- tagAppendAttributes(bottom_box,
                                       class = c("border", "border-2",

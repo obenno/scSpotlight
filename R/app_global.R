@@ -78,7 +78,7 @@ withSpinner <- function(
     id = NULL,
     image = NULL, image.width = NULL, image.height = NULL,
     hide.ui = TRUE,
-    fill_container = FALSE
+    fill_container = TRUE
     ) {
 
     if (!inherits(ui_element, "shiny.tag") && !inherits(ui_element, "shiny.tag.list")) {
@@ -118,7 +118,7 @@ withSpinner <- function(
                 base_css <- glue::glue(base_css, .open = "{{", .close = "}}")
             }
 
-                                        # get default font-size from css, and cut it by 25%, as for outputs we usually need something smaller
+            ## get default font-size from css, and cut it by 25%, as for outputs we usually need something smaller
             size <- round(c(11, 11, 10, 20, 25, 90, 10, 10)[type] * size * 0.75)
             base_css <- paste(base_css, glue::glue("#{id} {{ font-size: {size}px; }}"))
             css_size_color <- add_style(base_css)
@@ -212,3 +212,54 @@ get_proxy_element <- function(ui_element, proxy.height, hide.ui) {
     }
 }
 
+#' withWaiter
+#'
+#' @description A modified version of withWaiter. The spinner will be
+#' shown on the target element (by id) instead of the original element.
+#' Parse target element ID (e.g. body element ID of the navset_card_tab())
+#'
+#' @noRd
+withWaiterOnElement <- function(
+  element,
+  target_element_ID,
+  html = spin_1(),
+  color = "#333e48",
+  image = ""
+){
+  if(missing(element))
+    stop("Missing `element`", call. = FALSE)
+
+  id <- element$attribs$id
+  targetID <- target_element_ID
+  html <- as.character(html)
+  html <- gsub("\n", "", html)
+
+  script <- paste0(
+    "$(document).on('shiny:outputinvalidated', function(event) {
+      if(event.target.id != '", id, "')
+        return;
+
+      scSpotlight.myWaiter.show({
+        id: '", targetID, "',
+        html: '", html, "',
+        color: '", color, "',
+        image: '", image, "'
+      });
+    });
+    
+    $(document).on('shiny:value shiny:error', function(event) {
+      if(event.target.id != '", id, "')
+        return;
+      waiter.hide('", targetID, "');
+    });"
+  )
+
+  tagList(
+    singleton(
+      HTML(
+        paste0("<script>", script, "</script>")
+      )
+    ),
+    element
+  )
+}

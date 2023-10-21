@@ -4,6 +4,9 @@ import { createReglScatterInstance } from './modules/reglScatter.js';
 import createScatterplot, { createRenderer } from 'regl-scatterplot';
 import * as d3 from "d3";
 import { resize_infoBox, update_collapse_icon } from './modules/collapse_infoBox.js';
+import * as myWaiter from './modules/myWaiter.js';
+export * as myWaiter from './modules/myWaiter.js';
+
 
 // In shiny server use:
 // session$sendCustomMessage('show-packer', 'hello packer!')
@@ -121,7 +124,7 @@ document.addEventListener('DOMContentLoaded', function () {
 // R waiter package spinners
 // keep the style exactly the same with R function
 var waiterSpinner = {
-  id: "parent-wrapper",
+  id: "mainClusterPlot-clusterPlot",
   html: '<div class="loaderz-05" style = "color:var(--bs-primary);"></div>',
   color: '#ffffff',
   image: ''
@@ -438,7 +441,7 @@ Shiny.addCustomMessageHandler('reglScatter_reduction', (msg) => {
 
     // Add spinners for the plot
     // waiter is from R waiter package
-    waiter.show(waiterSpinner);
+    myWaiter.show(waiterSpinner);
     // Only process XY data and init canvases in this function
     console.log(msg);
     let nPanels = msg.nPanels;
@@ -486,14 +489,14 @@ Shiny.addCustomMessageHandler('reglScatter_reduction', (msg) => {
     createInfoWidget("parent-wrapper");
 
     // hide spinner
-    waiter.hide('parent-wrapper');
+    waiter.hide('mainClusterPlot-clusterPlot');
 });
 
 Shiny.addCustomMessageHandler('reglScatter_color', (msg) => {
 
     // Add spinners for the plot
     // waiter is from R waiter package
-    waiter.show(waiterSpinner);
+    myWaiter.show(waiterSpinner);
 
     let noteId= null;
 
@@ -577,7 +580,7 @@ Shiny.addCustomMessageHandler('reglScatter_color', (msg) => {
     }
 
     // hide spinner
-    waiter.hide('parent-wrapper');
+    waiter.hide('mainClusterPlot-clusterPlot');
 });
 
 Shiny.addCustomMessageHandler('reglScatter_removeGrid', (msg) => {

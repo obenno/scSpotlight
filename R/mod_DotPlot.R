@@ -13,7 +13,10 @@ mod_DotPlot_ui <- function(id){
   ns <- NS(id)
   tagList(
       plotOutput(ns("dotPlot")) %>%
-      withWaiter(
+      ##withWaiter()
+      ##withSpinner(fill_container = T)
+      withWaiterOnElement(
+          target_element_ID = ns("dotPlot"), # defined in infoBox_ui()
           html = waiter::spin_loaders(5, color = "var(--bs-primary)"),
           color = "#ffffff"
       )
