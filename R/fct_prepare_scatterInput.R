@@ -109,7 +109,6 @@ prepare_scatterReductionInput <- function(obj, reduction,
 #'
 #' @return A list of scatter category data transferred to javascript from shiny
 #'
-#'
 #' @import Seurat
 #' @importFrom scales hue_pal
 #' @importFrom dplyr pull
@@ -118,8 +117,8 @@ prepare_scatterReductionInput <- function(obj, reduction,
 prepare_scatterCatColorInput <- function(obj, col_name,
                                          mode = "clusterOnly",
                                          split.by = NULL,
-                                         feature = NULL){
-
+                                         feature = NULL,
+                                         exprData = NULL){
     ## Tranlate 'split.by = None' to NULL
     if(isTruthy(split.by) && split.by == "None"){
         split.by <- NULL
@@ -188,7 +187,11 @@ prepare_scatterCatColorInput <- function(obj, col_name,
             need(feature.is.valid(obj, feature), "Feature is invalid")
         )
 
-        expr <- FetchData(obj, feature) %>% pull()
+        if(isTruthy(exprData)){
+            expr <- exprData
+        }else{
+            expr <- FetchData(obj, feature) %>% pull()
+        }
         exprMin <- min(expr)
         exprMax <- max(expr)
         exprColors <- grDevices::colorRampPalette(c("lightgrey", "#6450B5"))(100)
@@ -196,9 +199,14 @@ prepare_scatterCatColorInput <- function(obj, col_name,
         zData <- list(category, expr)
         zType <- list("category", "expr")
         colors <- list(catColors, exprColors)
-        panelTitles <- list(col_name, feature)
-        ## expr value + category, as label data
-        labels <- paste0("Cat: ",metaData$meta, " Expr: ", signif(expr, 3))
+        if(isTruthy(exprData)){
+            panelTitles <- list(col_name, "ModuleScore")
+            labels <- paste0("Cat: ",metaData$meta, " ModuleScore: ", signif(expr, 3))
+        }else{
+            panelTitles <- list(col_name, feature)
+            ## expr value + category, as label data
+            labels <- paste0("Cat: ",metaData$meta, " Expr: ", signif(expr, 3))
+        }
         labelData <- list(labels, labels)
         cellData <- list(cells, cells)
     }else if(mode == "cluster+expr+twoSplit"){
@@ -221,7 +229,13 @@ prepare_scatterCatColorInput <- function(obj, col_name,
         metaData_splitList <- split(metaData$meta, split_vector)
         cellData_splitList <- split(cells, split_vector)
 
-        expr <- FetchData(obj, feature) %>% pull()
+        if(isTruthy(exprData)){
+            expr <- exprData
+            panelColNames <- c(col_name, "ModuleScore")
+        }else{
+            expr <- FetchData(obj, feature) %>% pull()
+            panelColNames <- c(col_name, feature)
+        }
         exprMin <- min(expr)
         exprMax <- max(expr)
         expr_splitList <- split(expr, split_vector)
@@ -240,7 +254,7 @@ prepare_scatterCatColorInput <- function(obj, col_name,
         zType <- c("category", "expr", "category", "expr")
         colors <- list(catColors, exprColors, catColors, exprColors)
         panelTitles <- list()
-        panelColNames <- c(col_name, feature)
+        ##panelColNames <- c(col_name, feature)
         panelRowNames <- names(category_splitList)
         for(i in 1:length(panelRowNames)){
             panelTitles <- c(panelTitles,
@@ -281,7 +295,13 @@ prepare_scatterCatColorInput <- function(obj, col_name,
             pull()
         category_splitList <- split(category, split_vector)
 
-        expr <- FetchData(obj, feature) %>% pull()
+        if(isTruthy(exprData)){
+            expr <- exprData
+            panelTitles <- paste(names(category_splitList), "ModuleScore", sep=" : ") %>% as.list()
+        }else{
+            expr <- FetchData(obj, feature) %>% pull()
+            panelTitles <- paste(names(category_splitList), feature, sep=" : ") %>% as.list()
+        }
         exprMin <- min(expr)
         exprMax <- max(expr)
         expr_splitList <- split(expr, split_vector)
@@ -295,10 +315,14 @@ prepare_scatterCatColorInput <- function(obj, col_name,
         for(i in 1:length(zData)){
             colors[[i]] <- exprColors
         }
-        panelTitles <- paste(names(category_splitList), feature, sep=" : ") %>% as.list()
-
-        labelData <- expr_splitList %>%
-            lapply(function(x) paste0("Expr: ", signif(x, 3)))
+        ##panelTitles <- paste(names(category_splitList), feature, sep=" : ") %>% as.list()
+        if(isTruthy(exprData)){
+            labelData <- expr_splitList %>%
+                lapply(function(x) paste0("ModuleScore: ", signif(x, 3)))
+        }else{
+            labelData <- expr_splitList %>%
+                lapply(function(x) paste0("Expr: ", signif(x, 3)))
+        }
         cellData <- split(cells, split_vector)
     }
     ## remove list element names to ensure it will be translated to a list not object
@@ -385,7 +409,8 @@ split.is.valid <- function(obj, split.by){
 feature.is.valid <- function(obj, feature){
 
     if(isTruthy(feature) &&
-       feature %in% rownames(obj)){
+       (feature %in% rownames(obj) ||
+        feature == "Module")){
         return(TRUE)
     }else{
         return(FALSE)

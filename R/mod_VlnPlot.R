@@ -32,7 +32,7 @@ mod_VlnPlot_server <- function(id,
                                obj,
                                group.by,
                                split.by,
-                              selectedFeature){
+                               selectedFeature){
   moduleServer( id, function(input, output, session){
     ns <- session$ns
 

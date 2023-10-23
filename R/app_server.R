@@ -44,7 +44,7 @@ app_server <- function(input, output, session) {
 
     ## Input Features
     ##selectedFeature <- reactiveVal(NULL)
-    filteredInputFeatures <- mod_InputFeature_server("inputFeatures", seuratObj)
+    featureInfo <- mod_InputFeature_server("inputFeatures", seuratObj)
 
     goBackButton <- reactive({
         ## goBack cannot be read directly in module
@@ -62,7 +62,8 @@ app_server <- function(input, output, session) {
                                                   selectedReduction,
                                                   categoryInfo$group.by,
                                                   categoryInfo$split.by,
-                                                  filteredInputFeatures,
+                                                  featureInfo$filteredInputFeatures,
+                                                  featureInfo$moduleScore,
                                                   goBackButton)
 
     ## infoBox needs to be collapsed by default
@@ -89,5 +90,5 @@ app_server <- function(input, output, session) {
                        seuratObj,
                        categoryInfo$group.by,
                        categoryInfo$split.by,
-                       filteredInputFeatures)
+                       featureInfo$filteredInputFeatures)
 }

@@ -42,6 +42,7 @@ mod_mainClusterPlot_server <- function(id,
                                        group.by,
                                        split.by,
                                        filteredInputFeatures,
+                                       moduleScore,
                                        goBack){
   moduleServer( id, function(input, output, session){
       ns <- session$ns
@@ -115,6 +116,10 @@ mod_mainClusterPlot_server <- function(id,
           scatterColorIndicator(scatterColorIndicator()+1)
       }, priority = -10)
 
+      observeEvent(moduleScore(),{
+          message("moduleScore switch changed scatterColorIndicator")
+          scatterColorIndicator(scatterColorIndicator()+1)
+      })
       ## Update scatterReductionInput only when scatterReductionIndicator changes
       observeEvent(scatterReductionIndicator(), {
           req(obj())
@@ -132,7 +137,7 @@ mod_mainClusterPlot_server <- function(id,
           message("Finished Updating scatterReductionInput")
       }, priority = -20)
 
-      ## Update scatterColorInput only when scatterReductionIndicator changes
+      ## Update scatterColorInput only when scatterColorIndicator changes
       observeEvent(scatterColorIndicator(), {
           req(obj())
           validate(
@@ -140,11 +145,18 @@ mod_mainClusterPlot_server <- function(id,
                    paste0(selectedReduction(), " is not in object reductions"))
           )
           message("Updating scatterColorInput")
+          if(isTruthy(filteredInputFeatures()) &&
+             isTruthy(moduleScore())){
+              exprData <- AddModuleScore(obj(), features = filteredInputFeatures()) %>% pull()
+          }else{
+              exprData <- NULL
+          }
           d <- prepare_scatterCatColorInput(obj(),
                                             col_name = group.by(),
                                             mode = plottingMode(),
                                             split.by = split.by(),
-                                            feature = selectedFeature())
+                                            feature = selectedFeature(),
+                                            exprData = exprData)
 
           scatterColorInput(d)
           message("Finished Updating scatterColorInput")
@@ -186,7 +198,8 @@ mod_mainClusterPlot_server <- function(id,
           group.by(),
           split.by(),
           selectedFeature(),
-          filteredInputFeatures()##,
+          filteredInputFeatures(),
+          moduleScore()
           ##goBack()
       ), {
           ## Update plots when group.by and split.by changes

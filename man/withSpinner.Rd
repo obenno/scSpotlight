@@ -17,7 +17,7 @@ withSpinner(
   image.width = NULL,
   image.height = NULL,
   hide.ui = TRUE,
-  fill_container = FALSE
+  fill_container = TRUE
 )
 }
 \description{

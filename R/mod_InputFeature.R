@@ -161,6 +161,11 @@ mod_InputFeature_server <- function(id, obj){
               label = "Input Gene Names",
               value = ""
           )
+          updateSwitchInput(
+              session = session,
+              inputId = "moduleScore",
+              value = FALSE
+          )
 
       }, priority = 10)
 
@@ -207,7 +212,12 @@ mod_InputFeature_server <- function(id, obj){
           return(filteredFeatures)
       })
 
-      return(filteredInputFeatures)
+      moduleScore <- reactive({
+          input$moduleScore
+      })
+
+      return(list(filteredInputFeatures = filteredInputFeatures,
+                  moduleScore = moduleScore))
 
       ## Check if any group of genes not in the dataset
       ##geneSet <- unique(uploadedFeatureList()$geneSet)
