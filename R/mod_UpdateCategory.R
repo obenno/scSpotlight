@@ -63,7 +63,7 @@ mod_UpdateCategory_server <- function(id,
                   inputId = "group.by",
                   label = "Choose group.by",
                   choices = obj_meta(),
-                  selected = NULL
+                  selected = ifelse("seurat_clusters" %in% obj_meta(), "seurat_clusters", NULL)
           )
 
       })
