@@ -83,7 +83,9 @@ app_server <- function(input, output, session) {
                        seuratObj,
                        categoryInfo$group.by,
                        categoryInfo$split.by,
-                       selectedFeature)
+                       selectedFeature,
+                       featureInfo$filteredInputFeatures,
+                       featureInfo$moduleScore)
 
     ## Draw DotPlot
     mod_DotPlot_server("dotPlot",

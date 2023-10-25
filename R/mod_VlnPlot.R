@@ -27,12 +27,15 @@ mod_VlnPlot_ui <- function(id){
 
 #' VlnPlot Server Functions
 #'
-#' @noRd 
+#' @importFrom Seurat AutoPointSize %||% SingleExIPlot
+#' @noRd
 mod_VlnPlot_server <- function(id,
                                obj,
                                group.by,
                                split.by,
-                               selectedFeature){
+                               selectedFeature,
+                               filteredInputFeatures,
+                               moduleScore){
   moduleServer( id, function(input, output, session){
     ns <- session$ns
 
@@ -66,7 +69,7 @@ mod_VlnPlot_server <- function(id,
 
         ## future_promise cannot utilize reactive expressions
         obj <- obj()
-        selectedFeature <- selectedFeature()
+        feature <- selectedFeature()
         ## pt.size has huge impact on plotting time
         ## use different pt.size and alpha when object has different input cells
         cellNum <- Cells(obj()) %>% length()
@@ -78,15 +81,29 @@ mod_VlnPlot_server <- function(id,
                 pt.size <- 1
                 alpha <- 0.4
             }else if(cellNum < 200000){
-                pt.size <- 0.5
-                alpha <- 0.4
+                ## disable jitter when reaching 200000 cells
+                ##pt.size <- 0.5
+                ##alpha <- 0.4
+                pt.size <- 0
             }else{
-                pt.size <- 0.2
-                alpha <- 0.2
+                ##pt.size <- 0.2
+                ##alpha <- 0.2
+                pt.size <- 0
             }
-            if(isTruthy(selectedFeature)){
+            if(moduleScore() && isTruthy(filteredInputFeatures())){
+                scoreValue <- AddModuleScore(obj(), features = filteredInputFeatures()) %>% pull()
+                scoreDf <- FetchData(obj(), group.by)
+                scoreDf$ModuleScore <- scoreValue
+                p <- Seurat::SingleExIPlot(
+                         data <- dplyr::select(scoreDf, 2),
+                         idents = pull(scoreDf, 1),
+                         split = split.by,
+                         pt.size = pt.size,
+                         alpha = alpha
+                     )
+            }else if(isTruthy(feature)){
                 p <- VlnPlot(obj,
-                             features = selectedFeature,
+                             features = feature,
                              stack = FALSE,
                              pt.size = pt.size,
                              ##idents = NULL,
@@ -118,7 +135,8 @@ mod_VlnPlot_server <- function(id,
             obj(),
             split.by(),
             group.by(),
-            selectedFeature()
+            selectedFeature(),
+            moduleScore()
         )
     },
     cache = "session")
