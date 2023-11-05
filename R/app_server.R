@@ -93,4 +93,10 @@ app_server <- function(input, output, session) {
                        categoryInfo$group.by,
                        categoryInfo$split.by,
                        featureInfo$filteredInputFeatures)
+
+    ## Rename Clusters
+    mod_AssignCellCluster_server("renameCluster",
+                                 seuratObj,
+                                 categoryInfo$group.by,
+                                 categoryInfo$split.by)
 }

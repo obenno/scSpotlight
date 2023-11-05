@@ -262,7 +262,7 @@ right_sidebar_ui <- function(){
                 title = "Rename Clusters",
                 value = "rename_options",
                 icon = bsicons::bs_icon("tags"),
-                list(),
+                mod_AssignCellCluster_ui("renameCluster"),
                 ##rename_options,
                 class = "bg-light text-black"
             )
