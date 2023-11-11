@@ -18,7 +18,7 @@ Imports:
     magrittr,
     promises,
     readr,
-    Seurat,
+    Seurat (>= 5.0.0),
     shiny (>= 1.7.4),
     shinycssloaders,
     shinyjs,
