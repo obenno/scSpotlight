@@ -317,6 +317,14 @@ const populate_instance = (scatterplot, data_XY, data_Z, zType, colorName, panel
       });
   }
   scatterplot.subscribe('pointOut', () => { hideNote(mainClusterPlot_noteID); });
+
+  // subscribe select events
+  scatterplot.subscribe('select', ({ points: selectedPoints }) => {
+    Shiny.setInputValue("selectedPoints", selectedPoints);
+  });
+  scatterplot.subscribe('deselect', () => {
+    Shiny.setInputValue("selectedPoints", null);
+  });
   scatterplot.draw(points);
 };
 

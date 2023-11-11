@@ -53,6 +53,7 @@ mod_AssignCellCluster_ui <- function(id){
 #' @noRd 
 mod_AssignCellCluster_server <- function(id,
                                          seuratObj,
+                                         selectedPoints,
                                          group.by,
                                          split.by){
   moduleServer( id, function(input, output, session){
@@ -60,17 +61,16 @@ mod_AssignCellCluster_server <- function(id,
 
 
     output$selectCellUI <- renderUI({
-        ##if(isTruthy(manuallySelectedCells())){
-        ##    tagList(
-        ##        span(
-        ##            textOutput("manuallySelectedCellsText"),
-        ##            class = "badge text-bg-primary mb-2",
-        ##            style = "font-size: 1em;"
-        ##        )
-        ##    )
-        ##    ##verbatimTextOutput("manuallySelectedCellsText")
-        ##}else
-        if(split.by() == "None"){
+        if(isTruthy(manuallySelectedCells())){
+            tagList(
+                span(
+                    textOutput("manuallySelectedCellsText"),
+                    class = "badge text-bg-primary mb-2",
+                    style = "font-size: 1em;"
+                )
+            )
+            ##verbatimTextOutput("manuallySelectedCellsText")
+        }else if(split.by() == "None"){
             if(group.by() == "None"){
                 tagList(
                     p(tags$b("Select Cells from Category")),
@@ -172,7 +172,9 @@ mod_AssignCellCluster_server <- function(id,
         }
     })
 
-    manuallySelectedCells <- reactiveVal(value = NULL)
+    manuallySelectedCells <- reactive({
+        selectedPoints()
+    })
 
     ##observe({
     ##    ##req(event_data("plotly_selected"))
@@ -195,7 +197,7 @@ mod_AssignCellCluster_server <- function(id,
         }else{
             categorySelectedCells()
         }
-        ##categorySelectedCells()
+
     })
 
     ## Always shoot a notification for number of selected cells
@@ -246,11 +248,14 @@ mod_AssignCellCluster_server <- function(id,
         )
     })
 
-    ##output$manuallySelectedCellsText <- renderText({
-    ##    req(manuallySelectedCells())
-    ##    nCells <- length(manuallySelectedCells())
-    ##    paste0(nCells, " Cells Selected")
-    ##})
+    output$manuallySelectedCellsText <- renderText({
+        ##req(manuallySelectedCells())
+        ##nCells <- length(manuallySelectedCells())
+        ##message("nCells: ", nCells)
+        ##paste0(nCells, " Cells Selected")
+        ##"Yes"
+        111
+    })
 
     metaCols <- reactive({
         req(seuratObj())
@@ -271,7 +276,6 @@ mod_AssignCellCluster_server <- function(id,
                 session = session
             )
         }else if((!isTruthy(input$chosenGroup) || input$chosenGroup =="None") && !isTruthy(manuallySelectedCells())){
-          ##}else if((!isTruthy(input$chosenGroup) || input$chosenGroup =="None")){
             showNotification(
                 ui = "Please choose a group before assigning",
                 action = NULL,

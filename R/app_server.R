@@ -95,8 +95,13 @@ app_server <- function(input, output, session) {
                        featureInfo$filteredInputFeatures)
 
     ## Rename Clusters
+    selectedPoints <- reactive({
+        message("Selected Points: ", paste(input$selectedPoints, collapse = " "))
+        input$selectedPoints
+    })
     mod_AssignCellCluster_server("renameCluster",
                                  seuratObj,
+                                 selectedPoints,
                                  categoryInfo$group.by,
                                  categoryInfo$split.by)
 }
