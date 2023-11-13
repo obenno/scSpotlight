@@ -96,8 +96,12 @@ app_server <- function(input, output, session) {
 
     ## Rename Clusters
     selectedPoints <- reactive({
-        message("Selected Points: ", paste(input$selectedPoints, collapse = " "))
-        input$selectedPoints
+        if(isTruthy(goBackButton())){
+            NULL
+        }else{
+            message("Selected Points: ", ifelse(isTruthy(input$selectedPoints), paste(input$selectedPoints, collapse = " "), "None"))
+            input$selectedPoints
+        }
     })
     mod_AssignCellCluster_server("renameCluster",
                                  seuratObj,

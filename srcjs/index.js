@@ -47,9 +47,14 @@ var plotMode = null;
 var dataColorName = null;
 var dataCategoryName = null;
 var dataCategoryCellNum = null;
+var dataCells = null;
 //var highlightPointsIndex = null;
 // variable to store expression data
 var dataW = null;
+
+// legend hover event indicator
+// to distinguish legend hover and manualy selecting events
+var legendHover = 0;
 
 // Create a reusable renderer
 const renderer = createRenderer();
@@ -320,7 +325,11 @@ const populate_instance = (scatterplot, data_XY, data_Z, zType, colorName, panel
 
   // subscribe select events
   scatterplot.subscribe('select', ({ points: selectedPoints }) => {
-    Shiny.setInputValue("selectedPoints", selectedPoints);
+    if(legendHover == 0){
+      let index = mainClusterPlot_scatterplots.indexOf(scatterplot);
+      let selectedCells = selectedPoints.map(i => dataCells[index][i]);
+      Shiny.setInputValue("selectedPoints", selectedCells);
+    }
   });
   scatterplot.subscribe('deselect', () => {
     Shiny.setInputValue("selectedPoints", null);
@@ -514,6 +523,8 @@ Shiny.addCustomMessageHandler('reglScatter_color', (msg) => {
     console.log(dataZ);
     dataZ_type = msg.zType;
     console.log(dataZ_type);
+    dataCells = msg.cellData;
+    console.log(dataCells);
     exprMin = msg.exprMin;
     exprMax = msg.exprMax;
     labelData = msg.labelData;
@@ -524,6 +535,9 @@ Shiny.addCustomMessageHandler('reglScatter_color', (msg) => {
     console.log(dataCategoryName);
     console.log(dataCategoryCellNum);
     panelTitles = msg.panelTitles;
+
+    // reset selectedPoints
+    Shiny.setInputValue("selectedPoints", null);
 
     mainClusterPlot_scatterplots.forEach((sp, i) => {
         console.log(i);
@@ -559,6 +573,7 @@ Shiny.addCustomMessageHandler('reglScatter_color', (msg) => {
             // Add hover events
             // note do not use mouseover and mouseout event
             legendEl.onmouseenter = (event) => {
+                legendHover = 1;
                 event.target.style.borderColor = "black";
                 event.target.style.borderWidth = "2px";
                 console.log("enter event triggered");
@@ -568,6 +583,7 @@ Shiny.addCustomMessageHandler('reglScatter_color', (msg) => {
                 });
             };
             legendEl.onmouseleave = (event) => {
+                legendHover = 0;
                 event.target.style.borderColor = "#D3D3D3";
                 event.target.style.borderWidth = "1px";
                 console.log("leave event triggered");

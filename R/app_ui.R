@@ -342,25 +342,25 @@ infoBox_ui <- function(){
             ##    title = "HVGPlot",
             ##    plotOutput("HVGPlot") %>% withSpinner(fill_container = T)
             ##),
-            nav_panel(
-                title = "ElbowPlot",
-                tagList(),
-                ##plotOutput("elbowPlot") %>% withSpinner(fill_container = T)
-                ),
+            ##nav_panel(
+            ##    title = "ElbowPlot",
+            ##    tagList()
+            ##    ##plotOutput("elbowPlot") %>% withSpinner(fill_container = T)
+            ##),
             nav_panel(
                 title = "DotPlot",
                 mod_DotPlot_ui("dotPlot")
             ),
-            nav_panel(
-                title = "DEG Heatmap",
-                tagList(),
-                ##plotOutut("DEG_heatmap") %>% withSpinner(fill_container = T)
-                ),
-            nav_panel(
-                title = "DEG List",
-                tagList()
-                ##DTOutput("DEG_list", width = "100%", height = "auto", fill = TRUE) %>% withSpinner(fill_container = T)
-            ),
+            ##nav_panel(
+            ##    title = "DEG Heatmap",
+            ##    tagList()
+            ##    ##plotOutut("DEG_heatmap") %>% withSpinner(fill_container = T)
+            ##),
+            ##nav_panel(
+            ##    title = "DEG List",
+            ##    tagList()
+            ##    ##DTOutput("DEG_list", width = "100%", height = "auto", fill = TRUE) %>% withSpinner(fill_container = T)
+            ##),
             nav_spacer(),
             nav_item(
                 tags$button(

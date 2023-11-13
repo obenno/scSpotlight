@@ -64,7 +64,7 @@ mod_AssignCellCluster_server <- function(id,
         if(isTruthy(manuallySelectedCells())){
             tagList(
                 span(
-                    textOutput("manuallySelectedCellsText"),
+                    textOutput(ns("manuallySelectedCellsText")),
                     class = "badge text-bg-primary mb-2",
                     style = "font-size: 1em;"
                 )
@@ -189,13 +189,15 @@ mod_AssignCellCluster_server <- function(id,
     ##})
 
     selectedCells <- reactive({
-        ##req(seuratObj_final())
+        req(seuratObj())
         req(group.by())
         req(split.by())
         if(isTruthy(manuallySelectedCells())){
             manuallySelectedCells()
-        }else{
+        }else if(isTruthy(categorySelectedCells())){
             categorySelectedCells()
+        }else{
+            NULL
         }
 
     })
@@ -249,12 +251,10 @@ mod_AssignCellCluster_server <- function(id,
     })
 
     output$manuallySelectedCellsText <- renderText({
-        ##req(manuallySelectedCells())
-        ##nCells <- length(manuallySelectedCells())
+        req(manuallySelectedCells())
+        nCells <- length(manuallySelectedCells())
         ##message("nCells: ", nCells)
-        ##paste0(nCells, " Cells Selected")
-        ##"Yes"
-        111
+        paste0(nCells, " Cells Selected")
     })
 
     metaCols <- reactive({
@@ -306,11 +306,11 @@ mod_AssignCellCluster_server <- function(id,
             }
 
 
-            message("selected Cells: ", length(selectedCells()))
+            message("selected Cells: ", paste(selectedCells(), collapse = ", "))
             obj[[input$newMeta]][selectedCells(), ] <- input$assignAs
 
             ## Reset manuallySelectedCells
-            manuallySelectedCells(NULL)
+            ##manuallySelectedCells(NULL)
             ## assign seuratObj_final()
             seuratObj(obj)
             ## show finishing notification
