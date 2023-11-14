@@ -55,6 +55,8 @@ mod_ClusterSetting_ui <- function(id){
     
 #' ClusterSetting Server Functions
 #'
+#' @importFrom SeuratObject Graphs
+#'
 #' @noRd 
 mod_ClusterSetting_server <- function(id,
                                       seuratObj){
