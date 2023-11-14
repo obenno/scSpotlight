@@ -48,7 +48,7 @@ mod_AssignCellCluster_ui <- function(id){
 
 #' AssignCellCluster Server Functions
 #'
-#' @importFrom stringr str_sort
+#' @importFrom scales label_comma
 #'
 #' @noRd 
 mod_AssignCellCluster_server <- function(id,
@@ -252,7 +252,8 @@ mod_AssignCellCluster_server <- function(id,
 
     output$manuallySelectedCellsText <- renderText({
         req(manuallySelectedCells())
-        nCells <- length(manuallySelectedCells())
+        nCells <- length(manuallySelectedCells()) %>%
+            label_comma()()
         ##message("nCells: ", nCells)
         paste0(nCells, " Cells Selected")
     })
@@ -306,7 +307,7 @@ mod_AssignCellCluster_server <- function(id,
             }
 
 
-            message("selected Cells: ", paste(selectedCells(), collapse = ", "))
+            ##message("selected Cells: ", paste(selectedCells(), collapse = ", "))
             obj[[input$newMeta]][selectedCells(), ] <- input$assignAs
 
             ## Reset manuallySelectedCells
