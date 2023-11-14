@@ -20,9 +20,16 @@ app_server <- function(input, output, session) {
 
     ## Reads input data and save to a seuratObj
     ##seuratObj <- mod_dataInput_server("dataInput", objIndicator, metaIndicator, scatterReductionIndicator, scatterColorIndicator)
-    mod_dataInput_server("dataInput", seuratObj, objIndicator)
+    mod_dataInput_server("dataInput",
+                         seuratObj,
+                         clusterSettings$hvgSelectMethod,
+                         clusterSettings$clusterDims,
+                         clusterSettings$clusterResolution,
+                         objIndicator)
 
-
+    ## Update Clusters
+    clusterSettings <- mod_ClusterSetting_server("clusterSettings",
+                                                 seuratObj)
     ## Update reductions
     selectedReduction <- mod_UpdateReduction_server("reductionUpdate",
                                                     seuratObj,

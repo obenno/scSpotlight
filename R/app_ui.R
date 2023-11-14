@@ -164,7 +164,7 @@ left_sidebar_ui <- function(){
             accordion_panel(
                 "Clustering Settings",
                 icon = bsicons::bs_icon("sliders"),
-                list(),
+                mod_ClusterSetting_ui("clusterSettings"),
                 class = "bg-light text-black"
             ),
             accordion_panel(
