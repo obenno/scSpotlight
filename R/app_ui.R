@@ -158,7 +158,7 @@ left_sidebar_ui <- function(){
             accordion_panel(
                 "Cell Filtering",
                 icon = bsicons::bs_icon("filter"),
-                list(),
+                mod_FilterCell_ui("filterCells"),
                 class = "bg-light text-black"
             ),
             accordion_panel(

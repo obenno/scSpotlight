@@ -20,6 +20,9 @@ app_server <- function(input, output, session) {
 
     ## Reads input data and save to a seuratObj
     ##seuratObj <- mod_dataInput_server("dataInput", objIndicator, metaIndicator, scatterReductionIndicator, scatterColorIndicator)
+
+    ## seuratObj changes, plottingMode will change, and indicators will increase
+    ## Thus filterCells and ClusterSetting do not need to alter indicators
     mod_dataInput_server("dataInput",
                          seuratObj,
                          clusterSettings$hvgSelectMethod,
@@ -30,6 +33,13 @@ app_server <- function(input, output, session) {
     ## Update Clusters
     clusterSettings <- mod_ClusterSetting_server("clusterSettings",
                                                  seuratObj)
+    ## Filter Clusters
+    mod_FilterCell_server("filterCells",
+                          seuratObj,
+                          clusterSettings$hvgSelectMethod,
+                          clusterSettings$clusterDims,
+                          clusterSettings$clusterResolution)
+
     ## Update reductions
     selectedReduction <- mod_UpdateReduction_server("reductionUpdate",
                                                     seuratObj,
