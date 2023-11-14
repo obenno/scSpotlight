@@ -82,7 +82,10 @@ mod_mainClusterPlot_server <- function(id,
 
       }, priority = 10, ignoreNULL = FALSE) ## ignore shall be adjusted
 
-      plottingMode <- reactive({
+      plottingMode <- eventReactive(list(
+          filteredInputFeatures(),
+          split.by()
+      ), {
           req(obj())
           req(selectedReduction())
           req(split.by())
