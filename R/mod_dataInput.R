@@ -65,6 +65,8 @@ mod_dataInput_server <- function(id,
                                  hvgSelectMethod,
                                  clusterDims,
                                  clusterResolution,
+                                 scatterReductionIndicator,
+                                 scatterColorIndicator,
                                  objIndicator){
     moduleServer( id, function(input, output, session){
         ns <- session$ns
@@ -216,13 +218,11 @@ mod_dataInput_server <- function(id,
               seuratObj <- standard_process_seurat(seuratObj, hvg_method = hvgSelectMethod(), ndims = clusterDims(), res = clusterResolution())
           }
           waiter_hide()
+          message("dataInput module increased scatter indicator")
+          scatterReductionIndicator(scatterReductionIndicator()+1)
+          scatterColorIndicator(scatterColorIndicator()+1)
           obj(seuratObj)
         })
-
-      observeEvent(obj(),{
-          req(obj())
-          objIndicator(objIndicator()+1)
-      })
 
   })
 }

@@ -82,15 +82,17 @@ mod_UpdateCategory_server <- function(id,
       }, priority = 20)
 
       observeEvent(input$group.by, {
-          scatterColorIndicator(scatterColorIndicator()+1)
-          ##scatterColorIndicator(scatterColorIndicator()+1)
-      })
+          if(input$group.by!="None"){
+              message("groupby increased scatterColorIndicator()")
+              scatterColorIndicator(scatterColorIndicator()+1)
+          }
+      }, ignoreInit = TRUE)
 
       observeEvent(input$split.by, {
           req(obj())
           scatterReductionIndicator(scatterReductionIndicator()+1)
           scatterColorIndicator(scatterColorIndicator()+1)
-      })
+      }, ignoreInit = TRUE)
 
       selected_group.by <- reactive({
           input$group.by

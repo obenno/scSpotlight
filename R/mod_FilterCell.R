@@ -65,7 +65,9 @@ mod_FilterCell_server <- function(id,
                                   seuratObj,
                                   hvgSelectMethod,
                                   clusterDims,
-                                  clusterResolution){
+                                  clusterResolution,
+                                  scatterReductionIndicator,
+                                  scatterColorIndicator){
     moduleServer( id, function(input, output, session){
         ns <- session$ns
         observeEvent(input$filter_cell, {
@@ -95,6 +97,9 @@ mod_FilterCell_server <- function(id,
                 session = session
             )
 
+            message("FilterCell module increased scatter indicator")
+            scatterReductionIndicator(scatterReductionIndicator()+1)
+            scatterColorIndicator(scatterColorIndicator()+1)
 
         })
 

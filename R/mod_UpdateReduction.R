@@ -55,6 +55,7 @@ mod_UpdateReduction_server <- function(id,
 
       observeEvent(input$reduction, {
           req(obj())
+          message("UpdateReduction module increased scatter indicator")
           scatterReductionIndicator(scatterReductionIndicator()+1)
           scatterColorIndicator(scatterColorIndicator()+1)
       })

@@ -28,17 +28,23 @@ app_server <- function(input, output, session) {
                          clusterSettings$hvgSelectMethod,
                          clusterSettings$clusterDims,
                          clusterSettings$clusterResolution,
+                         scatterReductionIndicator,
+                         scatterColorIndicator,
                          objIndicator)
 
     ## Update Clusters
     clusterSettings <- mod_ClusterSetting_server("clusterSettings",
-                                                 seuratObj)
+                                                 seuratObj,
+                                                 scatterReductionIndicator,
+                                                 scatterColorIndicator)
     ## Filter Clusters
     mod_FilterCell_server("filterCells",
                           seuratObj,
                           clusterSettings$hvgSelectMethod,
                           clusterSettings$clusterDims,
-                          clusterSettings$clusterResolution)
+                          clusterSettings$clusterResolution,
+                          scatterReductionIndicator,
+                          scatterColorIndicator)
 
     ## Update reductions
     selectedReduction <- mod_UpdateReduction_server("reductionUpdate",
@@ -52,7 +58,12 @@ app_server <- function(input, output, session) {
                                               scatterReductionIndicator,
                                               scatterColorIndicator)
 
-    observeEvent(list(categoryInfo$group.by(), categoryInfo$split.by()), {
+    observeEvent(list(
+        categoryInfo$group.by(),
+        categoryInfo$split.by(),
+        scatterReductionIndicator(),
+        scatterColorIndicator()
+    ), {
         message("Selected group.by is ", categoryInfo$group.by())
         message("Selected split.by is ", categoryInfo$split.by())
         message("scatterReductionIndicator() is ", scatterReductionIndicator())

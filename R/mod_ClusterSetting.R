@@ -59,7 +59,9 @@ mod_ClusterSetting_ui <- function(id){
 #'
 #' @noRd 
 mod_ClusterSetting_server <- function(id,
-                                      seuratObj){
+                                      seuratObj,
+                                      scatterReductionIndicator,
+                                      scatterColorIndicator){
   moduleServer( id, function(input, output, session){
     ns <- session$ns
     ## Update UMAP/TSNE reduction
@@ -87,6 +89,10 @@ mod_ClusterSetting_server <- function(id,
                 obj <- FindNeighbors(obj, dims = 1:input$cluster_dims)
                 obj <- FindClusters(obj, resolution = input$cluster_resolution)
 
+                message("ClusterSetting module increased scatter indicator")
+                scatterReductionIndicator(scatterReductionIndicator()+1)
+                scatterColorIndicator(scatterColorIndicator()+1)
+
             }else if(input$updateClusterOpt == "Update nDim Only"){
                 incProgress(0, message = paste("Updating UMAP...", "0/2"))
                 obj <- RunUMAP(seuratObj(), dims = 1:input$cluster_dims)
@@ -94,6 +100,11 @@ mod_ClusterSetting_server <- function(id,
                 incProgress(1/2, message = paste("Updating Cluster...", "1/2"))
                 obj <- FindNeighbors(obj, dims = 1:input$cluster_dims)
                 obj <- FindClusters(obj, resolution = input$cluster_resolution)
+
+                message("ClusterSetting module increased scatter indicator")
+                scatterReductionIndicator(scatterReductionIndicator()+1)
+                scatterColorIndicator(scatterColorIndicator()+1)
+
             }else{
                 obj <- seuratObj()
                 assayName <- DefaultAssay(obj)
@@ -107,6 +118,9 @@ mod_ClusterSetting_server <- function(id,
                     incProgress(1/2, message = paste("Updating Cluster...", "1/2"))
                     obj <- FindClusters(obj, resolution = input$cluster_resolution)
                 }
+
+                message("ClusterSetting module increased scatterColorIndicator()")
+                scatterColorIndicator(scatterColorIndicator()+1)
             }
             seuratObj(obj)
 

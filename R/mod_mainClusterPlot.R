@@ -86,10 +86,7 @@ mod_mainClusterPlot_server <- function(id,
           filteredInputFeatures(),
           split.by()
       ), {
-          req(obj())
-          req(selectedReduction())
-          req(split.by())
-
+          ##req(obj())
           if(isTruthy(filteredInputFeatures()) && split.by() == "None"){
               mode <- "cluster+expr+noSplit"
           }else if(isTruthy(filteredInputFeatures()) &&
@@ -122,7 +119,7 @@ mod_mainClusterPlot_server <- function(id,
       observeEvent(moduleScore(),{
           message("moduleScore switch changed scatterColorIndicator")
           scatterColorIndicator(scatterColorIndicator()+1)
-      })
+      }, ignoreInit = TRUE)
       ## Update scatterReductionInput only when scatterReductionIndicator changes
       observeEvent(scatterReductionIndicator(), {
           req(obj())
@@ -197,13 +194,15 @@ mod_mainClusterPlot_server <- function(id,
 
       observeEvent(list(
           ## Include trigger events
-          selectedReduction(),
-          group.by(),
-          split.by(),
-          selectedFeature(),
-          filteredInputFeatures(),
-          moduleScore()
+          ##selectedReduction(),
+          ##group.by(),
+          ##split.by(),
+          ##selectedFeature(),
+          ##filteredInputFeatures(),
+          ##moduleScore()
           ##goBack()
+          scatterReductionInput(),
+          scatterColorInput()
       ), {
           ## Update plots when group.by and split.by changes
           req(group.by(), split.by())
