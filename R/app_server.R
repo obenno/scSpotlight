@@ -49,6 +49,10 @@ app_server <- function(input, output, session) {
     mod_CellCycling_server("cellCycling",
                            seuratObj)
 
+    DEG_markers <- mod_FindMarkers_server("findMarkers",
+                                          seuratObj,
+                                          categoryInfo$group.by)
+
     ## Update reductions
     selectedReduction <- mod_UpdateReduction_server("reductionUpdate",
                                                     seuratObj,

@@ -176,7 +176,7 @@ left_sidebar_ui <- function(){
             accordion_panel(
                 "Find Markers",
                 icon = bsicons::bs_icon("bar-chart-steps"),
-                list(),
+                mod_FindMarkers_ui("findMarkers"),
                 class = "bg-light text-black"
             ),
             accordion_panel(
