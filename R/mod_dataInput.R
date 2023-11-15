@@ -110,7 +110,7 @@ mod_dataInput_server <- function(id,
           waiter_show(html = waiting_screen(), color = "var(--bs-primary)")
 
           if(str_detect(inputFile(), "\\.[Rr][Dd][Ss]$")){
-              assay <- DefaultAssay(seuratObj)
+
               seuratObj <- readRDS(inputFile())
               ##DefaultAssay(seuratObj) <- "RNA"
               assay <- DefaultAssay(seuratObj)
@@ -234,7 +234,7 @@ mod_dataInput_server <- function(id,
 #' @noRd
 dataNormalized <- function(seuratObj){
     ##!identical(seuratObj[["RNA"]]$counts, seuratObj[["RNA"]]$data)
-    m <- LayerData(seuratObj, assay = NULL, layer = "data")
+    m <- GetAssayData(seuratObj, assay = NULL, layer = "data")
     any(dim(m) > 0)
 }
 
@@ -253,7 +253,7 @@ HVG_exist <- function(seuratObj){
 #'
 #' @noRd
 dataScaled <- function(seuratObj){
-    m <- LayerData(seuratObj, assay = NULL, layer = "scale.data")
+    m <- GetAssayData(seuratObj, assay = NULL, layer = "scale.data")
     any(dim(m) > 0)
 }
 
