@@ -190,9 +190,9 @@ mod_InputFeature_server <- function(id, obj){
       }) %>% debounce(millis = 1000)
 
       ## Check if featuers exist in the object
-      filteredInputFeatures <- reactive({
-          req(obj())
-          if(isTruthy(userInputFeatures())){
+      filteredInputFeatures <- eventReactive(userInputFeatures(), {
+
+          if(isTruthy(userInputFeatures()) && isTruthy(obj())){
               genes <- rownames(obj())
               featuresNotDetected <- setdiff(userInputFeatures(), genes)
               if(length(featuresNotDetected)>0){
@@ -210,14 +210,18 @@ mod_InputFeature_server <- function(id, obj){
               filteredFeatures <- NULL
           }
           return(filteredFeatures)
-      })
+      }, ignoreNULL = FALSE)
 
       moduleScore <- reactive({
           input$moduleScore
       })
 
-      return(list(filteredInputFeatures = filteredInputFeatures,
-                  moduleScore = moduleScore))
+      return(
+          list(
+              filteredInputFeatures = filteredInputFeatures,
+              moduleScore = moduleScore
+          )
+      )
 
       ## Check if any group of genes not in the dataset
       ##geneSet <- unique(uploadedFeatureList()$geneSet)
