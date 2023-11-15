@@ -170,7 +170,7 @@ left_sidebar_ui <- function(){
             accordion_panel(
                 "Cell Cycling",
                 icon = bsicons::bs_icon("clock-history"),
-                list(),
+                mod_CellCycling_ui("cellCycling"),
                 class = "bg-light text-black"
             ),
             accordion_panel(

@@ -46,6 +46,9 @@ app_server <- function(input, output, session) {
                           scatterReductionIndicator,
                           scatterColorIndicator)
 
+    mod_CellCycling_server("cellCycling",
+                           seuratObj)
+
     ## Update reductions
     selectedReduction <- mod_UpdateReduction_server("reductionUpdate",
                                                     seuratObj,
