@@ -182,7 +182,7 @@ left_sidebar_ui <- function(){
             accordion_panel(
                 "Download Result",
                 icon = bsicons::bs_icon("cloud-download"),
-                output_settings = list(),
+                mod_Download_ui("downloadObj"),
                 class = "bg-light text-black"
             )
         )

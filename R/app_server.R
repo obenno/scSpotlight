@@ -143,4 +143,8 @@ app_server <- function(input, output, session) {
                                  selectedPoints,
                                  categoryInfo$group.by,
                                  categoryInfo$split.by)
+
+    ## Download Object
+    mod_Download_server("downloadObj",
+                        seuratObj)
 }
