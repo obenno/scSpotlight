@@ -22,7 +22,17 @@ mod_dataInput_inputUI <- function(id){
                 selected = NULL,
                 multiple = FALSE,
                 selectize = TRUE
-            )
+            ),
+            selectInput(
+                ns("selectAssay"),
+                "Switch Assays",
+                choices = "",
+                selected = NULL,
+                multiple = FALSE,
+                selectize = TRUE,
+                width = NULL
+            ) %>%
+            tagAppendAttributes(class = c("mb-1"))
         )
     }else{
         tagList(
@@ -38,7 +48,17 @@ mod_dataInput_inputUI <- function(id){
                     "tar.gz", "tgz",
                     "tar.bz2", "tbz2"
                 )
-            )
+            ),
+            selectInput(
+                ns("selectAssay"),
+                "Switch Assays",
+                choices = "",
+                selected = NULL,
+                multiple = FALSE,
+                selectize = TRUE,
+                width = NULL
+            ) %>%
+            tagAppendAttributes(class = c("mb-1"))
         )
     }
 }
@@ -217,12 +237,27 @@ mod_dataInput_server <- function(id,
               })
               seuratObj <- standard_process_seurat(seuratObj, hvg_method = hvgSelectMethod(), ndims = clusterDims(), res = clusterResolution())
           }
+
+          ## update assay list
+          updateSelectInput(
+              session = session,
+              inputId = "selectAssay",
+              choices = Assays(seuratObj),
+              selected = DefaultAssay(seuratObj)
+          )
           waiter_hide()
           message("dataInput module increased scatter indicator")
           scatterReductionIndicator(scatterReductionIndicator()+1)
           scatterColorIndicator(scatterColorIndicator()+1)
           obj(seuratObj)
+
         })
+
+        selectedAssay <- reactive({
+            input$selectAssay
+        })
+
+        return(selectedAssay)
 
   })
 }

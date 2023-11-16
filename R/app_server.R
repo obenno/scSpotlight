@@ -23,14 +23,20 @@ app_server <- function(input, output, session) {
 
     ## seuratObj changes, plottingMode will change, and indicators will increase
     ## Thus filterCells and ClusterSetting do not need to alter indicators
-    mod_dataInput_server("dataInput",
-                         seuratObj,
-                         clusterSettings$hvgSelectMethod,
-                         clusterSettings$clusterDims,
-                         clusterSettings$clusterResolution,
-                         scatterReductionIndicator,
-                         scatterColorIndicator,
-                         objIndicator)
+    selectedAssay <- mod_dataInput_server("dataInput",
+                                          seuratObj,
+                                          clusterSettings$hvgSelectMethod,
+                                          clusterSettings$clusterDims,
+                                          clusterSettings$clusterResolution,
+                                          scatterReductionIndicator,
+                                          scatterColorIndicator,
+                                          objIndicator)
+    observeEvent(selectedAssay(), {
+        req(seuratObj())
+        obj <- seuratObj()
+        DefaultAssay(obj) <- selectedAssay()
+        seuratObj(obj)
+    })
 
     ## Update Clusters
     clusterSettings <- mod_ClusterSetting_server("clusterSettings",
