@@ -38,7 +38,7 @@ mod_Download_server <- function(id,
                 obj <- seuratObj()
                 assay <- DefaultAssay(obj)
                 if(input$savingAssayVersion == "Assay3"){
-                    obj[[assay]] <- as(object = seuratObj[[assay]], Class = "Assay")
+                    obj[[assay]] <- as(object = obj[[assay]], Class = "Assay")
                 }
                 showSpinnerNotification(
                     message = "Saving Object...",
