@@ -60,9 +60,12 @@ mod_mainClusterPlot_server <- function(id,
               ## reset selectedFeature also
               selectedFeature(NULL)
               ##if(isTruthy(goBack())){
+              ##    message("goBack button increased scatter indicator")
               ##    scatterReductionIndicator(scatterReductionIndicator()+1)
               ##    scatterColorIndicator(scatterColorIndicator()+1)
               ##}
+          }else if(length(filteredInputFeatures())>1){
+              selectedFeature(NULL)
           }
           ##if(!isTruthy(filteredInputFeatures())){
           ##    message("filteredInputFeatures() changed to NULL")
@@ -201,15 +204,15 @@ mod_mainClusterPlot_server <- function(id,
           ##filteredInputFeatures(),
           ##moduleScore()
           ##goBack()
-          scatterReductionInput(),
-          scatterColorInput()
+          scatterReductionIndicator(),
+          scatterColorIndicator()
       ), {
           ## Update plots when group.by and split.by changes
           req(group.by(), split.by())
+          message("indicators changed, plotting clusters...")
           ##w$show()
           if(isTruthy(filteredInputFeatures()) && length(filteredInputFeatures())>1){
               if(!is.null(selectedFeature())){
-                  message("Plotting clusters")
                   reglScatter_reduction(scatterReductionInput(), session)
                   reglScatter_color(scatterColorInput(), session)
                   ## Add goBack button and goBack() value
