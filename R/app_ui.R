@@ -342,11 +342,10 @@ infoBox_ui <- function(){
             ##    title = "HVGPlot",
             ##    plotOutput("HVGPlot") %>% withSpinner(fill_container = T)
             ##),
-            ##nav_panel(
-            ##    title = "ElbowPlot",
-            ##    tagList()
-            ##    ##plotOutput("elbowPlot") %>% withSpinner(fill_container = T)
-            ##),
+            nav_panel(
+                title = "ElbowPlot",
+                mod_ElbowPlot_ui("elbowPlot")
+            ),
             nav_panel(
                 title = "DotPlot",
                 mod_DotPlot_ui("dotPlot")

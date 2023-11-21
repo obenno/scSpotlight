@@ -61,6 +61,9 @@ app_server <- function(input, output, session) {
     mod_DEG_Table_server("DEGList",
                          DEG_markers)
 
+    mod_ElbowPlot_server("elbowPlot",
+                         seuratObj)
+
     ## Update reductions
     selectedReduction <- mod_UpdateReduction_server("reductionUpdate",
                                                     seuratObj,
