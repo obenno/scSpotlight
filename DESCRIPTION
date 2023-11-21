@@ -12,6 +12,7 @@ Imports:
     BPCells,
     config (>= 0.3.2),
     dplyr,
+    DT,
     future,
     ggplot2,
     golem (>= 0.4.1),

@@ -3,4 +3,4 @@ default:
   name: scSpotlight
   description: Perform cell clustering and identify marker genes using Seurat package
 dev:
-  golem_wd: /data
+  golem_wd: !expr golem::pkg_path()

@@ -81,11 +81,12 @@ mod_FindMarkers_server <- function(id,
                 )
                 obj <- seuratObj()
                 DEG_method <- input$DEG_method
+                group.by_value <- group.by()
                 future_promise({
                     message("Started FindAllMarkers...")
                     if(group.by() != "None"){
                         ## save original idents
-                        Idents(obj) <- group.by()
+                        Idents(obj) <- group.by_value
                     }
                     markers <- FindAllMarkers(obj,
                                               test.use = DEG_method,
@@ -101,12 +102,14 @@ mod_FindMarkers_server <- function(id,
             }
             return(NULL) ## pretty important, or the future_promise will block the main thread
         })
+        DEG_out <- reactive({
+            DEG_markers()
+        })
+        return(DEG_out)
     })
 
-    DEG_out <- reactive({
-        DEG_markers()
-    })
-    return(DEG_out)
+    
+    
 
 }
     

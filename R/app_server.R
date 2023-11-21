@@ -58,6 +58,8 @@ app_server <- function(input, output, session) {
     DEG_markers <- mod_FindMarkers_server("findMarkers",
                                           seuratObj,
                                           categoryInfo$group.by)
+    mod_DEG_Table_server("DEGList",
+                         DEG_markers)
 
     ## Update reductions
     selectedReduction <- mod_UpdateReduction_server("reductionUpdate",

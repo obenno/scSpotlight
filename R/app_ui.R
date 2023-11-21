@@ -356,11 +356,10 @@ infoBox_ui <- function(){
             ##    tagList()
             ##    ##plotOutut("DEG_heatmap") %>% withSpinner(fill_container = T)
             ##),
-            ##nav_panel(
-            ##    title = "DEG List",
-            ##    tagList()
-            ##    ##DTOutput("DEG_list", width = "100%", height = "auto", fill = TRUE) %>% withSpinner(fill_container = T)
-            ##),
+            nav_panel(
+                title = "DEG List",
+                mod_DEG_Table_ui("DEGList")
+            ),
             nav_spacer(),
             nav_item(
                 tags$button(
