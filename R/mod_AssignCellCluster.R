@@ -323,6 +323,10 @@ mod_AssignCellCluster_server <- function(id,
                 type = "default",
                 session = session
             )
+
+            ## Ask regl-scatter to deselect
+            message("Deselect points...")
+            reglScatter_deselect(session)
         }
 
     })

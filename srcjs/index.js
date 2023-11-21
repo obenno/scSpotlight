@@ -618,3 +618,9 @@ Shiny.addCustomMessageHandler('reglScatter_addGoBack', (msg) => {
     Shiny.setInputValue("goBack", null);
 });
 
+Shiny.addCustomMessageHandler('reglScatter_deselect', (msg) => {
+    console.log("Deselect points...");
+    mainClusterPlot_scatterplots.forEach((sp, i) => {
+        sp.deselect();
+    });
+});

@@ -122,6 +122,9 @@ mod_FeaturePlot_server <- function(id,
                 })
             }else{
                 message("should be no output")
+                ##output$multiFeaturePlot <- renderPlot({
+                ##    ggplot()
+                ##}, width=0, height=0)
                 output$multiFeaturePlot <- NULL
                 shinyjs::hide("multiFeaturePlot")
             }

@@ -60,3 +60,13 @@ reglScatter_removeGrid <- function(session){
 reglScatter_addGoBack <- function(session){
     session$sendCustomMessage(type = "reglScatter_addGoBack", "")
 }
+
+
+#' reglScatter_deselect
+#'
+#' Ask reglScatter to deselect all the points on instances
+#'
+#' @noRd
+reglScatter_deselect <- function(session){
+    session$sendCustomMessage(type = "reglScatter_deselect", "")
+}

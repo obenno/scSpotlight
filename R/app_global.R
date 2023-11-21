@@ -247,7 +247,7 @@ withWaiterOnElement <- function(
       });
     });
     
-    $(document).on('shiny:value shiny:error', function(event) {
+    $(document).on('shiny:value shiny:error shiny:recalculated shiny:visualchange', function(event) {
       if(event.target.id != '", id, "')
         return;
       waiter.hide('", targetID, "');
