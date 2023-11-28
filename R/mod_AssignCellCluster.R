@@ -37,12 +37,7 @@ mod_AssignCellCluster_ui <- function(id){
           "Subset Dataset to Selected Cells", style = "display: inline-block; margin-bottom: 0.5rem",
           infoIcon("Switch on to subset original dataset and only keep the selected cells", "left")
       ),
-      switchInput(
-          inputId = ns("subsetData"),
-          label = NULL,
-          size = "mini",
-          value = FALSE
-      )
+      mod_SubsetCells_ui("subsetCells")
   )
 }
 
@@ -330,6 +325,13 @@ mod_AssignCellCluster_server <- function(id,
         }
 
     })
+
+    subset_obj <- mod_SubsetCells_server("subsetCells")
+
+    observe({
+        
+    })
+
   })
 }
 
