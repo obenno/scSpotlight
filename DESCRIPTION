@@ -9,22 +9,31 @@ Authors@R:
 Description: A single cell analysis (viewer) app based on Seurat.
 License: What license is it under?
 Imports: 
-    BPCells,
+    bsicons,
+    bslib,
     config (>= 0.3.2),
     dplyr,
     DT,
     future,
     ggplot2,
     golem (>= 0.4.1),
+    htmltools,
     magrittr,
+    plotly,
     promises,
     readr,
+    readxl,
+    scales,
     Seurat (>= 5.0.0),
     shiny (>= 1.7.4),
     shinycssloaders,
     shinyjs,
+    shinyWidgets,
+    stringr,
     tibble,
     waiter
+Suggests:
+    BPCells
 Encoding: UTF-8
 LazyData: true
 RoxygenNote: 7.2.3
