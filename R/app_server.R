@@ -153,7 +153,9 @@ app_server <- function(input, output, session) {
                                  seuratObj,
                                  selectedPoints,
                                  categoryInfo$group.by,
-                                 categoryInfo$split.by)
+                                 categoryInfo$split.by,
+                                 scatterReductionIndicator,
+                                 scatterColorIndicator)
 
     ## Download Object
     mod_Download_server("downloadObj",

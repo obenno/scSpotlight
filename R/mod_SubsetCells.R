@@ -25,60 +25,68 @@ mod_SubsetCells_ui <- function(id){
 mod_SubsetCells_server <- function(id,
                                    seuratObj,
                                    seuratObj_orig,
-                                   selectedCells){
+                                   selectedCells,
+                                   scatterReductionIndicator,
+                                   scatterColorIndicator){
   moduleServer( id, function(input, output, session){
     ns <- session$ns
-## Subset dataset code
-observeEvent(input$subsetData, {
-    req(seuratObj())
-    ##req(selectedCells())
+    ## Subset dataset code
+    observeEvent(input$subsetData, {
+        req(seuratObj())
+        ##req(selectedCells())
 
-    if(input$subsetData){
-        if(!isTruthy(selectedCells())){
-            showNotification(
-                ui = "Please select some cells before subsetting...",
-                action = NULL,
-                duration = 3,
-                closeButton = TRUE,
-                type = "default",
-                session = session
-            )
-            ## Reset subset switch
-            updateSwitchInput(
-                session = session,
-                inputId = "subsetData",
-                value = FALSE,
-                label = NULL
-            )
+        if(input$subsetData){
+            if(!isTruthy(selectedCells())){
+                showNotification(
+                    ui = "Please select some cells before subsetting...",
+                    action = NULL,
+                    duration = 3,
+                    closeButton = TRUE,
+                    type = "default",
+                    session = session
+                )
+                ## Reset subset switch
+                updateSwitchInput(
+                    session = session,
+                    inputId = "subsetData",
+                    value = FALSE,
+                    label = NULL
+                )
+            }else{
+                obj <- seuratObj()
+                obj_sub <- subset(obj, cells = selectedCells())
+                ##DefaultAssay(seuratObj) <- "subsetData"
+                showNotification(
+                    ui = "Subsetted Dataset to Only Keep Selected Cells...",
+                    action = NULL,
+                    duration = 3,
+                    closeButton = TRUE,
+                    type = "default",
+                    session = session
+                )
+                seuratObj_orig(obj)
+                seuratObj(obj_sub)
+                ## Reset manuallySelectedCells()
+                ##manuallySelectedCells(NULL)
+                message("Subsetting increased indicators...")
+                scatterReductionIndicator(scatterReductionIndicator()+1)
+                scatterColorIndicator(scatterColorIndicator()+1)
+            }
         }else{
-            obj <- seuratObj()
-            obj_sub <- subset(obj, cells = selectedCells())
-            ##DefaultAssay(seuratObj) <- "subsetData"
-            showNotification(
-                ui = "Subsetted Dataset to Only Keep Selected Cells...",
-                action = NULL,
-                duration = 3,
-                closeButton = TRUE,
-                type = "default",
-                session = session
-            )
-            seuratObj_orig(obj)
-            seuratObj(obj_sub)
-            ## Reset manuallySelectedCells()
-            manuallySelectedCells(NULL)
+            obj <- seuratObj_orig()
+            seuratObj(obj)
+            ## clear seuratObj_orig()
+            seuratObj_orig(NULL)
+            message("Subsetting increased indicators...")
+            scatterReductionIndicator(scatterReductionIndicator()+1)
+            scatterColorIndicator(scatterColorIndicator()+1)
         }
-    }else{
-        obj <- seuratObj_orig()
-        seuratObj(obj)
-        ## clear seuratObj_orig()
-        seuratObj_orig(NULL)
-    }
 
-    list(
-        seuratObj = seuratObj,
-        seuratObj_orig = seuratObj_orig
-    )
-}) 
+        list(
+            seuratObj = seuratObj,
+            seuratObj_orig = seuratObj_orig
+        )
+    })
   })
 }
    

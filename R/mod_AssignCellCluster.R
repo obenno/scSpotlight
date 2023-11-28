@@ -37,7 +37,7 @@ mod_AssignCellCluster_ui <- function(id){
           "Subset Dataset to Selected Cells", style = "display: inline-block; margin-bottom: 0.5rem",
           infoIcon("Switch on to subset original dataset and only keep the selected cells", "left")
       ),
-      mod_SubsetCells_ui("subsetCells")
+      mod_SubsetCells_ui(ns("subsetCells"))
   )
 }
 
@@ -50,7 +50,9 @@ mod_AssignCellCluster_server <- function(id,
                                          seuratObj,
                                          selectedPoints,
                                          group.by,
-                                         split.by){
+                                         split.by,
+                                         scatterReductionIndicator,
+                                         scatterColorIndicator){
   moduleServer( id, function(input, output, session){
     ns <- session$ns
 
@@ -326,12 +328,13 @@ mod_AssignCellCluster_server <- function(id,
 
     })
 
-    subset_obj <- mod_SubsetCells_server("subsetCells")
-
-    observe({
-        
-    })
-
+    seuratObj_orig <- reactiveVal(NULL)
+    subset_obj <- mod_SubsetCells_server("subsetCells",
+                                         seuratObj,
+                                         seuratObj_orig,
+                                         selectedCells,
+                                         scatterReductionIndicator,
+                                         scatterColorIndicator)
   })
 }
 
