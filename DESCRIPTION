@@ -1,5 +1,5 @@
 Package: scSpotlight
-Title: An Single Cell Analysis Shiny App
+Title: A Single Cell Analysis Shiny App
 Version: 0.0.0.9000
 Authors@R: 
     person(given = "Zhixia",
