@@ -10,7 +10,7 @@ Description: A single cell analysis (viewer) app based on Seurat.
 License: What license is it under?
 Imports: 
     bsicons,
-    bslib,
+    bslib (>= 0.5.1),
     config (>= 0.3.2),
     dplyr,
     DT,
