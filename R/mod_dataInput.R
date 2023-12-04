@@ -171,7 +171,7 @@ mod_dataInput_server <- function(id,
                       id = "dataInput_HVGs",
                       session = session
                   )
-                  if(input$hvgSelectMethod == "vst"){
+                  if(hvgSelectMethod() == "vst"){
                       seuratObj <- FindVariableFeatures(seuratObj, selection.method = hvgSelectMethod(), layer = "counts")
                   }else{
                       seuratObj <- FindVariableFeatures(seuratObj, selection.method = hvgSelectMethod(), layer = "data")
