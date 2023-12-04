@@ -12,8 +12,9 @@ mod_dataInput_inputUI <- function(id){
     ns <- NS(id)
 
     dataDir <- golem::get_golem_options("dataDir")
-    runningMode <- golem::get_golem_options("runningMode")
-    if(isTruthy(dataDir) && runningMode == "viewer"){
+    ##runningMode <- golem::get_golem_options("runningMode")
+    ##if(isTruthy(dataDir) && runningMode == "viewer"){
+    if(isTruthy(dataDir)){
         tagList(
             selectInput(
                 ns("dataDirFile"),
