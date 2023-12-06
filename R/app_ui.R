@@ -47,6 +47,10 @@ app_ui <- function(request) {
     ## code above not working, maybe .selectize elements were added by js after generating shiny ui, use css instead
     ui <- tagAppendAttributes(ui, .cssSelector = ".shiny-input-container", class = "mb-2")
 
+    ## remove margin and padding in firefox
+    ui <- tagAppendAttributes(ui, .cssSelector = ".tab-pane", class = "p-0 m-0")
+    ui <- tagAppendAttributes(ui, .cssSelector = ".container-fluid", class = "p-0 m-0")
+
     ## returned taglist by golem
     tagList(
         ## Leave this function for adding external resources

@@ -10,7 +10,7 @@
 global_theme <- function(){
     bs_theme(
         version = "5",
-        bootswatch = "flatly",
+        preset = "flatly",
         ##primary = "#191970",
         base_font = "Fira Sans",
         ##base_font = font_collection(font_google("Fira+Sans", wght = "200..900", local = TRUE), "Roboto", "sans-serif"),
