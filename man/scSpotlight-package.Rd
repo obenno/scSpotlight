@@ -4,7 +4,7 @@
 \name{scSpotlight-package}
 \alias{scSpotlight}
 \alias{scSpotlight-package}
-\title{scSpotlight: An Single Cell Analysis Shiny App}
+\title{scSpotlight: A Single Cell Analysis Shiny App}
 \description{
 A single cell analysis (viewer) app based on Seurat.
 }

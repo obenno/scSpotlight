@@ -398,6 +398,6 @@ infoBox_ui <- function(){
                                       class = c("border", "border-2",
                                                 "border-primary", "shadow"))
     bottom_box <- tagAppendAttributes(bottom_box,
-                                      style = c("resize:both"))
+                                      style = "resize:both; width:100%")
 
 }
