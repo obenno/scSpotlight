@@ -75,7 +75,7 @@ mod_DotPlot_server <- function(id,
                      split.by = split.by,
                      cols = colors)+
             xlab("")+
-            theme(axis.text.x = element_text(angle=45, hjust=1, vjust = 0.5))
+            theme(axis.text.x = element_text(angle=75, hjust=1, vjust =1))
         p
     },
     cacheKeyExpr = {
