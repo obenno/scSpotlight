@@ -14,13 +14,15 @@ run_app <- function(
   uiPattern = "/",
   dataDir = NULL,
   runningMode = "viewer", # processing mode or viewer mode
+  maxSize = 20 * 1000 * 1024^2,
+  nCores = 2,
   ...
 ) {
   with_golem_options(
     app = shinyApp(
       ui = app_ui,
       server = app_server,
-      onStart = onStart,
+      onStart = onStart(nCores = nCores, maxSize = maxSize),
       options = options,
       enableBookmarking = enableBookmarking,
       uiPattern = uiPattern
