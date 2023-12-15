@@ -273,7 +273,7 @@ mod_AssignCellCluster_server <- function(id,
                 type = "default",
                 session = session
             )
-        }else if((!isTruthy(input$chosenGroup) || input$chosenGroup =="None") && !isTruthy(manuallySelectedCells())){
+        }else if(!isTruthy(manuallySelectedCells()) && (!isTruthy(input$chosenGroup) || isTruthy(input$chosenGroup == "None"))){
             showNotification(
                 ui = "Please choose a group before assigning",
                 action = NULL,
@@ -293,7 +293,7 @@ mod_AssignCellCluster_server <- function(id,
             )
         }else{
             req(selectedCells())
-            message("input$chosenGroup is ", input$chosenGroup)
+            message("input$chosenGroup is ", paste(input$chosenGroup, collapse = ","))
             ## check if category name already exists
             message("Initializing new meta column...")
             if(!(input$newMeta %in% metaCols())){
