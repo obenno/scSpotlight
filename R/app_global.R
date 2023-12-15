@@ -39,10 +39,10 @@ infoIcon <- function(info, placement = "auto"){
 #'
 #' @importFrom waiter spin_folding_cube
 #' @noRd
-waiting_screen <- function(){
+waiting_screen <- function(message = "Data Loading..."){
     tagList(
         spin_folding_cube(),
-        h4("Data Loading...")
+        h4(message)
   )
 }
 

@@ -144,98 +144,106 @@ mod_dataInput_server <- function(id,
 
               ## Added rds verify code
               if(!dataNormalized(seuratObj)){
-                  showNotification(
-                      ui = div(div(class = c("spinner-border", "spinner-border-sm", "text-primary"),
-                                   role = "status",
-                                   span(class = "sr-only", "Loading...")),
-                               "Normalizing Data..."),
-                      action = NULL,
-                      duration = NULL,
-                      closeButton = FALSE,
-                      type = "default",
-                      id = "dataInput_normalizeData",
-                      session = session
-                  )
+                  ##showNotification(
+                  ##    ui = div(div(class = c("spinner-border", "spinner-border-sm", "text-primary"),
+                  ##                 role = "status",
+                  ##                 span(class = "sr-only", "Loading...")),
+                  ##             "Normalizing Data..."),
+                  ##    action = NULL,
+                  ##    duration = NULL,
+                  ##    closeButton = FALSE,
+                  ##    type = "default",
+                  ##    id = "dataInput_normalizeData",
+                  ##    session = session
+                  ##)
+                  waiter_update(html = waiting_screen("Normalizing Data..."))
                   seuratObj <- NormalizeData(seuratObj)
-                  removeNotification(id = "dataInput_normalizeData", session = session)
+                  ##removeNotification(id = "dataInput_normalizeData", session = session)
               }
               if(!HVG_exist(seuratObj)){
-                  showNotification(
-                      ui = div(div(class = c("spinner-border", "spinner-border-sm", "text-primary"),
-                                   role = "status",
-                                   span(class = "sr-only", "Loading...")),
-                               "Finding HVGs..."),
-                      action = NULL,
-                      duration = NULL,
-                      closeButton = FALSE,
-                      type = "default",
-                      id = "dataInput_HVGs",
-                      session = session
-                  )
+                  ##showNotification(
+                  ##    ui = div(div(class = c("spinner-border", "spinner-border-sm", "text-primary"),
+                  ##                 role = "status",
+                  ##                 span(class = "sr-only", "Loading...")),
+                  ##             "Finding HVGs..."),
+                  ##    action = NULL,
+                  ##    duration = NULL,
+                  ##    closeButton = FALSE,
+                  ##    type = "default",
+                  ##    id = "dataInput_HVGs",
+                  ##    session = session
+                  ##)
+                  waiter_update(html = waiting_screen("Finding HVGs..."))
                   if(hvgSelectMethod() == "vst"){
                       seuratObj <- FindVariableFeatures(seuratObj, selection.method = hvgSelectMethod(), layer = "counts")
                   }else{
                       seuratObj <- FindVariableFeatures(seuratObj, selection.method = hvgSelectMethod(), layer = "data")
                   }
-                  removeNotification(id = "dataInput_HVGs", session = session)
+                  ##removeNotification(id = "dataInput_HVGs", session = session)
               }
               if(!dataScaled(seuratObj)){
-                  showNotification(
-                      ui = div(div(class = c("spinner-border", "spinner-border-sm", "text-primary"),
-                                   role = "status",
-                                   span(class = "sr-only", "Loading...")),
-                               "Scaling Data..."),
-                      action = NULL,
-                      duration = NULL,
-                      closeButton = FALSE,
-                      type = "default",
-                      id = "dataInput_scaling",
-                      session = session
-                  )
+                  ##showNotification(
+                  ##    ui = div(div(class = c("spinner-border", "spinner-border-sm", "text-primary"),
+                  ##                 role = "status",
+                  ##                 span(class = "sr-only", "Loading...")),
+                  ##             "Scaling Data..."),
+                  ##    action = NULL,
+                  ##    duration = NULL,
+                  ##    closeButton = FALSE,
+                  ##    type = "default",
+                  ##    id = "dataInput_scaling",
+                  ##    session = session
+                  ##)
+                  waiter_update(html = waiting_screen("Scaling Data..."))
                   seuratObj <- ScaleData(seuratObj)
-                  removeNotification(id = "dataInput_scaling", session = session)
+                  ##removeNotification(id = "dataInput_scaling", session = session)
               }
               if(!reduction_exist(seuratObj)){
-                  showNotification(
-                      ui = div(div(class = c("spinner-border", "spinner-border-sm", "text-primary"),
-                                   role = "status",
-                                   span(class = "sr-only", "Loading...")),
-                               "Calculating Reductions..."),
-                      action = NULL,
-                      duration = NULL,
-                      closeButton = FALSE,
-                      type = "default",
-                      id = "dataInput_reduction",
-                      session = session
-                  )
+                  ##showNotification(
+                  ##    ui = div(div(class = c("spinner-border", "spinner-border-sm", "text-primary"),
+                  ##                 role = "status",
+                  ##                 span(class = "sr-only", "Loading...")),
+                  ##             "Calculating Reductions..."),
+                  ##    action = NULL,
+                  ##    duration = NULL,
+                  ##    closeButton = FALSE,
+                  ##    type = "default",
+                  ##    id = "dataInput_reduction",
+                  ##    session = session
+                  ##)
+                  waiter_update(html = waiting_screen("Calculating Reductions..."))
                   seuratObj <- RunPCA(seuratObj)
                   seuratObj <- FindNeighbors(seuratObj, dims = 1:clusterDims())
                   seuratObj <- FindClusters(seuratObj, resolution = clusterResolution())
                   seuratObj <- RunUMAP(seuratObj, dims = 1:clusterDims())
-                  removeNotification(id = "dataInput_reduction", session = session)
+                  ##removeNotification(id = "dataInput_reduction", session = session)
               }
           }else{
-              withProgress({
-                  setProgress(0, message = paste("Decompressing:", "0/4"))
-                  dataDir <- decompress_matrix_input(basename(inputFile()), inputFile())
+              ##withProgress({
+              ##setProgress(0, message = paste("Decompressing:", "0/4"))
+              waiter_update(html = waiting_screen("Decompressing..."))
+              dataDir <- decompress_matrix_input(basename(inputFile()), inputFile())
 
-                  incProgress(1/4, message = paste("Reading Matrix", "1/4"))
-                  counts <- Read10X(dataDir)
-                  ## use sparse matrix in memory for now
-                  ##if(input$BPCells){
-                  ##    counts <- import_matrix_market_10x(dataDir)
-                  ##}else{
-                  ##    counts <- Read10X(dataDir)
-                  ##}
+              ##incProgress(1/4, message = paste("Reading Matrix", "1/4"))
+              waiter_update(html = waiting_screen("Reading Matrix..."))
+              counts <- Read10X(dataDir)
+              ## use sparse matrix in memory for now
+              ##if(input$BPCells){
+              ##    counts <- import_matrix_market_10x(dataDir)
+              ##}else{
+              ##    counts <- Read10X(dataDir)
+              ##}
 
-                  incProgress(1/4, message = paste("Creating seuratObj", "2/4"))
-                  seuratObj <- CreateSeuratObject(counts = counts, min.cells = 1) # remove genes with no expression value
+              ##incProgress(1/4, message = paste("Creating seuratObj", "2/4"))
+              waiter_update(html = waiting_screen("Creating seuratObj..."))
+              seuratObj <- CreateSeuratObject(counts = counts, min.cells = 1) # remove genes with no expression value
 
-                  incProgress(1/4, message = paste("Calculating percent.mt", "3/4"))
-                  ##DefaultAssay(seuratObj) <- "RNA"
-                  seuratObj[["percent.mt"]] <- PercentageFeatureSet(seuratObj, pattern = "^(MT-|mt-)")
-                  seuratObj[["percent.rp"]] <- PercentageFeatureSet(seuratObj, pattern = "^(RPL|RPS|Rpl|Rps)")
-              })
+              ##incProgress(1/4, message = paste("Calculating percent.mt", "3/4"))
+              waiter_update(html = waiting_screen("Calculating percent.mt..."))
+              ##DefaultAssay(seuratObj) <- "RNA"
+              seuratObj[["percent.mt"]] <- PercentageFeatureSet(seuratObj, pattern = "^(MT-|mt-)")
+              seuratObj[["percent.rp"]] <- PercentageFeatureSet(seuratObj, pattern = "^(RPL|RPS|Rpl|Rps)")
+              ##})
               seuratObj <- standard_process_seurat(seuratObj, hvg_method = hvgSelectMethod(), ndims = clusterDims(), res = clusterResolution())
           }
 
@@ -343,34 +351,40 @@ decompress_matrix_input <- function(fileName, filePath){
 #' @noRd
 standard_process_seurat <- function(seuratObj, normalization = TRUE,
                                     hvg_method = "mean.var.plot", ndims = 30, res = 0.5){
-    withProgress({
-        setProgress(0, message = paste("Normalizing Data...", "0/6"))
-        if(normalization){
-            seuratObj <- seuratObj %>%
-                NormalizeData()
-        }
+    ##withProgress({
+    ##setProgress(0, message = paste("Normalizing Data...", "0/6"))
+    waiter_update(html = waiting_screen("Normalizing Data..."))
+    if(normalization){
+        seuratObj <- seuratObj %>%
+            NormalizeData()
+    }
 
-        incProgress(1/6, message = paste("Finding Variable Features...", "1/6"))
-        ## FindVariableFeatures has to define layer parameter to use BPCells
-        if(hvg_method == "vst"){
-            seuratObj <- FindVariableFeatures(seuratObj, selection.method = hvg_method, layer = "counts")
-        }else{
-            seuratObj <- FindVariableFeatures(seuratObj, selection.method = hvg_method, layer = "data")
-        }
+    ##incProgress(1/6, message = paste("Finding Variable Features...", "1/6"))
+    waiter_update(html = waiting_screen("Finding Variable Features..."))
+    ## FindVariableFeatures has to define layer parameter to use BPCells
+    if(hvg_method == "vst"){
+        seuratObj <- FindVariableFeatures(seuratObj, selection.method = hvg_method, layer = "counts")
+    }else{
+        seuratObj <- FindVariableFeatures(seuratObj, selection.method = hvg_method, layer = "data")
+    }
 
-        incProgress(1/6, message = paste("Scaling Data...", "2/6"))
-        seuratObj <- ScaleData(seuratObj)
+    ##incProgress(1/6, message = paste("Scaling Data...", "2/6"))
+    waiter_update(html = waiting_screen("Scaling Data..."))
+    seuratObj <- ScaleData(seuratObj)
 
-        incProgress(1/6, message = paste("Running PCA...", "3/6"))
-        seuratObj <- RunPCA(seuratObj)
+    ##incProgress(1/6, message = paste("Running PCA...", "3/6"))
+    waiter_update(html = waiting_screen("Running PCA..."))
+    seuratObj <- RunPCA(seuratObj)
 
-        incProgress(1/6, message = paste("Finding Neighbours...", "4/6"))
-        seuratObj <- FindNeighbors(seuratObj, dims = 1:ndims)
-        seuratObj <- FindClusters(seuratObj, resolution = res)
+    ##incProgress(1/6, message = paste("Finding Neighbours...", "4/6"))
+    waiter_update(html = waiting_screen("Finding Neighbours..."))
+    seuratObj <- FindNeighbors(seuratObj, dims = 1:ndims)
+    seuratObj <- FindClusters(seuratObj, resolution = res)
 
-        incProgress(1/6, message = paste("Calculating UMAP...", "5/6"))
-        seuratObj <- RunUMAP(seuratObj, dims = 1:ndims)
-    })
+    ##incProgress(1/6, message = paste("Calculating UMAP...", "5/6"))
+    waiter_update(html = waiting_screen("Calculating UMAP..."))
+    seuratObj <- RunUMAP(seuratObj, dims = 1:ndims)
+    ##})
     return(seuratObj)
 }
 
