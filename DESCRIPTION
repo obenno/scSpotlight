@@ -23,6 +23,7 @@ Imports:
     promises,
     readr,
     readxl,
+    rlang,
     scales,
     Seurat (>= 5.0.0),
     shiny (>= 1.7.4),
