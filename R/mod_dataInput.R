@@ -94,6 +94,7 @@ mod_dataInput_server <- function(id,
 
         ## use golem_opts to parse dataDir arguments when invoking run_app()
         dataDir <- golem::get_golem_options("dataDir")
+        runningMode <- golem::get_golem_options("runningMode")
         if(isTruthy(dataDir)){
             if(!file.exists(dataDir)){
                 showNotification(
@@ -108,11 +109,16 @@ mod_dataInput_server <- function(id,
                 ## set working directory to the dataDir
                 ## to ensure BPCells matrix path is correct
                 setwd(dataDir)
+                if(runningMode == "processing"){
+                    supportedFileTypePattern <- "\\.rds$|\\.RDS$|\\.Rds$|\\.zip$|\\.tar.gz$|\\.tgz$|\\.tar\\.bz2$|\\.tbz2"
+                }else{
+                    supportedFileTypePattern <- "\\.rds$|\\.RDS$|\\.Rds$"
+                }
                 updateSelectInput(
                     session,
                     inputId = "dataDirFile",
                     choices = list.files(path = dataDir,
-                                         pattern = "\\.rds$|\\.zip$|\\.tar.gz$|\\.tgz$|\\.tar\\.bz2$|\\.tbz2",
+                                         pattern = supportedFileTypePattern,
                                          recursive = TRUE),
                     selected = ""
                 )
@@ -160,7 +166,7 @@ mod_dataInput_server <- function(id,
                   seuratObj <- NormalizeData(seuratObj)
                   ##removeNotification(id = "dataInput_normalizeData", session = session)
               }
-              if(!HVG_exist(seuratObj)){
+              if(!HVG_exist(seuratObj) && runningMode == "processing"){
                   ##showNotification(
                   ##    ui = div(div(class = c("spinner-border", "spinner-border-sm", "text-primary"),
                   ##                 role = "status",
@@ -174,14 +180,16 @@ mod_dataInput_server <- function(id,
                   ##    session = session
                   ##)
                   waiter_update(html = waiting_screen("Finding HVGs..."))
-                  if(hvgSelectMethod() == "vst"){
+                  if(isTruthy(hvgSelectMethod()) && hvgSelectMethod() == "vst"){
                       seuratObj <- FindVariableFeatures(seuratObj, selection.method = hvgSelectMethod(), layer = "counts")
-                  }else{
+                  }else if(isTruthy(hvgSelectMethod()) && hvgSelectMethod() %in% c("mean.var.plot", "dispersion")){
                       seuratObj <- FindVariableFeatures(seuratObj, selection.method = hvgSelectMethod(), layer = "data")
+                  }else{
+                      seuratObj <- FindVariableFeatures(seuratObj, selection.method = "vst", layer = "counts")
                   }
                   ##removeNotification(id = "dataInput_HVGs", session = session)
               }
-              if(!dataScaled(seuratObj)){
+              if(!dataScaled(seuratObj) && runningMode == "processing"){
                   ##showNotification(
                   ##    ui = div(div(class = c("spinner-border", "spinner-border-sm", "text-primary"),
                   ##                 role = "status",
@@ -199,24 +207,28 @@ mod_dataInput_server <- function(id,
                   ##removeNotification(id = "dataInput_scaling", session = session)
               }
               if(!reduction_exist(seuratObj)){
-                  ##showNotification(
-                  ##    ui = div(div(class = c("spinner-border", "spinner-border-sm", "text-primary"),
-                  ##                 role = "status",
-                  ##                 span(class = "sr-only", "Loading...")),
-                  ##             "Calculating Reductions..."),
-                  ##    action = NULL,
-                  ##    duration = NULL,
-                  ##    closeButton = FALSE,
-                  ##    type = "default",
-                  ##    id = "dataInput_reduction",
-                  ##    session = session
-                  ##)
-                  waiter_update(html = waiting_screen("Calculating Reductions..."))
-                  seuratObj <- RunPCA(seuratObj)
-                  seuratObj <- FindNeighbors(seuratObj, dims = 1:clusterDims())
-                  seuratObj <- FindClusters(seuratObj, resolution = clusterResolution())
-                  seuratObj <- RunUMAP(seuratObj, dims = 1:clusterDims())
-                  ##removeNotification(id = "dataInput_reduction", session = session)
+                  if(runningMode == "viewer"){
+                      waiter_hide()
+                      showNotification(
+                          ui = div(div(class = c("spinner-border", "spinner-border-sm", "text-primary"),
+                                       role = "status",
+                                       span(class = "sr-only", "Loading...")),
+                                   "Reduction Data not Found, please use a proper seuratObj"),
+                          action = NULL,
+                          duration = NULL,
+                          closeButton = FALSE,
+                          type = "default",
+                          id = "dataInput_reduction",
+                          session = session
+                      )
+                  }else{
+                      waiter_update(html = waiting_screen("Calculating Reductions..."))
+                      seuratObj <- RunPCA(seuratObj)
+                      seuratObj <- FindNeighbors(seuratObj, dims = 1:clusterDims())
+                      seuratObj <- FindClusters(seuratObj, resolution = clusterResolution())
+                      seuratObj <- RunUMAP(seuratObj, dims = 1:clusterDims())
+                      ##removeNotification(id = "dataInput_reduction", session = session)
+                  }
               }
           }else{
               ##withProgress({
