@@ -11,6 +11,8 @@ run_app(
   uiPattern = "/",
   dataDir = NULL,
   runningMode = "viewer",
+  maxSize = 20 * 1000 * 1024^2,
+  nCores = 2,
   ...
 )
 }
