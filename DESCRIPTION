@@ -26,6 +26,7 @@ Imports:
     rlang,
     scales,
     Seurat (>= 5.0.0),
+    SeuratObject (>= 5.0.1),
     shiny (>= 1.7.4),
     shinycssloaders,
     shinyjs,
