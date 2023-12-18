@@ -527,6 +527,8 @@ reduction_exist <- function(seuratObj){
 
 #' validate_seuratRDS
 #'
+#' @importFrom SeuratObject Layers
+#' 
 #' @noRd
 validate_seuratRDS <- function(seuratObj,
                                runningMode = runningMode,
