@@ -92,7 +92,8 @@ mod_dataInput_inputUI <- function(id){
 #' @import shiny
 #' @importFrom readr read_tsv
 #' @importFrom shinyWidgets updateSwitchInput
-#' 
+#' @importFrom SeuratObject LoadSeuratRds
+#'
 #' @noRd
 mod_dataInput_server <- function(id,
                                  obj,
@@ -188,42 +189,104 @@ mod_dataInput_server <- function(id,
             seuratObj <- NULL
             if(str_detect(inputFileName(), rdsFormatPattern)){
 
-                if(input$enableBPCells){
-                    seuratObj <- LoadSeuratRds(inputFilePath())
-                }else{
-                    seuratObj <- readRDS(inputFilePath())
-                }
+                seuratObj <- LoadSeuratRds(inputFilePath())
                 assay <- DefaultAssay(seuratObj)
                 ## Convert v3 assay to v5 assay to save memory
-                seuratObj[[assay]] <- as(seuratObj[[assay]], Class = "Assay5")
+                if(class(seuratObj[[assay]]) == "Assay"){
+                    seuratObj[[assay]] <- as(seuratObj[[assay]], Class = "Assay5")
+                }
+                if(input$enableBPCells){
+                    ## converting counts and data layer to BPCells matrix
+                    if(any(dim(seuratObj[[assay]]$counts)>0)){
+                        seuratObj[[assay]]$counts <- write_matrix_dir(
+                            seuratObj[[assay]]$counts,
+                            dir = tempfile(pattern="counts")
+                        )
+                    }
+                    if(any(dim(seuratObj[[assay]]$data)>0)){
+                        seuratObj[[assay]]$data <- write_matrix_dir(
+                            seuratObj[[assay]]$data,
+                            dir = tempfile(pattern="data")
+                        )
+                    }
+                    hvg_method <- "vst"
+                    if(hvgSelectMethod()!="vst"){
+                        showNotification(
+                            ui = HTML("BPCells enabled, enforce to use <b>vst</b> method and <b>counts</b> layer"),
+                            action = NULL,
+                            duration = 5,
+                            closeButton = TRUE,
+                            type = "warning",
+                            session = session
+                        )
+                    }
+                }else{
+                    hvg_method <- hvgSelectMethod()
+                }
 
                 seuratObj <- validate_seuratRDS(seuratObj, runningMode = runningMode,
-                                                hvgSelectMethod = hvgSelectMethod(),
+                                                hvgSelectMethod = hvg_method,
                                                 nDims = clusterDims(),
                                                 resolution = clusterResolution())
 
             }else if(str_detect(inputFileName(), compressionFormatPattern)){
 
                 waiter_update(html = waiting_screen("Decompressing..."))
+
                 dataDir <- decompress_matrix_input(inputFileName(), inputFilePath())
 
                 ## Check the input format, compressed matrix or BPCells Rds taball
-                BPCells_rds <- dir(dataDir, recursive=TRUE, pattern = "*.[Rr][Dd][Ss]$")
+                BPCells_Rds <- dir(dataDir, recursive=TRUE, pattern = "*.[Rr][Dd][Ss]$")
 
-                if(length(BPCells_rds)>0){
-                    setwd(dirname(BPCells_rds))
-                    seuratObj <- LoadSeuratRds(BPCells_rds)
-                    seuratObj <- validate_seuratRDS(seuratObj, runningMode = runningMode,
-                                                hvgSelectMethod = hvgSelectMethod(),
-                                                nDims = clusterDims(),
-                                                resolution = clusterResolution())
+                if(length(BPCells_Rds)>0){
+                    if(rlang::is_installed("BPCells")){
+                        if(!isTruthy(input$enableBPCells)){
+                            updateSwitchInput(
+                                session,
+                                inputId = "enableBPCells",
+                                value = TRUE
+                            )
+                        }
+                        setwd(file.path(dataDir, dirname(BPCells_Rds)))
+                        message("setting working dir to ", dataDir)
+                        seuratObj <- LoadSeuratRds(file.path(dataDir, BPCells_Rds))
+                        if(hvgSelectMethod()!="vst"){
+                            showNotification(
+                                ui = HTML("BPCells enabled, enforce to use <b>vst</b> method and <b>counts</b> layer"),
+                                action = NULL,
+                                duration = 5,
+                                closeButton = TRUE,
+                                type = "warning",
+                                session = session
+                            )
+                        }
+                        seuratObj <- validate_seuratRDS(seuratObj, runningMode = runningMode,
+                                                        hvgSelectMethod = "vst",
+                                                        nDims = clusterDims(),
+                                                        resolution = clusterResolution())
+                    }else{
+                        waiter_update(html = waiting_screen("Rds in tarball deteced, please ensure BPCells is installed"))
+                        stop("BPCells not installed...")
+                    }
                 }else{
                     waiter_update(html = waiting_screen("Reading Matrix..."))
                     ## use sparse matrix in memory for now
                     if(input$enableBPCells){
                         counts <- BPCells_Read10X(dataDir)
+                        hvg_method <- "vst"
+                        if(hvgSelectMethod()!="vst"){
+                            showNotification(
+                                ui = HTML("BPCells enabled, enforce to use <b>vst</b> method and <b>counts</b> layer"),
+                                action = NULL,
+                                duration = 5,
+                                closeButton = TRUE,
+                                type = "warning",
+                                session = session
+                            )
+                        }
                     }else{
                         counts <- Read10X(dataDir)
+                        hvg_method <- hvgSelectMethod()
                     }
 
                     waiter_update(html = waiting_screen("Creating seuratObj..."))
@@ -234,7 +297,7 @@ mod_dataInput_server <- function(id,
                     seuratObj[["percent.mt"]] <- PercentageFeatureSet(seuratObj, pattern = "^(MT-|mt-)")
                     seuratObj[["percent.rp"]] <- PercentageFeatureSet(seuratObj, pattern = "^(RPL|RPS|Rpl|Rps)")
 
-                    seuratObj <- standard_process_seurat(seuratObj, hvg_method = hvgSelectMethod(),
+                    seuratObj <- standard_process_seurat(seuratObj, hvg_method = hvg_method,
                                                          ndims = clusterDims(), res = clusterResolution())
                 }
             }else{
@@ -270,7 +333,7 @@ mod_dataInput_server <- function(id,
 #'
 #' @description A modified version of the Seurat Read10X function using BPCells to read matrix
 #'
-#' @importFrom BPCells import_matrix_market()
+#' @importFrom BPCells import_matrix_market
 #'
 #' @noRd
 #' 
@@ -311,7 +374,7 @@ BPCells_Read10X <- function(
       stop("Expression matrix file missing. Expecting ", basename(path = matrix.loc))
     }
     message("Importing with BPCells...")
-    data <- import_matrix_market(
+    data <- BPCells::import_matrix_market(
         mtx_path = matrix.loc,
         outdir = tempfile("matrix_market"),
         row_names = NULL,
@@ -470,10 +533,12 @@ validate_seuratRDS <- function(seuratObj,
                                hvgSelectMethod = "vst",
                                nDims = 30,
                                resolution = 1){
-    if(!("percent.mt" %in% colnames(seuratObj[[]]))){
+    if("counts" %in% Layers(seuratObj) &&
+       !("percent.mt" %in% colnames(seuratObj[[]]))){
         seuratObj[["percent.mt"]] <- PercentageFeatureSet(seuratObj, pattern = "^(MT-|mt-)")
     }
-    if(!("percent.rp" %in% colnames(seuratObj[[]]))){
+    if("counts" %in% Layers(seuratObj) &&
+       !("percent.rp" %in% colnames(seuratObj[[]]))){
         seuratObj[["percent.rp"]] <- PercentageFeatureSet(seuratObj, pattern = "^(RPL|RPS|Rpl|Rps)")
     }
 
