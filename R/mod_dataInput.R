@@ -7,6 +7,7 @@
 #' @noRd
 #'
 #' @importFrom shiny NS tagList fileInput
+#' @importFrom shinyWidgets prettySwitch
 #'
 mod_dataInput_inputUI <- function(id){
     ns <- NS(id)
@@ -33,7 +34,17 @@ mod_dataInput_inputUI <- function(id){
                 selectize = TRUE,
                 width = NULL
             ) %>%
-            tagAppendAttributes(class = c("mb-1"))
+            tagAppendAttributes(class = c("mb-1")),
+            span(
+                "Enable BPCells", style = "display: inline-block; margin-bottom: 0.5rem",
+                infoIcon("This will use BPCells as the backend to store sparse matrix in seurat object.", "right")
+            ),
+            switchInput(
+                inputId = ns("enableBPCells"),
+                label = NULL,
+                size = "mini",
+                value = FALSE
+            )
         )
     }else{
         tagList(
@@ -59,19 +70,20 @@ mod_dataInput_inputUI <- function(id){
                 selectize = TRUE,
                 width = NULL
             ) %>%
-            tagAppendAttributes(class = c("mb-1"))
+            tagAppendAttributes(class = c("mb-1")),
+            span(
+                "Enable BPCells", style = "display: inline-block; margin-bottom: 0.5rem",
+                infoIcon("This will use BPCells as the backend to store sparse matrix in seurat object.", "right")
+            ),
+            switchInput(
+                inputId = ns("enableBPCells"),
+                label = NULL,
+                size = "mini",
+                value = FALSE
+            )
         )
     }
 }
-
-#' @importFrom DT DTOutput
-#'
-#' @noRd
-##mod_dataInput_outputUI <- function(id){
-##  tagList(
-##      div("out")
-##  )
-##}
 
 #' dataInput Server Functions
 #'
@@ -79,6 +91,7 @@ mod_dataInput_inputUI <- function(id){
 #' @import BPCells
 #' @import shiny
 #' @importFrom readr read_tsv
+#' @importFrom shinyWidgets updateSwitchInput
 #' 
 #' @noRd
 mod_dataInput_server <- function(id,
@@ -95,6 +108,14 @@ mod_dataInput_server <- function(id,
         ## use golem_opts to parse dataDir arguments when invoking run_app()
         dataDir <- golem::get_golem_options("dataDir")
         runningMode <- golem::get_golem_options("runningMode")
+        compressionFormatPattern <- "\\.zip$|\\.tar.gz$|\\.tgz$|\\.tar\\.bz2$|\\.tbz2"
+        rdsFormatPattern <- "\\.rds$|\\.RDS$|\\.Rds$"
+        if(runningMode == "processing"){
+            supportedFileInputPattern <- paste0(rdsFormatPattern, "|", compressionFormatPattern)
+            supportedFileInputPattern <- "\\.rds$|\\.RDS$|\\.Rds$|\\.zip$|\\.tar.gz$|\\.tgz$|\\.tar\\.bz2$|\\.tbz2"
+        }else{
+            supportedFileInputPattern <- rdsFormatPattern
+        }
         if(isTruthy(dataDir)){
             if(!file.exists(dataDir)){
                 showNotification(
@@ -109,23 +130,40 @@ mod_dataInput_server <- function(id,
                 ## set working directory to the dataDir
                 ## to ensure BPCells matrix path is correct
                 setwd(dataDir)
-                if(runningMode == "processing"){
-                    supportedFileTypePattern <- "\\.rds$|\\.RDS$|\\.Rds$|\\.zip$|\\.tar.gz$|\\.tgz$|\\.tar\\.bz2$|\\.tbz2"
-                }else{
-                    supportedFileTypePattern <- "\\.rds$|\\.RDS$|\\.Rds$"
-                }
                 updateSelectInput(
                     session,
                     inputId = "dataDirFile",
                     choices = list.files(path = dataDir,
-                                         pattern = supportedFileTypePattern,
+                                         pattern = supportedFileInputPattern,
                                          recursive = TRUE),
                     selected = ""
                 )
             }
         }
 
-        inputFile <- reactive({
+        ## Check if BPCells was installed
+        observe({
+            if(input$enableBPCells &&
+               !isTruthy(rlang::is_installed("BPCells"))){
+
+                ## update switchInput to false and shoot a notification
+                updateSwitchInput(
+                    session,
+                    inputId = "enableBPCells",
+                    value = FALSE
+                )
+                showNotification(
+                    ui = "Please install BPCells package to enable this function",
+                    action = NULL,
+                    duration = 5,
+                    closeButton = TRUE,
+                    type = "error",
+                    session = session
+                )
+            }
+        }, priority = 200)
+
+        inputFilePath <- reactive({
             req(isTruthy(input$dataInput) || isTruthy(input$dataDirFile))
             if(isTruthy(input$dataDirFile)){
                 file.path(dataDir, input$dataDirFile)
@@ -134,143 +172,88 @@ mod_dataInput_server <- function(id,
             }
         })
 
-        observeEvent(inputFile(), {
-          req(isTruthy(input$dataInput) || isTruthy(input$dataDirFile))
-          waiter_show(html = waiting_screen(), color = "var(--bs-primary)")
+        inputFileName <- reactive({
+            req(isTruthy(input$dataInput) || isTruthy(input$dataDirFile))
+            if(isTruthy(input$dataDirFile)){
+                input$dataDirFile
+            }else{
+                input$dataInput$name
+            }
+        })
 
-          if(str_detect(inputFile(), "\\.[Rr][Dd][Ss]$")){
+        observeEvent(list(inputFilePath(), inputFileName()), {
+            req(isTruthy(input$dataInput) || isTruthy(input$dataDirFile))
+            waiter_show(html = waiting_screen(), color = "var(--bs-primary)")
+            ## Init seuratObj
+            seuratObj <- NULL
+            if(str_detect(inputFileName(), rdsFormatPattern)){
 
-              seuratObj <- readRDS(inputFile())
-              ##DefaultAssay(seuratObj) <- "RNA"
-              assay <- DefaultAssay(seuratObj)
-              ## Convert v3 assay to v5 assay to save memory
-              seuratObj[[assay]] <- as(seuratObj[[assay]], Class = "Assay5")
-              seuratObj[["percent.mt"]] <- PercentageFeatureSet(seuratObj, pattern = "^(MT-|mt-)")
-              seuratObj[["percent.rp"]] <- PercentageFeatureSet(seuratObj, pattern = "^(RPL|RPS|Rpl|Rps)")
+                if(input$enableBPCells){
+                    seuratObj <- LoadSeuratRds(inputFilePath())
+                }else{
+                    seuratObj <- readRDS(inputFilePath())
+                }
+                assay <- DefaultAssay(seuratObj)
+                ## Convert v3 assay to v5 assay to save memory
+                seuratObj[[assay]] <- as(seuratObj[[assay]], Class = "Assay5")
 
-              ## Added rds verify code
-              if(!dataNormalized(seuratObj)){
-                  ##showNotification(
-                  ##    ui = div(div(class = c("spinner-border", "spinner-border-sm", "text-primary"),
-                  ##                 role = "status",
-                  ##                 span(class = "sr-only", "Loading...")),
-                  ##             "Normalizing Data..."),
-                  ##    action = NULL,
-                  ##    duration = NULL,
-                  ##    closeButton = FALSE,
-                  ##    type = "default",
-                  ##    id = "dataInput_normalizeData",
-                  ##    session = session
-                  ##)
-                  waiter_update(html = waiting_screen("Normalizing Data..."))
-                  seuratObj <- NormalizeData(seuratObj)
-                  ##removeNotification(id = "dataInput_normalizeData", session = session)
-              }
-              if(!HVG_exist(seuratObj) && runningMode == "processing"){
-                  ##showNotification(
-                  ##    ui = div(div(class = c("spinner-border", "spinner-border-sm", "text-primary"),
-                  ##                 role = "status",
-                  ##                 span(class = "sr-only", "Loading...")),
-                  ##             "Finding HVGs..."),
-                  ##    action = NULL,
-                  ##    duration = NULL,
-                  ##    closeButton = FALSE,
-                  ##    type = "default",
-                  ##    id = "dataInput_HVGs",
-                  ##    session = session
-                  ##)
-                  waiter_update(html = waiting_screen("Finding HVGs..."))
-                  if(isTruthy(hvgSelectMethod()) && hvgSelectMethod() == "vst"){
-                      seuratObj <- FindVariableFeatures(seuratObj, selection.method = hvgSelectMethod(), layer = "counts")
-                  }else if(isTruthy(hvgSelectMethod()) && hvgSelectMethod() %in% c("mean.var.plot", "dispersion")){
-                      seuratObj <- FindVariableFeatures(seuratObj, selection.method = hvgSelectMethod(), layer = "data")
-                  }else{
-                      seuratObj <- FindVariableFeatures(seuratObj, selection.method = "vst", layer = "counts")
-                  }
-                  ##removeNotification(id = "dataInput_HVGs", session = session)
-              }
-              if(!dataScaled(seuratObj) && runningMode == "processing"){
-                  ##showNotification(
-                  ##    ui = div(div(class = c("spinner-border", "spinner-border-sm", "text-primary"),
-                  ##                 role = "status",
-                  ##                 span(class = "sr-only", "Loading...")),
-                  ##             "Scaling Data..."),
-                  ##    action = NULL,
-                  ##    duration = NULL,
-                  ##    closeButton = FALSE,
-                  ##    type = "default",
-                  ##    id = "dataInput_scaling",
-                  ##    session = session
-                  ##)
-                  waiter_update(html = waiting_screen("Scaling Data..."))
-                  seuratObj <- ScaleData(seuratObj)
-                  ##removeNotification(id = "dataInput_scaling", session = session)
-              }
-              if(!reduction_exist(seuratObj)){
-                  if(runningMode == "viewer"){
-                      waiter_hide()
-                      showNotification(
-                          ui = div(div(class = c("spinner-border", "spinner-border-sm", "text-primary"),
-                                       role = "status",
-                                       span(class = "sr-only", "Loading...")),
-                                   "Reduction Data not Found, please use a proper seuratObj"),
-                          action = NULL,
-                          duration = NULL,
-                          closeButton = FALSE,
-                          type = "default",
-                          id = "dataInput_reduction",
-                          session = session
-                      )
-                  }else{
-                      waiter_update(html = waiting_screen("Calculating Reductions..."))
-                      seuratObj <- RunPCA(seuratObj)
-                      seuratObj <- FindNeighbors(seuratObj, dims = 1:clusterDims())
-                      seuratObj <- FindClusters(seuratObj, resolution = clusterResolution())
-                      seuratObj <- RunUMAP(seuratObj, dims = 1:clusterDims())
-                      ##removeNotification(id = "dataInput_reduction", session = session)
-                  }
-              }
-          }else{
-              ##withProgress({
-              ##setProgress(0, message = paste("Decompressing:", "0/4"))
-              waiter_update(html = waiting_screen("Decompressing..."))
-              dataDir <- decompress_matrix_input(basename(inputFile()), inputFile())
+                seuratObj <- validate_seuratRDS(seuratObj, runningMode = runningMode,
+                                                hvgSelectMethod = hvgSelectMethod(),
+                                                nDims = clusterDims(),
+                                                resolution = clusterResolution())
 
-              ##incProgress(1/4, message = paste("Reading Matrix", "1/4"))
-              waiter_update(html = waiting_screen("Reading Matrix..."))
-              counts <- Read10X(dataDir)
-              ## use sparse matrix in memory for now
-              ##if(input$BPCells){
-              ##    counts <- import_matrix_market_10x(dataDir)
-              ##}else{
-              ##    counts <- Read10X(dataDir)
-              ##}
+            }else if(str_detect(inputFileName(), compressionFormatPattern)){
 
-              ##incProgress(1/4, message = paste("Creating seuratObj", "2/4"))
-              waiter_update(html = waiting_screen("Creating seuratObj..."))
-              seuratObj <- CreateSeuratObject(counts = counts, min.cells = 1) # remove genes with no expression value
+                waiter_update(html = waiting_screen("Decompressing..."))
+                dataDir <- decompress_matrix_input(inputFileName(), inputFilePath())
 
-              ##incProgress(1/4, message = paste("Calculating percent.mt", "3/4"))
-              waiter_update(html = waiting_screen("Calculating percent.mt..."))
-              ##DefaultAssay(seuratObj) <- "RNA"
-              seuratObj[["percent.mt"]] <- PercentageFeatureSet(seuratObj, pattern = "^(MT-|mt-)")
-              seuratObj[["percent.rp"]] <- PercentageFeatureSet(seuratObj, pattern = "^(RPL|RPS|Rpl|Rps)")
-              ##})
-              seuratObj <- standard_process_seurat(seuratObj, hvg_method = hvgSelectMethod(), ndims = clusterDims(), res = clusterResolution())
-          }
+                ## Check the input format, compressed matrix or BPCells Rds taball
+                BPCells_rds <- dir(dataDir, recursive=TRUE, pattern = "*.[Rr][Dd][Ss]$")
 
-          ## update assay list
-          updateSelectInput(
-              session = session,
-              inputId = "selectAssay",
-              choices = Assays(seuratObj),
-              selected = DefaultAssay(seuratObj)
-          )
-          waiter_hide()
-          message("dataInput module increased scatter indicator")
-          scatterReductionIndicator(scatterReductionIndicator()+1)
-          scatterColorIndicator(scatterColorIndicator()+1)
-          obj(seuratObj)
+                if(length(BPCells_rds)>0){
+                    setwd(dirname(BPCells_rds))
+                    seuratObj <- LoadSeuratRds(BPCells_rds)
+                    seuratObj <- validate_seuratRDS(seuratObj, runningMode = runningMode,
+                                                hvgSelectMethod = hvgSelectMethod(),
+                                                nDims = clusterDims(),
+                                                resolution = clusterResolution())
+                }else{
+                    waiter_update(html = waiting_screen("Reading Matrix..."))
+                    ## use sparse matrix in memory for now
+                    if(input$enableBPCells){
+                        counts <- BPCells_Read10X(dataDir)
+                    }else{
+                        counts <- Read10X(dataDir)
+                    }
+
+                    waiter_update(html = waiting_screen("Creating seuratObj..."))
+                    seuratObj <- CreateSeuratObject(counts = counts, min.cells = 1) # remove genes with no expression value
+
+                    waiter_update(html = waiting_screen("Calculating percent.mt..."))
+
+                    seuratObj[["percent.mt"]] <- PercentageFeatureSet(seuratObj, pattern = "^(MT-|mt-)")
+                    seuratObj[["percent.rp"]] <- PercentageFeatureSet(seuratObj, pattern = "^(RPL|RPS|Rpl|Rps)")
+
+                    seuratObj <- standard_process_seurat(seuratObj, hvg_method = hvgSelectMethod(),
+                                                         ndims = clusterDims(), res = clusterResolution())
+                }
+            }else{
+                waiter_update(html = waiting_screen("Input format not supported, please reload the page..."))
+                stop("Input format not supported")
+            }
+
+            ## update assay list
+            updateSelectInput(
+                session = session,
+                inputId = "selectAssay",
+                choices = ifelse(isTruthy(seuratObj), Assays(seuratObj), ""),
+                selected = ifelse(isTruthy(seuratObj), DefaultAssay(seuratObj), NULL)
+            )
+            waiter_hide()
+            message("dataInput module increased scatter indicator")
+            scatterReductionIndicator(scatterReductionIndicator()+1)
+            scatterColorIndicator(scatterColorIndicator()+1)
+            obj(seuratObj)
 
         })
 
@@ -280,7 +263,164 @@ mod_dataInput_server <- function(id,
 
         return(selectedAssay)
 
-  })
+    })
+}
+
+#' BPCells_Read10X
+#'
+#' @description A modified version of the Seurat Read10X function using BPCells to read matrix
+#'
+#' @importFrom BPCells import_matrix_market()
+#'
+#' @noRd
+#' 
+BPCells_Read10X <- function(
+  data.dir,
+  gene.column = 2,
+  cell.column = 1,
+  unique.features = TRUE,
+  strip.suffix = FALSE
+) {
+  full.data <- list()
+  has_dt <- requireNamespace("data.table", quietly = TRUE) && requireNamespace("R.utils", quietly = TRUE)
+  for (i in seq_along(along.with = data.dir)) {
+    run <- data.dir[i]
+    if (!dir.exists(paths = run)) {
+      stop("Directory provided does not exist")
+    }
+    barcode.loc <- file.path(run, 'barcodes.tsv')
+    gene.loc <- file.path(run, 'genes.tsv')
+    features.loc <- file.path(run, 'features.tsv.gz')
+    matrix.loc <- file.path(run, 'matrix.mtx')
+    # Flag to indicate if this data is from CellRanger >= 3.0
+    pre_ver_3 <- file.exists(gene.loc)
+    if (!pre_ver_3) {
+      addgz <- function(s) {
+        return(paste0(s, ".gz"))
+      }
+      barcode.loc <- addgz(s = barcode.loc)
+      matrix.loc <- addgz(s = matrix.loc)
+    }
+    if (!file.exists(barcode.loc)) {
+      stop("Barcode file missing. Expecting ", basename(path = barcode.loc))
+    }
+    if (!pre_ver_3 && !file.exists(features.loc) ) {
+      stop("Gene name or features file missing. Expecting ", basename(path = features.loc))
+    }
+    if (!file.exists(matrix.loc)) {
+      stop("Expression matrix file missing. Expecting ", basename(path = matrix.loc))
+    }
+    message("Importing with BPCells...")
+    data <- import_matrix_market(
+        mtx_path = matrix.loc,
+        outdir = tempfile("matrix_market"),
+        row_names = NULL,
+        col_names = NULL,
+        row_major = FALSE,
+        tmpdir = tempdir(),
+        load_bytes = 4194304L,
+        sort_bytes = 1073741824L
+    )
+    if (has_dt) {
+      cell.barcodes <- as.data.frame(data.table::fread(barcode.loc, header = FALSE))
+    } else {
+      cell.barcodes <- read.table(file = barcode.loc, header = FALSE, sep = '\t', row.names = NULL)
+    }
+
+    if (ncol(x = cell.barcodes) > 1) {
+      cell.names <- cell.barcodes[, cell.column]
+    } else {
+      cell.names <- readLines(con = barcode.loc)
+    }
+    if (all(grepl(pattern = "\\-1$", x = cell.names)) & strip.suffix) {
+      cell.names <- as.vector(x = as.character(x = sapply(
+        X = cell.names,
+        FUN = ExtractField,
+        field = 1,
+        delim = "-"
+      )))
+    }
+    if (is.null(x = names(x = data.dir))) {
+      if (length(x = data.dir) < 2) {
+        colnames(x = data) <- cell.names
+      } else {
+        colnames(x = data) <- paste0(i, "_", cell.names)
+      }
+    } else {
+      colnames(x = data) <- paste0(names(x = data.dir)[i], "_", cell.names)
+    }
+
+    if (has_dt) {
+      feature.names <- as.data.frame(data.table::fread(ifelse(test = pre_ver_3, yes = gene.loc, no = features.loc), header = FALSE))
+    } else {
+      feature.names <- read.delim(
+        file = ifelse(test = pre_ver_3, yes = gene.loc, no = features.loc),
+        header = FALSE,
+        stringsAsFactors = FALSE
+      )
+    }
+
+    if (any(is.na(x = feature.names[, gene.column]))) {
+      warning(
+        'Some features names are NA. Replacing NA names with ID from the opposite column requested',
+        call. = FALSE,
+        immediate. = TRUE
+      )
+      na.features <- which(x = is.na(x = feature.names[, gene.column]))
+      replacement.column <- ifelse(test = gene.column == 2, yes = 1, no = 2)
+      feature.names[na.features, gene.column] <- feature.names[na.features, replacement.column]
+    }
+    if (unique.features) {
+      fcols = ncol(x = feature.names)
+      if (fcols < gene.column) {
+        stop(paste0("gene.column was set to ", gene.column,
+                    " but feature.tsv.gz (or genes.tsv) only has ", fcols, " columns.",
+                    " Try setting the gene.column argument to a value <= to ", fcols, "."))
+      }
+      rownames(x = data) <- make.unique(names = feature.names[, gene.column])
+    }
+    message("Finished generating matrix")
+    # In cell ranger 3.0, a third column specifying the type of data was added
+    # and we will return each type of data as a separate matrix
+    ##if (ncol(x = feature.names) > 2) {
+    ##  data_types <- factor(x = feature.names$V3)
+    ##  lvls <- levels(x = data_types)
+    ##  if (length(x = lvls) > 1 && length(x = full.data) == 0) {
+    ##    message("10X data contains more than one type and is being returned as a list containing matrices of each type.")
+    ##  }
+    ##  expr_name <- "Gene Expression"
+    ##  if (expr_name %in% lvls) { # Return Gene Expression first
+    ##    lvls <- c(expr_name, lvls[-which(x = lvls == expr_name)])
+    ##  }
+    ##  data <- lapply(
+    ##    X = lvls,
+    ##    FUN = function(l) {
+    ##      return(data[data_types == l, , drop = FALSE])
+    ##    }
+    ##  )
+    ##  names(x = data) <- lvls
+    ##} else{
+    ##  data <- list(data)
+    ##}
+    full.data[[length(x = full.data) + 1]] <- data
+  }
+  return(full.data)
+  # Combine all the data from different directories into one big matrix, note this
+  # assumes that all data directories essentially have the same features files
+  ##list_of_data <- list()
+  ##for (j in 1:length(x = full.data[[1]])) {
+  ##  list_of_data[[j]] <- do.call(cbind, lapply(X = full.data, FUN = `[[`, j))
+  ##  # Fix for Issue #913
+  ##  list_of_data[[j]] <- as.sparse(x = list_of_data[[j]])
+  ##}
+  ##names(x = list_of_data) <- names(x = full.data[[1]])
+  ### If multiple features, will return a list, otherwise
+  ### a matrix.
+  ##if (length(x = list_of_data) == 1) {
+  ##  return(list_of_data[[1]])
+  ##} else {
+  ##  return(list_of_data)
+  ##}
 }
 
 #' dataNormalized
@@ -322,6 +462,49 @@ reduction_exist <- function(seuratObj){
     length(Reductions(seuratObj)) > 0
 }
 
+#' validate_seuratRDS
+#'
+#' @noRd
+validate_seuratRDS <- function(seuratObj,
+                               runningMode = runningMode,
+                               hvgSelectMethod = "vst",
+                               nDims = 30,
+                               resolution = 1){
+    if(!("percent.mt" %in% colnames(seuratObj[[]]))){
+        seuratObj[["percent.mt"]] <- PercentageFeatureSet(seuratObj, pattern = "^(MT-|mt-)")
+    }
+    if(!("percent.rp" %in% colnames(seuratObj[[]]))){
+        seuratObj[["percent.rp"]] <- PercentageFeatureSet(seuratObj, pattern = "^(RPL|RPS|Rpl|Rps)")
+    }
+
+    ## Added rds verify code
+    if(!dataNormalized(seuratObj)){
+        waiter_update(html = waiting_screen("Normalizing Data..."))
+        seuratObj <- NormalizeData(seuratObj)
+    }
+    if(!HVG_exist(seuratObj) && runningMode == "processing"){
+        waiter_update(html = waiting_screen("Finding HVGs..."))
+        if(hvgSelectMethod == "vst"){
+            layer <- "counts"
+        }else{
+            layer <- "data"
+        }
+        seuratObj <- FindVariableFeatures(seuratObj, selection.method = hvgSelectMethod, layer = layer)
+    }
+    if(!dataScaled(seuratObj) && runningMode == "processing"){
+        waiter_update(html = waiting_screen("Scaling Data..."))
+        seuratObj <- ScaleData(seuratObj)
+    }
+    if(!reduction_exist(seuratObj)){
+        waiter_update(html = waiting_screen("Calculating Reductions..."))
+        seuratObj <- RunPCA(seuratObj)
+        seuratObj <- FindNeighbors(seuratObj, dims = 1:nDims)
+        seuratObj <- FindClusters(seuratObj, resolution = resolution)
+        seuratObj <- RunUMAP(seuratObj, dims = 1:nDims)
+    }
+    return(seuratObj)
+}
+
 
 #' decompress_matrix_input
 #'
@@ -333,26 +516,28 @@ decompress_matrix_input <- function(fileName, filePath){
         tmpMatrixDir <- tempfile(pattern = "matrixDir")
         system2("mkdir", c("-p", tmpMatrixDir))
         system2("tar", c("xvzf", filePath, "-C", tmpMatrixDir))
-        subpath <- dir(tmpMatrixDir, recursive=TRUE, pattern = "*.mtx*") %>%
-            dirname()
-        dataDir <- file.path(tmpMatrixDir, subpath)
     }else if(str_detect(fileName, "\\.tar.bz2$") | str_detect(fileName, "\\.tbz2$")){
         tmpMatrixDir <- tempfile(pattern = "matrixDir")
         system2("mkdir", c("-p", tmpMatrixDir))
         system2("tar", c("xvjf", filePath, "-C", tmpMatrixDir))
-        subpath <- dir(tmpMatrixDir, recursive=TRUE, pattern = "*.mtx*") %>%
-            dirname()
-        dataDir <- file.path(tmpMatrixDir, subpath)
     }else if(str_detect(fileName, "\\.zip$")){
         tmpMatrixDir <- tempfile(pattern = "matrixDir")
         system2("mkdir", c("-p", tmpMatrixDir))
         system2("unzip", c("-d", tmpMatrixDir, filePath))
-        subpath <- dir(tmpMatrixDir, recursive=TRUE, pattern = "*.mtx*") %>%
-            dirname()
-        dataDir <- file.path(tmpMatrixDir, subpath)
     }else{
         stop("Compression format is not supported.")
     }
+    subpath <- dir(tmpMatrixDir, recursive=TRUE, pattern = "*.mtx*") %>%
+        dirname()
+    if(length(subpath)>0){
+        dataDir <- file.path(tmpMatrixDir, subpath)
+    }else{
+        ## BPCells Rds compressed tarball
+        subpath <- dir(tmpMatrixDir, recursive=TRUE, pattern = "*.[Rr][Dd][Ss]$") %>%
+            dirname()
+        dataDir <- file.path(tmpMatrixDir, subpath)
+    }
+
     return(dataDir)
 }
 
