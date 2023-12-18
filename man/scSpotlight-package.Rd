@@ -6,6 +6,8 @@
 \alias{scSpotlight-package}
 \title{scSpotlight: A Single Cell Analysis Shiny App}
 \description{
+\if{html}{\figure{logo.png}{options: style='float: right' alt='logo' width='120'}}
+
 A single cell analysis (viewer) app based on Seurat.
 }
 \author{
