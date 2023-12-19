@@ -197,7 +197,8 @@ mod_dataInput_server <- function(id,
                 }
                 if(input$enableBPCells){
                     ## converting counts and data layer to BPCells matrix
-                    if("counts" %in% Layers(seuratObj)){
+                    if("counts" %in% Layers(seuratObj) &&
+                       class(seuratObj[[assay]]$counts) == "dgCMatrix"){
                         bp_dir <- file.path(tempdir(), "BPCells_matrix")
                         if(!dir.exists(bp_dir)){ dir.create(bp_dir) }
                         seuratObj[[assay]]$counts <- write_matrix_dir(
@@ -206,7 +207,8 @@ mod_dataInput_server <- function(id,
                             overwrite = TRUE
                         )
                     }
-                    if("data" %in% Layers(seuratObj)){
+                    if("data" %in% Layers(seuratObj) &&
+                       class(seuratObj[[assay]]$data) == "dgCMatrix"){
                         bp_dir <- file.path(tempdir(), "BPCells_matrix")
                         if(!dir.exists(bp_dir)){ dir.create(bp_dir) }
                         seuratObj[[assay]]$data <- write_matrix_dir(
@@ -591,6 +593,7 @@ validate_seuratRDS <- function(seuratObj,
         seuratObj <- FindClusters(seuratObj, resolution = resolution)
         seuratObj <- RunUMAP(seuratObj, dims = 1:nDims)
     }
+    message("Finished validating object...")
     return(seuratObj)
 }
 
