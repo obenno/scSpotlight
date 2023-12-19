@@ -58,12 +58,17 @@ mod_UpdateCategory_server <- function(id,
       observeEvent(obj_meta(), {
           req(obj())
           req(obj_meta())
+          if("seurat_clusters" %in% obj_meta()){
+              selected <- "seurat_clusters"
+          }else{
+              selected <- NULL
+          }
           updateSelectInput(
-                  session = session,
-                  inputId = "group.by",
-                  label = "Choose group.by",
-                  choices = obj_meta(),
-                  selected = ifelse("seurat_clusters" %in% obj_meta(), "seurat_clusters", NULL)
+              session = session,
+              inputId = "group.by",
+              label = "Choose group.by",
+              choices = obj_meta(),
+              selected = selected
           )
 
       })
