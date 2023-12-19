@@ -6,8 +6,8 @@
 onStart <- function(maxSize = 20 * 1000 * 1024^2,
                     nCores = 2){
     ## set options
-    set_options(maxSize = 20 * 1000 * 1024^2,
-                nCores = 2)
+    set_options(maxSize = maxSize,
+                nCores = nCores)
 }
 
 #' set options

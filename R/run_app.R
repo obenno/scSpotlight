@@ -13,7 +13,7 @@ run_app <- function(
   enableBookmarking = NULL,
   uiPattern = "/",
   dataDir = NULL,
-  runningMode = "viewer", # processing mode or viewer mode
+  runningMode = "processing", # processing mode or viewer mode
   maxSize = 20 * 1000 * 1024^2,
   nCores = 2,
   ...
