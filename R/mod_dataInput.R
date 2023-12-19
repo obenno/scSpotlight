@@ -92,7 +92,8 @@ mod_dataInput_inputUI <- function(id){
 #' @import shiny
 #' @importFrom readr read_tsv
 #' @importFrom shinyWidgets updateSwitchInput
-#' @importFrom SeuratObject LoadSeuratRds
+#' @importFrom SeuratObject LoadSeuratRds Layers
+#' @importFrom stringr str_detect
 #'
 #' @noRd
 mod_dataInput_server <- function(id,
@@ -111,12 +112,11 @@ mod_dataInput_server <- function(id,
         runningMode <- golem::get_golem_options("runningMode")
         compressionFormatPattern <- "\\.zip$|\\.tar.gz$|\\.tgz$|\\.tar\\.bz2$|\\.tbz2"
         rdsFormatPattern <- "\\.rds$|\\.RDS$|\\.Rds$"
-        if(runningMode == "processing"){
-            supportedFileInputPattern <- paste0(rdsFormatPattern, "|", compressionFormatPattern)
-            supportedFileInputPattern <- "\\.rds$|\\.RDS$|\\.Rds$|\\.zip$|\\.tar.gz$|\\.tgz$|\\.tar\\.bz2$|\\.tbz2"
-        }else{
-            supportedFileInputPattern <- rdsFormatPattern
-        }
+        ##if(runningMode == "processing"){
+        supportedFileInputPattern <- paste0(rdsFormatPattern, "|", compressionFormatPattern)
+        ##}else{
+        ##    supportedFileInputPattern <- rdsFormatPattern
+        ##}
         if(isTruthy(dataDir)){
             if(!file.exists(dataDir)){
                 showNotification(
@@ -197,20 +197,26 @@ mod_dataInput_server <- function(id,
                 }
                 if(input$enableBPCells){
                     ## converting counts and data layer to BPCells matrix
-                    if(any(dim(seuratObj[[assay]]$counts)>0)){
+                    if("counts" %in% Layers(seuratObj)){
+                        bp_dir <- file.path(tempdir(), "BPCells_matrix")
+                        if(!dir.exists(bp_dir)){ dir.create(bp_dir) }
                         seuratObj[[assay]]$counts <- write_matrix_dir(
                             seuratObj[[assay]]$counts,
-                            dir = tempfile(pattern="counts")
+                            dir = file.path(bp_dir, "counts"),
+                            overwrite = TRUE
                         )
                     }
-                    if(any(dim(seuratObj[[assay]]$data)>0)){
+                    if("data" %in% Layers(seuratObj)){
+                        bp_dir <- file.path(tempdir(), "BPCells_matrix")
+                        if(!dir.exists(bp_dir)){ dir.create(bp_dir) }
                         seuratObj[[assay]]$data <- write_matrix_dir(
                             seuratObj[[assay]]$data,
-                            dir = tempfile(pattern="data")
+                            dir = file.path(bp_dir, "data"),
+                            overwrite = TRUE
                         )
                     }
                     hvg_method <- "vst"
-                    if(hvgSelectMethod()!="vst"){
+                    if(isTruthy(hvgSelectMethod()) && hvgSelectMethod()!="vst"){
                         showNotification(
                             ui = HTML("BPCells enabled, enforce to use <b>vst</b> method and <b>counts</b> layer"),
                             action = NULL,
@@ -221,7 +227,7 @@ mod_dataInput_server <- function(id,
                         )
                     }
                 }else{
-                    hvg_method <- hvgSelectMethod()
+                    hvg_method <- ifelse(isTruthy(hvgSelectMethod()), hvgSelectMethod(), "vst")
                 }
 
                 seuratObj <- validate_seuratRDS(seuratObj, runningMode = runningMode,
@@ -246,11 +252,19 @@ mod_dataInput_server <- function(id,
                                 inputId = "enableBPCells",
                                 value = TRUE
                             )
+                            showNotification(
+                                ui = HTML("Rds in compressed files detected, auto enable BPCells"),
+                                action = NULL,
+                                duration = 5,
+                                closeButton = TRUE,
+                                type = "warning",
+                                session = session
+                            )
                         }
                         setwd(file.path(dataDir, dirname(BPCells_Rds)))
                         message("setting working dir to ", dataDir)
                         seuratObj <- LoadSeuratRds(file.path(dataDir, BPCells_Rds))
-                        if(hvgSelectMethod()!="vst"){
+                        if(isTruthy(hvgSelectMethod()) && hvgSelectMethod()!="vst"){
                             showNotification(
                                 ui = HTML("BPCells enabled, enforce to use <b>vst</b> method and <b>counts</b> layer"),
                                 action = NULL,
@@ -274,7 +288,7 @@ mod_dataInput_server <- function(id,
                     if(input$enableBPCells){
                         counts <- BPCells_Read10X(dataDir)
                         hvg_method <- "vst"
-                        if(hvgSelectMethod()!="vst"){
+                        if(isTruthy(hvgSelectMethod()) && hvgSelectMethod()!="vst"){
                             showNotification(
                                 ui = HTML("BPCells enabled, enforce to use <b>vst</b> method and <b>counts</b> layer"),
                                 action = NULL,
@@ -286,7 +300,7 @@ mod_dataInput_server <- function(id,
                         }
                     }else{
                         counts <- Read10X(dataDir)
-                        hvg_method <- hvgSelectMethod()
+                        hvg_method <- ifelse(isTruthy(hvgSelectMethod()), hvgSelectMethod(), "vst")
                     }
 
                     waiter_update(html = waiting_screen("Creating seuratObj..."))
@@ -333,7 +347,8 @@ mod_dataInput_server <- function(id,
 #'
 #' @description A modified version of the Seurat Read10X function using BPCells to read matrix
 #'
-#' @importFrom BPCells import_matrix_market
+#' @import BPCells
+#' @import Seurat
 #'
 #' @noRd
 #' 
@@ -443,6 +458,9 @@ BPCells_Read10X <- function(
       rownames(x = data) <- make.unique(names = feature.names[, gene.column])
     }
     message("Finished generating matrix")
+    dirPath <- tempfile(pattern = "counts_")
+    BPCells::write_matrix_dir(data, dir=dirPath, overwrite = TRUE)
+    mat <- BPCells::open_matrix_dir(dirPath)
     # In cell ranger 3.0, a third column specifying the type of data was added
     # and we will return each type of data as a separate matrix
     ##if (ncol(x = feature.names) > 2) {
@@ -465,7 +483,8 @@ BPCells_Read10X <- function(
     ##} else{
     ##  data <- list(data)
     ##}
-    full.data[[length(x = full.data) + 1]] <- data
+    ##full.data[[length(x = full.data) + 1]] <- data
+    full.data[[length(x = full.data) + 1]] <- mat
   }
   return(full.data)
   # Combine all the data from different directories into one big matrix, note this
@@ -535,10 +554,12 @@ validate_seuratRDS <- function(seuratObj,
                                hvgSelectMethod = "vst",
                                nDims = 30,
                                resolution = 1){
+    message("calculating mt")
     if("counts" %in% Layers(seuratObj) &&
        !("percent.mt" %in% colnames(seuratObj[[]]))){
         seuratObj[["percent.mt"]] <- PercentageFeatureSet(seuratObj, pattern = "^(MT-|mt-)")
     }
+    message("calculating rp")
     if("counts" %in% Layers(seuratObj) &&
        !("percent.rp" %in% colnames(seuratObj[[]]))){
         seuratObj[["percent.rp"]] <- PercentageFeatureSet(seuratObj, pattern = "^(RPL|RPS|Rpl|Rps)")
@@ -562,7 +583,8 @@ validate_seuratRDS <- function(seuratObj,
         waiter_update(html = waiting_screen("Scaling Data..."))
         seuratObj <- ScaleData(seuratObj)
     }
-    if(!reduction_exist(seuratObj)){
+    if(!reduction_exist(seuratObj) &&
+       runningMode == "processing"){
         waiter_update(html = waiting_screen("Calculating Reductions..."))
         seuratObj <- RunPCA(seuratObj)
         seuratObj <- FindNeighbors(seuratObj, dims = 1:nDims)
