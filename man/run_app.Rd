@@ -10,7 +10,7 @@ run_app(
   enableBookmarking = NULL,
   uiPattern = "/",
   dataDir = NULL,
-  runningMode = "viewer",
+  runningMode = "processing",
   maxSize = 20 * 1000 * 1024^2,
   nCores = 2,
   ...

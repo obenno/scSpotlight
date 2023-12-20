@@ -24,10 +24,10 @@ mod_Download_ui <- function(id){
 
 #' Download Server Functions
 #'
-#' @importFrom Seurat Layers
 #' @importFrom dplyr case_when
 #' @importFrom stringr str_detect
-#' @importFrom SeuratObject SaveSeuratRds
+#' @importFrom SeuratObject SaveSeuratRds Layers
+#'
 #' @noRd
 mod_Download_server <- function(id,
                                 seuratObj){
