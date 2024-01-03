@@ -34,7 +34,17 @@ mod_dataInput_inputUI <- function(id){
                 selectize = TRUE,
                 width = NULL
             ) %>%
-            tagAppendAttributes(class = c("mb-1"))
+            tagAppendAttributes(class = c("mb-1")),
+            span(
+                "Enable BPCells", style = "display: inline-block; margin-bottom: 0.5rem",
+                infoIcon("This will use BPCells as the backend to store sparse matrix in seurat object.", "right")
+            ),
+            switchInput(
+                inputId = ns("enableBPCells"),
+                label = NULL,
+                size = "mini",
+                value = FALSE
+            )
         )
     }else{
         tagList(
@@ -134,7 +144,7 @@ mod_dataInput_server <- function(id,
 
         ## Check if BPCells was installed
         observe({
-            if(input$enableBPCells &&
+            if(isTruthy(input$enableBPCells) &&
                !isTruthy(rlang::is_installed("BPCells"))){
 
                 ## update switchInput to false and shoot a notification

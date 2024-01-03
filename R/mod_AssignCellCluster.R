@@ -150,7 +150,8 @@ mod_AssignCellCluster_server <- function(id,
     categorySelectedCells <- reactive({
         req(seuratObj())
         req(input$chosenGroup)
-        req(isTruthy(group.by()) && group.by()!="None")
+        req(isTruthy(group.by()))
+        req(group.by()!="None")
         req(split.by())
         req(!isTruthy(manuallySelectedCells()))
 

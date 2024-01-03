@@ -12,11 +12,12 @@ mod_DEG_Table_ui <- function(id){
   ns <- NS(id)
   tagList(
       DTOutput(ns("DEG_list"), width = "100%", height = "auto", fill = TRUE) %>%
-      withWaiterOnElement(
-          target_element_ID = ns("DEG_list"), # defined in infoBox_ui()
-          html = waiter::spin_loaders(5, color = "var(--bs-primary)"),
-          color = "#ffffff"
-      )
+      withSpinner(fill_container = T)
+      ##withWaiterOnElement(
+      ##    target_element_ID = ns("DEG_list"), # defined in infoBox_ui()
+      ##    html = waiter::spin_loaders(5, color = "var(--bs-primary)"),
+      ##    color = "#ffffff"
+      ##)
 
   )
 }
