@@ -150,7 +150,7 @@ mod_AssignCellCluster_server <- function(id,
     categorySelectedCells <- reactive({
         req(seuratObj())
         req(input$chosenGroup)
-        req(group.by())
+        req(isTruthy(group.by()) && group.by()!="None")
         req(split.by())
         req(!isTruthy(manuallySelectedCells()))
 
@@ -214,38 +214,38 @@ mod_AssignCellCluster_server <- function(id,
     })
 
     ## update group.by and split.by widget when manuallySelectedCells() changes
-    observe({
-
-        req(seuratObj())
-        req(input_group.by())
-        req(!(seuratObj()[[input_group.by()]] %>% pull() %>% is.numeric))
-
-        manuallySelectedCells()
-
-        group.by.levels <- seuratObj()[[input_group.by()]] %>%
-            pull() %>%
-            as.factor() %>% levels()
-        updateSelectInput(
-            session = session,
-            inputId = "chosenGroup",
-            label = "Identities from group.by",
-            choices = group.by.levels,
-            selected = NULL
-        )
-
-        req(input_split.by())
-        req(!(seuratObj()[[input_split.by()]] %>% pull() %>% is.numeric))
-        split.by.levels <- seuratObj()[[input_split.by()]] %>%
-            pull() %>%
-            as.factor() %>% levels()
-        updateSelectInput(
-            session = session,
-            inputId = "chosenSplit",
-            label = "Identities from split.by",
-            choices = split.by.levels,
-            selected = NULL
-        )
-    })
+    ##observe({
+    ##
+    ##    req(seuratObj())
+    ##    req(input_group.by())
+    ##    req(!(seuratObj()[[input_group.by()]] %>% pull() %>% is.numeric))
+    ##
+    ##    manuallySelectedCells()
+    ##
+    ##    group.by.levels <- seuratObj()[[input_group.by()]] %>%
+    ##        pull() %>%
+    ##        as.factor() %>% levels()
+    ##    updateSelectInput(
+    ##        session = session,
+    ##        inputId = "chosenGroup",
+    ##        label = "Identities from group.by",
+    ##        choices = group.by.levels,
+    ##        selected = NULL
+    ##    )
+    ##
+    ##    req(input_split.by())
+    ##    req(!(seuratObj()[[input_split.by()]] %>% pull() %>% is.numeric))
+    ##    split.by.levels <- seuratObj()[[input_split.by()]] %>%
+    ##        pull() %>%
+    ##        as.factor() %>% levels()
+    ##    updateSelectInput(
+    ##        session = session,
+    ##        inputId = "chosenSplit",
+    ##        label = "Identities from split.by",
+    ##        choices = split.by.levels,
+    ##        selected = NULL
+    ##    )
+    ##})
 
     output$manuallySelectedCellsText <- renderText({
         req(manuallySelectedCells())
