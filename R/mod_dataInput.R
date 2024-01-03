@@ -34,17 +34,7 @@ mod_dataInput_inputUI <- function(id){
                 selectize = TRUE,
                 width = NULL
             ) %>%
-            tagAppendAttributes(class = c("mb-1")),
-            span(
-                "Enable BPCells", style = "display: inline-block; margin-bottom: 0.5rem",
-                infoIcon("This will use BPCells as the backend to store sparse matrix in seurat object.", "right")
-            ),
-            switchInput(
-                inputId = ns("enableBPCells"),
-                label = NULL,
-                size = "mini",
-                value = FALSE
-            )
+            tagAppendAttributes(class = c("mb-1"))
         )
     }else{
         tagList(
@@ -112,11 +102,11 @@ mod_dataInput_server <- function(id,
         runningMode <- golem::get_golem_options("runningMode")
         compressionFormatPattern <- "\\.zip$|\\.tar.gz$|\\.tgz$|\\.tar\\.bz2$|\\.tbz2"
         rdsFormatPattern <- "\\.rds$|\\.RDS$|\\.Rds$"
-        ##if(runningMode == "processing"){
-        supportedFileInputPattern <- paste0(rdsFormatPattern, "|", compressionFormatPattern)
-        ##}else{
-        ##    supportedFileInputPattern <- rdsFormatPattern
-        ##}
+        if(runningMode == "processing"){
+            supportedFileInputPattern <- paste0(rdsFormatPattern, "|", compressionFormatPattern)
+        }else{
+            supportedFileInputPattern <- rdsFormatPattern
+        }
         if(isTruthy(dataDir)){
             if(!file.exists(dataDir)){
                 showNotification(
@@ -552,7 +542,7 @@ reduction_exist <- function(seuratObj){
 #' 
 #' @noRd
 validate_seuratRDS <- function(seuratObj,
-                               runningMode = runningMode,
+                               runningMode = "viewer",
                                hvgSelectMethod = "vst",
                                nDims = 30,
                                resolution = 1){
