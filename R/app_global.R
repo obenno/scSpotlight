@@ -69,7 +69,7 @@ config_plotly_fig <- function(fig){
 #' @import shinycssloaders
 withSpinner <- function(
     ui_element,
-    type = getOption("spinner.type", default = 3),
+    type = getOption("spinner.type", default = 8),
     color = getOption("spinner.color", default = "#2c3e50"),
     size = getOption("spinner.size", default = 0.5),
     color.background = getOption("spinner.color.background", "#ffffff"),
