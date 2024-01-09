@@ -158,6 +158,7 @@ withSpinner <- function(
                 if (is.null(image)) "" else "shiny-spinner-custom",
                 if(fill_container) "html-fill-item html-fill-container" else ""
             ),
+            style = "width: 100%;",
             shiny::div(
                 class = paste(
                     "load-container",
