@@ -2,7 +2,7 @@
 % Please edit documentation in R/run_app.R
 \name{run_app}
 \alias{run_app}
-\title{Run the Shiny Application}
+\title{Run the scSpotlight App}
 \usage{
 run_app(
   onStart = set_options,
@@ -37,9 +37,33 @@ request to determine whether the \code{ui} should be used to handle the
 request. Note that the entire request path must match the regular
 expression in order for the match to be considered successful.}
 
+\item{dataDir}{Direcotry path of the input data, user could put the large dataset in the
+direcoty to avoid uploading files}
+
+\item{runningMode}{The running mode of the app. This could be "processing" (default) or "viewer".
+The "processing" mode allows users to process input data by Seurat package while in "viewer" mode,
+user will only be able to view the dimension reduction result and query gene expressions.}
+
+\item{maxSize}{Maximum allowed total size (in bytes) of global variables identified, see future.globals.maxSize.}
+
+\item{nCores}{Number of the threads to use (by \code{\link[future:plan]{future::plan()}}).}
+
 \item{...}{arguments to pass to golem_opts.
-See `?golem::get_golem_options` for more details.}
+See \code{?golem::get_golem_options} for more details.}
 }
 \description{
-Run the Shiny Application
+Run the scSpotlight App
+}
+\examples{
+\dontrun{
+ ## Run app in processing mode
+ run_app()
+
+ ## Run app in viewer mode and load data in dataDir
+ run_app(runningMode = "viewer", dataDir = "/path/to/data")
+
+ ## Run app on port 8081, shiny::runApp() options need to be wrapped in a list
+ run_app(options = list(port = 8081, host ="0.0.0.0", launch.browser = FALSE), runningMode = "processing")
+}
+
 }

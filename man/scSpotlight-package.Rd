@@ -10,6 +10,13 @@
 
 A single cell analysis (viewer) app based on Seurat.
 }
+\seealso{
+Useful links:
+\itemize{
+  \item \url{https://obenno.github.io/scSpotlight/}
+}
+
+}
 \author{
 \strong{Maintainer}: Zhixia Xiao \email{obennoname@gmail.com}
 

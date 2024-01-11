@@ -67,6 +67,7 @@ config_plotly_fig <- function(fig){
 #'              refer to: https://github.com/daattali/shinycssloaders/pull/77
 #'
 #' @import shinycssloaders
+#' @noRd
 withSpinner <- function(
     ui_element,
     type = getOption("spinner.type", default = 8),
