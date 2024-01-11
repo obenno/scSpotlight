@@ -7,7 +7,7 @@ Authors@R:
            role = c("aut", "cre"),
            email = "obennoname@gmail.com")
 Description: A single cell analysis (viewer) app based on Seurat.
-License: What license is it under?
+License: Apache License (>= 2)
 Imports: 
     bsicons,
     bslib (>= 0.5.1),
