@@ -18,3 +18,4 @@ $run_dev.*
 ^pkgdown$
 ^\.github$
 ^LICENSE\.md$
+^vignettes/articles$
