@@ -17,6 +17,10 @@ to better understand each processing step. The demonstration dataset used is a 2
 Peripheral Blood Mononuclear Cells (PBMCs) sample made publicly available by 10X Genomics. 
 The matrix could be downloaded [here](https://cf.10xgenomics.com/samples/cell/pbmc3k/pbmc3k_filtered_gene_bc_matrices.tar.gz)
 
+A typical seurat analysis workflow is like below:
+
+![](../../inst/images/seurat_standard_workflow.png)
+
 ## Invoke App
 
 ```{r setup, eval = FALSE}

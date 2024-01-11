@@ -8,6 +8,7 @@
 <!-- badges: end -->
 
 The goal of scSpotlight is to simplify your single cell analysis and
+easily annotate your dataset with curated cell type markers.
 
 ## Installation
 
