@@ -13,6 +13,8 @@ easily annotate your dataset with curated cell type markers.
 [Seurat](https://satijalab.org/seurat/) and
 [regl-scatterplot](https://github.com/flekschas/regl-scatterplot).
 
+![](inst/images/scSpotlight_landingFigure.png)
+
 ## Installation
 
 You can install the development version of scSpotlight from
