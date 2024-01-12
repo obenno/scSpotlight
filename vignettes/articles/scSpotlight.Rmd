@@ -15,7 +15,7 @@ knitr::opts_chunk$set(
 new users going through their [pbmc3k tutorial](https://satijalab.org/seurat/articles/pbmc3k_tutorial) 
 to better understand each processing step. The demonstration dataset used is a 2,700 
 Peripheral Blood Mononuclear Cells (PBMCs) sample made publicly available by 10X Genomics. 
-The matrix could be downloaded [here](https://cf.10xgenomics.com/samples/cell/pbmc3k/pbmc3k_filtered_gene_bc_matrices.tar.gz)
+The matrix could be downloaded [here](https://cf.10xgenomics.com/samples/cell/pbmc3k/pbmc3k_filtered_gene_bc_matrices.tar.gz).
 
 A typical seurat analysis workflow is like below:
 
@@ -66,4 +66,7 @@ and processed Seurat object `seurat_processed.Rds` saved by [Seurat::SaveSeuratR
 ## Filter Cells
 
 scSpotlight will automatically illustrate nGene (nFeature\_RNA), nUMI (nCount\_RNA), mitochondrial
-UMI distribution and ribosomal protein gene UMI distribution in VlnPlot paneldistributionupdate VlnPlot when user input new d
+gene UMI distribution and ribosomal protein gene UMI distribution in VlnPlot panel. One could
+inspect the results to roughly evaluate the library quality.
+
+![](../../inst/images/)
