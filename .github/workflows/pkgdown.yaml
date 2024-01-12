@@ -31,17 +31,10 @@ jobs:
           use-public-rspm: true
           extra-repositories: 'https://satijalab.r-universe.dev, https://bnprks.r-universe.dev/'
 
-      ##- uses: r-lib/actions/setup-r-dependencies@v2
-      ##  with:
-      ##    extra-packages: any::pkgdown, local::.
-      ##    needs: website
-      - name: install_pak
-        run: install.packages("pak")
-        shell: Rscript {0}
-
-      - name: install_pkgdown
-        run: pak::pkg_install("pkgdown")
-        shell: Rscript {0}
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::pkgdown, local::.
+          needs: website
 
       - name: Build site
         run: pkgdown::build_site_github_pages(new_process = FALSE, install = FALSE)
