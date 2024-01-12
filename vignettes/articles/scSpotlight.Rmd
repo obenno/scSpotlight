@@ -23,27 +23,23 @@ A typical seurat analysis workflow is like below:
 
 ## Invoke App
 
-```{r setup, eval = FALSE}
-library(scSpotlight)
-```
-
 To start using scSpotlight, please use the command below and access the app via: `127.0.0.1:8081`
 
 ```R
-run_app(options = list(port = 8081, host = "0.0.0.0"))
+scSpotlight::run_app(options = list(port = 8081, host = "0.0.0.0"))
 ```
 
 The default mode of app is `processing`. User could also change mode to `viewer`, which will only allow illustrating
 dataset and querying gene expressions:
 
 ```R
-run_app(options = list(port = 8081, host = "0.0.0.0"), runningMode = "viewer")
+scSpotlight::run_app(options = list(port = 8081, host = "0.0.0.0"), runningMode = "viewer")
 ```
 
 If one needs to load a very large dataset, use `dataDir` parameter to mount data directory and load `Rds` file directly.
 
 ```R
-run_app(options = list(port = 8081, host = "0.0.0.0"), runningMode = "viewer", dataDir = "/path/to/data_directory")
+scSpotlight::run_app(options = list(port = 8081, host = "0.0.0.0"), runningMode = "viewer", dataDir = "/path/to/data_directory")
 ```
 
 ## Main Panel
@@ -69,3 +65,5 @@ and processed Seurat object `seurat_processed.Rds` saved by [Seurat::SaveSeuratR
 
 ## Filter Cells
 
+scSpotlight will automatically illustrate nGene (nFeature\_RNA), nUMI (nCount\_RNA), mitochondrial
+UMI distribution and ribosomal protein gene UMI distribution in VlnPlot paneldistributionupdate VlnPlot when user input new d
