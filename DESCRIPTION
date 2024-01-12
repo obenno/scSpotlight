@@ -45,6 +45,3 @@ RoxygenNote: 7.2.3
 Roxygen: list(markdown = TRUE)
 URL: https://obenno.github.io/scSpotlight/
 Additional_repositories: https://satijalab.r-universe.dev, https://bnprks.r-universe.dev
-Remotes:
-    github::immunogenomics/presto,
-    github::bnprks/BPCells
