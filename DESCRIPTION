@@ -43,7 +43,7 @@ Suggests:
     BPCells,
     presto (>= 1.0.0)
 Remotes: 
-    bnprks/BPCells@v0.1.0,
-    immunogenomics/presto
+    github::bnprks/BPCells@v0.1.0,
+    github::immunogenomics/presto
 Depends: 
     R (>= 4.1)
