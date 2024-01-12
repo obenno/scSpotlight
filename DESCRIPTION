@@ -36,8 +36,12 @@ Imports:
     stringr,
     tibble,
     waiter,
+    glmGamPoi,
     BPCells,
     presto
+Remotes:
+    immunogenomics/presto,
+    bnprks/BPCells
 Encoding: UTF-8
 LazyData: true
 RoxygenNote: 7.2.3
