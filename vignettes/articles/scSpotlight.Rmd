@@ -72,12 +72,14 @@ scSpotlight will automatically illustrate nGene (nFeature\_RNA), nUMI (nCount\_R
 gene UMI percentage (percent.mt) and ribosomal protein gene UMI percentage (percent.rp) for each 
 cell in VlnPlot panel. One could inspect the distribution and roughly evaluate the library quality. 
 User could discard cells with too few or too many features detected and dying cells with 
-high mitochondrial UMI percentage by adjusting parameters in the "Cell Filtering" 
+high mitochondrial UMI percentage by adjusting parameters in the "Cell Filtering" block. The filtration
+step will also update highly variable genes (HVGs), the dimension reduction and the 
+cell clustering result.
 
 ![](../../inst/images/)
 
 ## Highly variable features 
 
-
+User will be able to adjust highly variable gene selection method
 
 ## Update Cluster 

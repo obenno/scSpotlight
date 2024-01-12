@@ -35,7 +35,8 @@ Imports:
     shinyWidgets,
     stringr,
     tibble,
-    waiter,
+    waiter
+Suggests:    
     BPCells,
     presto
 Encoding: UTF-8
@@ -43,6 +44,4 @@ LazyData: true
 RoxygenNote: 7.2.3
 Roxygen: list(markdown = TRUE)
 URL: https://obenno.github.io/scSpotlight/
-Remotes:
-    immunogenomics/presto,
-    bnprks/BPCells
+Additional_repositories: https://satijalab.r-universe.dev, https://bnprks.r-universe.dev
