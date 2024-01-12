@@ -40,8 +40,8 @@ RoxygenNote: 7.2.3
 Roxygen: list(markdown = TRUE)
 URL: https://obenno.github.io/scSpotlight/
 Suggests: 
-    BPCells (>= 0.1.0),
+    BPCells,
     presto (>= 1.0.0)
 Remotes:  
-    bnprks/BPCells,
+    bnprks/BPCells@v0.1.0,
     immunogenomics/presto
