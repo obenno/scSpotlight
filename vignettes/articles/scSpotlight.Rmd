@@ -63,10 +63,21 @@ drwxrwxr-x xzx/xzx           0 2024-01-11 21:11 PBMC_demo/
 
 and processed Seurat object `seurat_processed.Rds` saved by [Seurat::SaveSeuratRds()].
 
+If using compressed matrix file as input, scSpotlight will process
+data after loading **without cell filtration** and the dimension reduction will be shown.
+
 ## Filter Cells
 
 scSpotlight will automatically illustrate nGene (nFeature\_RNA), nUMI (nCount\_RNA), mitochondrial
-gene UMI distribution and ribosomal protein gene UMI distribution in VlnPlot panel. One could
-inspect the results to roughly evaluate the library quality.
+gene UMI percentage (percent.mt) and ribosomal protein gene UMI percentage (percent.rp) for each 
+cell in VlnPlot panel. One could inspect the distribution and roughly evaluate the library quality. 
+User could discard cells with too few or too many features detected and dying cells with 
+high mitochondrial UMI percentage by adjusting parameters in the "Cell Filtering" 
 
 ![](../../inst/images/)
+
+## Highly variable features 
+
+
+
+## Update Cluster 
