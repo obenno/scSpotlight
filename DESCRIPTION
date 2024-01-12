@@ -9,7 +9,7 @@ Authors@R:
 Description: A single cell analysis (viewer) app based on Seurat.
 License: Apache License (>= 2)
 Depends: 
-    R (>= 4.1)
+    R (>= 4.1.0)
     Seurat (>= 5.0.1),
     SeuratObject (>= 5.0.1),
     shiny (>= 1.7.4)
