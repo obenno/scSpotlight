@@ -8,6 +8,11 @@ Authors@R:
            email = "obennoname@gmail.com")
 Description: A single cell analysis (viewer) app based on Seurat.
 License: Apache License (>= 2)
+Depends: 
+    R (>= 4.1)
+    Seurat (>= 5.0.1),
+    SeuratObject (>= 5.0.1),
+    shiny (>= 1.7.4)
 Imports: 
     bsicons,
     bslib (>= 0.5.1),
@@ -25,25 +30,20 @@ Imports:
     readxl,
     rlang,
     scales,
-    Seurat (>= 5.0.0),
-    SeuratObject (>= 5.0.1),
-    shiny (>= 1.7.4),
     shinycssloaders,
     shinyjs,
     shinyWidgets,
     stringr,
     tibble,
     waiter
+Suggests: 
+    BPCells,
+    presto
+Remotes: 
+    github::bnprks/BPCells@v0.1.0,
+    gtihub::immunogenomics/presto
 Encoding: UTF-8
 LazyData: true
 RoxygenNote: 7.2.3
 Roxygen: list(markdown = TRUE)
 URL: https://obenno.github.io/scSpotlight/
-Suggests: 
-    BPCells,
-    presto
-Remotes: 
-    bnprks/BPCells@v0.1.0,
-    immunogenomics/presto
-Depends: 
-    R (>= 4.1)
