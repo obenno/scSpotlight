@@ -32,7 +32,7 @@ jobs:
           extra-repositories: https://satijalab.r-universe.dev https://bnprks.r-universe.dev
 
       - name: Install hdf5 dependency
-        run: apt-get install libhdf5-dev
+        run: sudo apt-get install libhdf5-dev
         shell: bash
 
       - uses: r-lib/actions/setup-r-dependencies@v2
