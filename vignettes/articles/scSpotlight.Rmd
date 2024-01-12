@@ -27,7 +27,7 @@ A typical seurat analysis workflow is like below:
 library(scSpotlight)
 ```
 
-To star using scSpotlight, please use the command below and access the app via: `127.0.0.1:8081`
+To start using scSpotlight, please use the command below and access the app via: `127.0.0.1:8081`
 
 ```R
 run_app(options = list(port = 8081, host = "0.0.0.0"))
@@ -52,7 +52,7 @@ Main panel of `scSpotlight` will be like:
 
 ![](../../inst/images/main_panel.png)
 
-### Input Files
+## Input Files
 
 Under the "processing" mode, `scSpotlight` supports compressed file containing typical 10X 
 cellranger output ([Matrix Market Format](https://math.nist.gov/MatrixMarket/formats.html)):
@@ -66,4 +66,6 @@ drwxrwxr-x xzx/xzx           0 2024-01-11 21:11 PBMC_demo/
 ```
 
 and processed Seurat object `seurat_processed.Rds` saved by [Seurat::SaveSeuratRds()].
+
+## Filter Cells
 

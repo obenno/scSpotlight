@@ -39,7 +39,7 @@ Imports:
 Suggests: 
     BPCells,
     presto
-Remotes:
+Remotes: 
     bnprks/BPCells@v0.1.0,
     immunogenomics/presto
 Encoding: UTF-8
