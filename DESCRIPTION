@@ -39,9 +39,8 @@ Imports:
 Suggests: 
     BPCells,
     presto
-Remotes: 
-    github::bnprks/BPCells@v0.1.0,
-    gtihub::immunogenomics/presto
+Remotes: bnprks/BPCells@v0.1.0,
+    immunogenomics/presto
 Encoding: UTF-8
 LazyData: true
 RoxygenNote: 7.2.3
