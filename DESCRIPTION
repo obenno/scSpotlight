@@ -37,7 +37,6 @@ Imports:
     tibble,
     waiter
 Suggests:    
-    BPCells,
     presto
 Encoding: UTF-8
 LazyData: true
