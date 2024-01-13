@@ -155,16 +155,70 @@ features detected and dying cells with high mitochondrial UMI percentage
 by adjusting parameters in the “Cell Filtering” block. The filtration
 step will also update highly variable genes (HVGs), the dimension
 reduction and the cell clustering result.</p>
-<p><img src="images/main_panel.png" width="960"></p>
+<div class="figure">
+<img src="images/vlnplot_1.png" alt="VlnPlot summarizes nGene, nUMI, percent.mt and percent.rp distribution" width="1280"><p class="caption">
+VlnPlot summarizes nGene, nUMI, percent.mt and percent.rp distribution
+</p>
+</div>
+<div class="figure">
+<img src="images/vlnplot_2.png" alt="VlnPlot full screen" width="1280"><p class="caption">
+VlnPlot full screen
+</p>
+</div>
+<div class="figure">
+<img src="images/cellfilter.png" alt="Cell filtration block" width="1280"><p class="caption">
+Cell filtration block
+</p>
+</div>
 </div>
 <div class="section level2">
-<h2 id="highly-variable-features">Highly variable features<a class="anchor" aria-label="anchor" href="#highly-variable-features"></a>
+<h2 id="highly-variable-features-and-clustering">Highly variable features and Clustering<a class="anchor" aria-label="anchor" href="#highly-variable-features-and-clustering"></a>
 </h2>
-<p>User will be able to adjust highly variable gene selection method</p>
+<p>User will be able to adjust highly variable gene selection method and
+parameters related to unsupervised clustering.</p>
+<div class="figure">
+<img src="images/updateCluster.png" alt="Clustering setting block" width="1280"><p class="caption">
+Clustering setting block
+</p>
+</div>
 </div>
 <div class="section level2">
-<h2 id="update-cell-cluster">Update cell cluster<a class="anchor" aria-label="anchor" href="#update-cell-cluster"></a>
+<h2 id="cell-identity-groups-visualization">Cell identity (groups) visualization<a class="anchor" aria-label="anchor" href="#cell-identity-groups-visualization"></a>
 </h2>
+<div class="figure">
+<img src="images/group_by.png" alt="Select cell identity" width="1280"><p class="caption">
+Select cell identity
+</p>
+</div>
+</div>
+<div class="section level2">
+<h2 id="gene-expression">Gene expression<a class="anchor" aria-label="anchor" href="#gene-expression"></a>
+</h2>
+<p>Input gene symbol to view its expression aside of the original
+cluster view</p>
+<div class="figure">
+<img src="images/single_gene_expression.png" alt="Single gene expression" width="1280"><p class="caption">
+Single gene expression
+</p>
+</div>
+<p>Input multiple genes to view all of them via Seurat::FeaturePlot(),
+and click anyone of the subfigures to acitvate single gene view.</p>
+<div class="figure">
+<img src="images/multi_gene_expression.png" alt="Multiple gene expression" width="1280"><p class="caption">
+Multiple gene expression
+</p>
+</div>
+<p>Or view expression with Seurat::DotPlot():</p>
+<div class="figure">
+<img src="images/dotplot.png" alt="Gene expression DotPlot" width="1280"><p class="caption">
+Gene expression DotPlot
+</p>
+</div>
+</div>
+<div class="section level2">
+<h2 id="select-and-rename-cells">Select and rename cells<a class="anchor" aria-label="anchor" href="#select-and-rename-cells"></a>
+</h2>
+<video><source src="images/select_rename_cells.webm" type="video/webm"></source></video>
 </div>
   </main><aside class="col-md-3"><nav id="toc"><h2>On this page</h2>
     </nav></aside>
