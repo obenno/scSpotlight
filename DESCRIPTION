@@ -36,12 +36,13 @@ Imports:
     stringr,
     tibble,
     waiter
-Suggests:    
+Suggests: 
     presto,
     BPCells
 Encoding: UTF-8
 LazyData: true
 RoxygenNote: 7.2.3
 Roxygen: list(markdown = TRUE)
-URL: https://obenno.github.io/scSpotlight/
+URL: https://obenno.github.io/scSpotlight/, https://github.com/obenno/scSpotlight
+BugReports: https://github.com/obenno/scSpotlight/issues
 Additional_repositories: https://satijalab.r-universe.dev, https://bnprks.r-universe.dev
