@@ -14,6 +14,8 @@ A single cell analysis (viewer) app based on Seurat.
 Useful links:
 \itemize{
   \item \url{https://obenno.github.io/scSpotlight/}
+  \item \url{https://github.com/obenno/scSpotlight}
+  \item Report bugs at \url{https://github.com/obenno/scSpotlight/issues}
 }
 
 }

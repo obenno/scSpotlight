@@ -55,10 +55,10 @@ mod_dataInput_inputUI <- function(id){
                 multiple = FALSE,
                 width = "100%",
                 accept = c(##".h5seurat", ".h5Seurat", ".H5Seurat", "H5seurat",
-                    ".rds", "Rds", "RDS",
+                    ".rds",
                     ".zip",
-                    "tar.gz", "tgz",
-                    "tar.bz2", "tbz2"
+                    ".tar.gz", ".tgz",
+                    ".tar.bz2", ".tbz2"
                 )
             ),
             selectInput(
