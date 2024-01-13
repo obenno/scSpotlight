@@ -20,7 +20,7 @@ The matrix could be downloaded [here](https://cf.10xgenomics.com/samples/cell/pb
 A typical seurat analysis workflow is like below:
 
 ```{r, echo=FALSE}
-knitr::include_graphics("../../inst/images/seurat_standard_workflow.png")
+knitr::include_graphics("images/seurat_standard_workflow.png")
 ```
 
 ## Invoke App
@@ -49,7 +49,7 @@ scSpotlight::run_app(options = list(port = 8081, host = "0.0.0.0"), runningMode 
 Main panel of `scSpotlight` will be like:
 
 ```{r, echo=FALSE}
-knitr::include_graphics("../../inst/images/main_panel.png")
+knitr::include_graphics("images/main_panel.png")
 ```
 
 ## Input Files
@@ -81,7 +81,7 @@ step will also update highly variable genes (HVGs), the dimension reduction and 
 cell clustering result.
 
 ```{r, echo=FALSE}
-knitr::include_graphics("../../inst/images/main_panel.png")
+knitr::include_graphics("images/main_panel.png")
 ```
 
 ## Highly variable features 
