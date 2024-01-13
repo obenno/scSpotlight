@@ -130,7 +130,7 @@ knitr::include_graphics("images/dotplot.png")
 ## Select and rename cells
 
 ```{=html}
-<video>
-  <source src="images/select_rename_cells.webm" type="video/webm" />
+<video controls width="100%">
+  <source src="https://github.com/obenno/scSpotlight/blob/main/vignettes/articles/images/select_rename_cells.webm?raw=true" type="video/webm" />
 </video>
 ```
