@@ -9,7 +9,7 @@ knitr::opts_chunk$set(
 )
 ```
 
-## The Standard Seurat Single Cell Analysis Workflow
+## Seurat Analysis Workflow
 
 `scSpotlight` uses the Seurat standard single cell analysis workflow, we recommend
 new users going through their [pbmc3k tutorial](https://satijalab.org/seurat/articles/pbmc3k_tutorial) 
@@ -19,7 +19,9 @@ The matrix could be downloaded [here](https://cf.10xgenomics.com/samples/cell/pb
 
 A typical seurat analysis workflow is like below:
 
-![](../../inst/images/seurat_standard_workflow.png)
+```{r, echo=FALSE}
+knitr::include_graphics("../../inst/images/seurat_standard_workflow.png")
+```
 
 ## Invoke App
 
@@ -46,7 +48,9 @@ scSpotlight::run_app(options = list(port = 8081, host = "0.0.0.0"), runningMode 
 
 Main panel of `scSpotlight` will be like:
 
-![](../../inst/images/main_panel.png)
+```{r, echo=FALSE}
+knitr::include_graphics("../../inst/images/main_panel.png")
+```
 
 ## Input Files
 
@@ -76,12 +80,13 @@ high mitochondrial UMI percentage by adjusting parameters in the "Cell Filtering
 step will also update highly variable genes (HVGs), the dimension reduction and the 
 cell clustering result.
 
-![](../../inst/images/)
+```{r, echo=FALSE}
+knitr::include_graphics("../../inst/images/main_panel.png")
+```
 
 ## Highly variable features 
 
 User will be able to adjust highly variable gene selection method
 
-## Update 
-
 ## Update cell cluster
+
