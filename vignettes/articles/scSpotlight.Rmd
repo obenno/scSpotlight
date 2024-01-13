@@ -80,13 +80,57 @@ high mitochondrial UMI percentage by adjusting parameters in the "Cell Filtering
 step will also update highly variable genes (HVGs), the dimension reduction and the 
 cell clustering result.
 
-```{r, echo=FALSE}
-knitr::include_graphics("images/main_panel.png")
+```{r, echo=FALSE, fig.cap="VlnPlot summarizes nGene, nUMI, percent.mt and percent.rp distribution"}
+knitr::include_graphics("images/vlnplot_1.png")
 ```
 
-## Highly variable features 
+```{r, echo=FALSE, fig.cap="VlnPlot full screen"}
+knitr::include_graphics("images/vlnplot_2.png")
+```
 
-User will be able to adjust highly variable gene selection method
+```{r, echo=FALSE, fig.cap="Cell filtration block"}
+knitr::include_graphics("images/cellfilter.png")
+```
 
-## Update cell cluster
+## Highly variable features and Clustering
 
+User will be able to adjust highly variable gene selection method and parameters related to
+unsupervised clustering.
+
+```{r, echo=FALSE, fig.cap="Clustering setting block"}
+knitr::include_graphics("images/updateCluster.png")
+```
+
+## Cell identity (groups) visualization
+
+```{r, echo=FALSE, fig.cap="Select cell identity"}
+knitr::include_graphics("images/group_by.png")
+```
+
+## Gene expression
+
+Input gene symbol to view its expression aside of the original cluster view
+
+```{r, echo=FALSE, fig.cap="Single gene expression"}
+knitr::include_graphics("images/single_gene_expression.png")
+```
+Input multiple genes to view all of them via Seurat::FeaturePlot(), and
+click anyone of the subfigures to acitvate single gene view.
+
+```{r, echo=FALSE, fig.cap="Multiple gene expression"}
+knitr::include_graphics("images/multi_gene_expression.png")
+```
+
+Or view expression with Seurat::DotPlot():
+
+```{r, echo=FALSE, fig.cap="Gene expression DotPlot"}
+knitr::include_graphics("images/dotplot.png")
+```
+
+## Select and rename cells
+
+```{=html}
+<video>
+  <source src="images/select_rename_cells.webm" type="video/webm" />
+</video>
+```
