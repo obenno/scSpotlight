@@ -24,7 +24,7 @@ annotate your dataset with curated cell type markers. `scSpotlight` is built on
 and [regl-scatterplot](https://github.com/flekschas/regl-scatterplot).
 
 ```{r, echo=FALSE, out.width="80%"}
-knitr::include_graphics("inst/images/scSpotlight_landingFigure.png")
+knitr::include_graphics("https://raw.githubusercontent.com/obenno/scSpotlight/main/vignettes/articles/images/scSpotlight_landingFigure.png")
 ```
 
 ## Installation

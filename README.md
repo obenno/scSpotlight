@@ -13,7 +13,7 @@ easily annotate your dataset with curated cell type markers.
 [Seurat](https://satijalab.org/seurat/) and
 [regl-scatterplot](https://github.com/flekschas/regl-scatterplot).
 
-<img src="inst/images/scSpotlight_landingFigure.png" width="80%" />
+<img src="https://raw.githubusercontent.com/obenno/scSpotlight/main/vignettes/articles/images/scSpotlight_landingFigure.png" width="80%" />
 
 ## Installation
 
