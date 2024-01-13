@@ -28,6 +28,7 @@ Imports:
     promises,
     readr,
     readxl,
+    RhpcBLASctl,
     rlang,
     scales,
     shinycssloaders,
