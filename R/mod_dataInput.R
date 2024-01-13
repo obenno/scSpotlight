@@ -88,7 +88,6 @@ mod_dataInput_inputUI <- function(id){
 #' dataInput Server Functions
 #'
 #' @import Seurat
-#' @import BPCells
 #' @import shiny
 #' @importFrom readr read_tsv
 #' @importFrom shinyWidgets updateSwitchInput
@@ -201,7 +200,7 @@ mod_dataInput_server <- function(id,
                        class(seuratObj[[assay]]$counts) == "dgCMatrix"){
                         bp_dir <- file.path(tempdir(), "BPCells_matrix")
                         if(!dir.exists(bp_dir)){ dir.create(bp_dir) }
-                        seuratObj[[assay]]$counts <- write_matrix_dir(
+                        seuratObj[[assay]]$counts <- BPCells::write_matrix_dir(
                             seuratObj[[assay]]$counts,
                             dir = file.path(bp_dir, "counts"),
                             overwrite = TRUE
@@ -211,7 +210,7 @@ mod_dataInput_server <- function(id,
                        class(seuratObj[[assay]]$data) == "dgCMatrix"){
                         bp_dir <- file.path(tempdir(), "BPCells_matrix")
                         if(!dir.exists(bp_dir)){ dir.create(bp_dir) }
-                        seuratObj[[assay]]$data <- write_matrix_dir(
+                        seuratObj[[assay]]$data <- BPCells::write_matrix_dir(
                             seuratObj[[assay]]$data,
                             dir = file.path(bp_dir, "data"),
                             overwrite = TRUE
@@ -349,7 +348,6 @@ mod_dataInput_server <- function(id,
 #'
 #' @description A modified version of the Seurat Read10X function using BPCells to read matrix
 #'
-#' @import BPCells
 #' @import Seurat
 #'
 #' @noRd
