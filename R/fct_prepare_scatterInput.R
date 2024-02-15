@@ -2,6 +2,7 @@
 #'
 #' @importFrom dplyr pull
 #' @importFrom shiny validate need
+#' @importFrom scales hue_pal
 #' @noRd
 prepare_scatterMeta <- function(obj,
                                 group.by = NULL,
