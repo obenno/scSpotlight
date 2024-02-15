@@ -26,7 +26,6 @@ transfer_expression <- function(expressionData, session){
 }
 
 reglScatter_plot <- function(plotMetaData, session){
-    message("invoking reglScatter_plot...")
     session$sendCustomMessage(type = "reglScatter_plot", plotMetaData)
 }
 
