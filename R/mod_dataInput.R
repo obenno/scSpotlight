@@ -331,7 +331,6 @@ mod_dataInput_server <- function(id,
             message("dataInput module increased scatter indicator")
             scatterReductionIndicator(scatterReductionIndicator()+1)
             scatterColorIndicator(scatterColorIndicator()+1)
-            transfer_meta(tibble::rownames_to_column(seuratObj[[]], "cells"), session)
             obj(seuratObj)
 
         })

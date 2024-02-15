@@ -70,8 +70,22 @@ mod_UpdateCategory_server <- function(id,
               choices = obj_meta(),
               selected = selected
           )
-
-      })
+          ## Also transfer metaData when obj_meta() changes
+          showNotification(
+              ui = div(div(class = c("spinner-border", "spinner-border-sm", "text-primary"),
+                           role = "status",
+                           span(class = "sr-only", "Loading...")),
+                       "Updating meta data..."),
+              action = NULL,
+              duration = NULL,
+              closeButton = FALSE,
+              type = "default",
+              id = "update_meta_notification",
+              session = session
+          )
+          transfer_meta(tibble::rownames_to_column(obj()[[]], "cells"), session)
+          removeNotification(id = "update_meta_notification", session)
+      }, priority = 50)
 
       observeEvent(obj_meta(), {
           req(obj())

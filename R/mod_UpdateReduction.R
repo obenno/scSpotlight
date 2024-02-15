@@ -51,7 +51,7 @@ mod_UpdateReduction_server <- function(id,
             selected = NULL
           )
 
-      })
+      }, priority = 61)
 
       observeEvent(input$reduction, {
           req(obj())
@@ -75,7 +75,7 @@ mod_UpdateReduction_server <- function(id,
           )
           transfer_reduction(d, session)
           removeNotification(id = "update_reduction_notification", session)
-      })
+      }, priority = 60)
 
       selectedReduction <- reactive({
           req(obj())

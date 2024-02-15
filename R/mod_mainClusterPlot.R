@@ -67,18 +67,33 @@ mod_mainClusterPlot_server <- function(id,
           }else if(length(filteredInputFeatures())>1){
               selectedFeature(NULL)
           }
-          ##if(!isTruthy(filteredInputFeatures())){
-          ##    message("filteredInputFeatures() changed to NULL")
-          ##    scatterReductionIndicator(scatterReductionIndicator()+1)
-          ##    scatterColorIndicator(scatterColorIndicator()+1)
-          ##}
+
       }, priority = 20, ignoreNULL = FALSE)
 
+      ## Extract gene expressions
       observeEvent(selectedFeature(), {
           req(obj())
-          ## show spinner when evaluating selectedFeature()
-          ##w$show()
           if(isTruthy(selectedFeature())){
+              ## Transfer expressionData
+              showNotification(
+                  ui = div(div(class = c("spinner-border", "spinner-border-sm", "text-primary"),
+                               role = "status",
+                               span(class = "sr-only", "Loading...")),
+                           "Extracting expression values..."),
+                  action = NULL,
+                  duration = NULL,
+                  closeButton = FALSE,
+                  type = "default",
+                  id = "extract_expr_notification",
+                  session = session
+              )
+              if(isTruthy(moduleScore())){
+                  expr <- AddModuleScore(obj(), features = filteredInputFeatures()) %>% pull()
+              }else{
+                  expr <- FetchData(obj(), vars = selectedFeature()) %>% pull()
+              }
+              transfer_expression(expr, session)
+              removeNotification(id = "extract_expr_notification", session)
               scatterColorIndicator(scatterColorIndicator()+1)
               message("selectedFeature() changed colorIndicator: ", scatterColorIndicator())
           }
@@ -123,22 +138,6 @@ mod_mainClusterPlot_server <- function(id,
           message("moduleScore switch changed scatterColorIndicator")
           scatterColorIndicator(scatterColorIndicator()+1)
       }, ignoreInit = TRUE)
-      ## Update scatterReductionInput only when scatterReductionIndicator changes
-      observeEvent(scatterReductionIndicator(), {
-          req(obj())
-          validate(
-              need(selectedReduction() %in% Reductions(obj()),
-                   paste0(selectedReduction(), " is not in object reductions"))
-          )
-          message("Updating scatterReductionInput")
-          d <- prepare_scatterReductionInput(obj(),
-                                             reduction = selectedReduction(),
-                                             mode = plottingMode(),
-                                             split.by = split.by())
-
-          scatterReductionInput(d)
-          message("Finished Updating scatterReductionInput")
-      }, priority = -20)
 
       ## Update scatterColorInput only when scatterColorIndicator changes
       observeEvent(scatterColorIndicator(), {
@@ -154,29 +153,18 @@ mod_mainClusterPlot_server <- function(id,
           }else{
               exprData <- NULL
           }
-          d <- prepare_scatterCatColorInput(obj(),
-                                            col_name = group.by(),
-                                            mode = plottingMode(),
-                                            split.by = split.by(),
-                                            feature = selectedFeature(),
-                                            exprData = exprData)
+
+          d <- prepare_scatterMeta(obj(),
+                                   group.by = group.by(),
+                                   mode = plottingMode(),
+                                   split.by = split.by(),
+                                   inputFeatures = filteredInputFeatures(),
+                                   selectedFeature = selectedFeature(),
+                                   moduleScore = moduleScore())
 
           scatterColorInput(d)
           message("Finished Updating scatterColorInput")
-      }, priority = -30)
-
-      ## Plotting with the last priority
-      ##observeEvent( scatterReductionIndicator(), {
-      ##    ##message("scatterReductionIndicator() is ", scatterReductionIndicator())
-      ##    ##message("scatterReductionInput() is ", is.null(scatterReductionInput()))
-      ##    req(scatterReductionIndicator() > 0)
-      ##    reglScatter_reduction(scatterReductionInput(), session)
-      ##}, priority = -100)
-      ##
-      ##observeEvent( scatterColorIndicator(), {
-      ##    req(scatterColorIndicator() > 0)
-      ##    reglScatter_color(scatterColorInput(), session)
-      ##}, priority = -100)
+      }, priority = -20)
 
       ## input$goBack was set in javacript code
       observeEvent(goBack(), {
@@ -213,14 +201,12 @@ mod_mainClusterPlot_server <- function(id,
           ##w$show()
           if(isTruthy(filteredInputFeatures()) && length(filteredInputFeatures())>1){
               if(!is.null(selectedFeature())){
-                  reglScatter_reduction(scatterReductionInput(), session)
-                  reglScatter_color(scatterColorInput(), session)
+                  reglScatter_plot(scatterColorInput(), session)
                   ## Add goBack button and goBack() value
                   reglScatter_addGoBack(session)
               }
           }else{
-              reglScatter_reduction(scatterReductionInput(), session)
-              reglScatter_color(scatterColorInput(), session)
+              reglScatter_plot(scatterColorInput(), session)
           }
           ##on.exit({
           ##    w$hide()
