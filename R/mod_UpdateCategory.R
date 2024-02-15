@@ -83,9 +83,10 @@ mod_UpdateCategory_server <- function(id,
               id = "update_meta_notification",
               session = session
           )
+          message("Transfering metaData...")
           transfer_meta(tibble::rownames_to_column(obj()[[]], "cells"), session)
           removeNotification(id = "update_meta_notification", session)
-      }, priority = 50)
+      }, priority = -10)
 
       observeEvent(obj_meta(), {
           req(obj())

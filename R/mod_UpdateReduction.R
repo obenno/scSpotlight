@@ -51,9 +51,9 @@ mod_UpdateReduction_server <- function(id,
             selected = NULL
           )
 
-      }, priority = 61)
+      })
 
-      observeEvent(input$reduction, {
+      observeEvent(list(obj(), input$reduction), {
           req(obj())
           req(input$reduction!="None")
           message("UpdateReduction module increased scatter indicator")
@@ -75,7 +75,7 @@ mod_UpdateReduction_server <- function(id,
           )
           transfer_reduction(d, session)
           removeNotification(id = "update_reduction_notification", session)
-      }, priority = 60)
+      }, priority = -10)
 
       selectedReduction <- reactive({
           req(obj())
