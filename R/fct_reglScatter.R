@@ -1,50 +1,33 @@
-#' reglScatter
+#' transfer reduction
 #'
-#' @description reglScatter function to create a new plot
-#'
-#' @return The return value, if any, from executing the function.
+#' transfer reduction dataframe to javascript
 #'
 #' @noRd
-reglScatter <- function(elID, pointsData, colorsData, session){
-    x = list(
-        id = elID,
-        pointsData = pointsData,
-        colorData = colorsData
-    )
-    session$sendCustomMessage(type = "reglScatter", x)
+transfer_reduction <- function(reductionData, session){
+    session$sendCustomMessage(type = "transfer_reduction", reductionData)
 }
 
-#' reglScatter_reduction
+#' transfer reduction
 #'
-#' @description reglScatter function to populate reduction point data
-#'
-#' @return The return value, if any, from executing the function.
+#' transfer reduction dataframe to javascript
 #'
 #' @noRd
-reglScatter_reduction <- function(pointsData, session){
-    ##x = list(
-    ##    ##id = elID,
-    ##    pointsData = pointsData
-    ##)
-    ##message(str(pointsData))
-    session$sendCustomMessage(type = "reglScatter_reduction", pointsData)
+transfer_meta <- function(metaData, session){
+    session$sendCustomMessage(type = "transfer_meta", metaData)
 }
 
-#' reglScatter_color
+#' transfer reduction
 #'
-#' @description reglScatter function to update point colors
-#'
-#' @return The return value, if any, from executing the function.
+#' transfer reduction dataframe to javascript
 #'
 #' @noRd
-reglScatter_color <- function(colorsData, session){
-    ##x = list(
-    ##    id = elID,
-    ##    colorsData = colorsData[["data"]],
-    ##    catNames = colorsData[["catNames"]],
-    ##    catColors = colorsData[["catColors"]]
-    ##)
-    session$sendCustomMessage(type = "reglScatter_color", colorsData)
+transfer_expression <- function(expressionData, session){
+    session$sendCustomMessage(type = "transfer_expression", expressionData)
+}
+
+reglScatter_plot <- function(plotMetaData, session){
+    message("invoking reglScatter_plot...")
+    session$sendCustomMessage(type = "reglScatter_plot", plotMetaData)
 }
 
 #' reglScatter_removeGrid
