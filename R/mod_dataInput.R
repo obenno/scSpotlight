@@ -602,18 +602,15 @@ validate_seuratRDS <- function(seuratObj,
 #'
 #' @noRd
 decompress_matrix_input <- function(fileName, filePath){
-    if(str_detect(fileName, "\\.tar.gz$") | str_detect(fileName, "\\.tgz$")){
+    if(str_detect(fileName, "\\.tar.gz$") || str_detect(fileName, "\\.tgz$") ||
+       str_detect(fileName, "\\.tar.bz2$") || str_detect(fileName, "\\.tbz2$")){
         tmpMatrixDir <- tempfile(pattern = "matrixDir")
-        system2("mkdir", c("-p", tmpMatrixDir))
-        system2("tar", c("xvzf", filePath, "-C", tmpMatrixDir))
-    }else if(str_detect(fileName, "\\.tar.bz2$") | str_detect(fileName, "\\.tbz2$")){
-        tmpMatrixDir <- tempfile(pattern = "matrixDir")
-        system2("mkdir", c("-p", tmpMatrixDir))
-        system2("tar", c("xvjf", filePath, "-C", tmpMatrixDir))
+        dir.create(tmpMatrixDir)
+        untar(tarfile = filePath, exdir = tmpMatrixDir)
     }else if(str_detect(fileName, "\\.zip$")){
         tmpMatrixDir <- tempfile(pattern = "matrixDir")
-        system2("mkdir", c("-p", tmpMatrixDir))
-        system2("unzip", c("-d", tmpMatrixDir, filePath))
+        dir.create(tmpMatrixDir)
+        unzip(zipfile = filePath, exdir = tmpMatrixDir)
     }else{
         stop("Compression format is not supported.")
     }
