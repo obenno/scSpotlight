@@ -32,7 +32,7 @@ mod_UpdateReduction_server <- function(id,
   moduleServer( id, function(input, output, session){
       ns <- session$ns
 
-      obj_reduction <- reactive({
+      reduction_list <- reactive({
           req(obj())
           k <- Reductions(obj())
           idx <- na.omit(match(c("umap", "tsne", "pca"), k))
@@ -40,14 +40,14 @@ mod_UpdateReduction_server <- function(id,
           return(ordered_reduction)
       })
 
-      observeEvent(obj_reduction(),{
+      observeEvent(reduction_list(),{
           req(obj())
           ## update input list
           updateSelectInput(
             session = session,
             inputId = "reduction",
             label = "Choose reduction",
-            choices = obj_reduction(),
+            choices = reduction_list(),
             selected = NULL
           )
 
@@ -55,9 +55,26 @@ mod_UpdateReduction_server <- function(id,
 
       observeEvent(input$reduction, {
           req(obj())
+          req(input$reduction!="None")
           message("UpdateReduction module increased scatter indicator")
           scatterReductionIndicator(scatterReductionIndicator()+1)
           scatterColorIndicator(scatterColorIndicator()+1)
+          d <- Embeddings(obj()[[input$reduction]]) %>% as.data.frame()
+          colnames(d) <- c("X", "Y")
+          showNotification(
+              ui = div(div(class = c("spinner-border", "spinner-border-sm", "text-primary"),
+                           role = "status",
+                           span(class = "sr-only", "Loading...")),
+                       "Updating reduction data..."),
+              action = NULL,
+              duration = NULL,
+              closeButton = FALSE,
+              type = "default",
+              id = "update_reduction_notification",
+              session = session
+          )
+          transfer_reduction(d, session)
+          removeNotification(id = "update_reduction_notification", session)
       })
 
       selectedReduction <- reactive({
