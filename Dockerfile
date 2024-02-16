@@ -30,9 +30,9 @@ RUN Rscript -e 'install.packages("RhpcBLASctl")'
 
 
 ## Install scSpotlight
-COPY scSpotlight_0.0.0.9000.tar.gz .
-RUN Rscript -e 'install.packages("scSpotlight_0.0.0.9000.tar.gz", repo = NULL)'
-RUN rm scSpotlight_0.0.0.9000.tar.gz
+COPY scSpotlight_0.0.3.9000.tar.gz .
+RUN Rscript -e 'install.packages("scSpotlight_0.0.3.9000.tar.gz", repo = NULL)'
+RUN rm scSpotlight_0.0.3.9000.tar.gz
 
 ## Follow Dockstore's guide
 ## switch back to the ubuntu user so this tool (and the files written) are not owned by root
