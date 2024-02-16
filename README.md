@@ -12,6 +12,10 @@ easily annotate your dataset with curated cell type markers.
 `scSpotlight` is built on [shiny](https://shiny.posit.co/),
 [Seurat](https://satijalab.org/seurat/) and
 [regl-scatterplot](https://github.com/flekschas/regl-scatterplot).
+Please refer to the documentation website for detailed instructions:
+
+  - <https://obenno.github.io/scSpotlight/>
+  - <https://scspotlight.netlify.app/> (EN, CN)
 
 <img src="https://raw.githubusercontent.com/obenno/scSpotlight/main/vignettes/articles/images/scSpotlight_landingFigure.png" width="80%" />
 
