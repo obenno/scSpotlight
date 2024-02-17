@@ -1,10 +1,12 @@
 
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
-# scSpotlight <a href="https://obenno.github.io/scSpotlight/"><img src="man/figures/logo.png" align="right" height="138" /></a>
+# scSpotlight <a href="https://obenno.github.io/scSpotlight/"><img src="man/figures/logo.png" align="right" height="139" alt="scSpotlight website" /></a>
 
 <!-- badges: start -->
 
+[![scSpotlight status
+badge](https://obenno.r-universe.dev/badges/scSpotlight)](https://obenno.r-universe.dev/scSpotlight)
 <!-- badges: end -->
 
 The goal of scSpotlight is to simplify your single cell analysis and
