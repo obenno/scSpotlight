@@ -2,8 +2,6 @@ name: build docker image CI
 
 on:
   push:
-    branches:
-      - "main"
     tags:
       - "v*"
 
@@ -36,6 +34,6 @@ jobs:
           push: true
           tags: |
             obenno/scspotlight:latest
-            obenno/scspotlight:${{ github.ref }}
+            obenno/scspotlight:${{ github.ref#refs/tags/v }}
             registry-intl.cn-hangzhou.aliyuncs.com/thunderbio/scspotlight:latest
-            registry-intl.cn-hangzhou.aliyuncs.com/thunderbio/scspotlight:${{ github.ref }}
+            registry-intl.cn-hangzhou.aliyuncs.com/thunderbio/scspotlight:${{ github.ref#refs/tags/v }}
