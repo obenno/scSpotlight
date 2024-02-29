@@ -36,6 +36,6 @@ jobs:
           push: true
           tags: |
             obenno/scspotlight:latest
-            obenno/scspotlight:${{ GITHUB_REF#refs/tags/v }}
+            obenno/scspotlight:${{ github.ref#refs/tags/v }}
             registry-intl.cn-hangzhou.aliyuncs.com/thunderbio/scspotlight:latest
-            registry-intl.cn-hangzhou.aliyuncs.com/thunderbio/scspotlight:${{ GITHUB_REF#refs/tags/v }}
+            registry-intl.cn-hangzhou.aliyuncs.com/thunderbio/scspotlight:${{ github.ref#refs/tags/v }}
