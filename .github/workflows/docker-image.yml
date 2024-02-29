@@ -26,6 +26,11 @@ jobs:
           registry: registry-intl.cn-hangzhou.aliyuncs.com
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_TOKEN }}
+      - name: Get Version
+        run: |
+          tag=${{ github.ref }}
+          version=${tag#refs/tags/v}
+          echo "VERSION=$version" >> "$GITHUB_ENV"
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
@@ -34,6 +39,6 @@ jobs:
           push: true
           tags: |
             obenno/scspotlight:latest
-            obenno/scspotlight:${{ github.ref | regex_replace('refs/tags/v', '') }}
+            obenno/scspotlight:$VERSION
             registry-intl.cn-hangzhou.aliyuncs.com/thunderbio/scspotlight:latest
-            registry-intl.cn-hangzhou.aliyuncs.com/thunderbio/scspotlight:${{ github.ref | | regex_replace('refs/tags/v', '') }}
+            registry-intl.cn-hangzhou.aliyuncs.com/thunderbio/scspotlight:$VERSION
