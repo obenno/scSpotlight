@@ -28,9 +28,10 @@ jobs:
           registry: registry-intl.cn-hangzhou.aliyuncs.com
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_TOKEN }}
+      - name: Get image version
+        run: VERSION=${{ github.ref#refs/tags/v }}
       - name: Build and push
         uses: docker/build-push-action@v5
-        run: VERSION=${{ github.ref#refs/tags/v }}
         with:
           context: .
           platforms: linux/amd64,linux/arm64
