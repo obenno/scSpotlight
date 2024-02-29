@@ -29,7 +29,7 @@ jobs:
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_TOKEN }}
       - name: Get image version
-        run: VERSION=${{ github.ref#refs/tags/v }}
+        run: VERSION=${{ GITHUB_REF#refs/tags/v }}
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
