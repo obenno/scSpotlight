@@ -969,6 +969,12 @@ Shiny.addCustomMessageHandler('reglScatter_plot', (msg) => {
     let moduleScore = msg.moduleScore;
     let catColors = msg.catColors;
     let selectedFeature = msg.selectedFeature;
+
+    // ensure catColors is an array
+    if(typeof catColors === "string"){
+        catColors = [catColors];
+    }
+
     // create plotData
     let plotData = prepare_plotData(reductionData, metaData, expressionData,
                                     mode, nPanels, group_by, split_by,
