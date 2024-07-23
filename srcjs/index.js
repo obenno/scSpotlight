@@ -66,6 +66,21 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
 
+    // note element auto adjust
+    const adjustNoteEl = () => {
+        const noteEl = document.getElementById(mainClusterPlot_noteID);
+        const containerEl = noteEl.parentElement
+
+        noteEl.style.bottom = "2%"
+        noteEl.style.bottom = `calc(${noteEl.style.bottom} - ${containerEl.scrollTop}px)`;
+    }
+
+    // Initial adjustment
+    //adjustCenteredElement();
+
+    // Adjust on scroll
+    document.getElementById(mainClusterPlot_noteID).parentElement.addEventListener('scroll', adjustNoteEl);
+
 
     // do something here ...
     //mainClusterPlot_scatterplot = createReglScatterInstance(mainClusterPlotElID);
