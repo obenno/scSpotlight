@@ -57,7 +57,7 @@ mod_FeaturePlot_server <- function(id,
                length(inputFeatures())>1 &&
                !isTruthy(selectedFeature())){
                 removeUI(
-                    selector = "#parent-wrapper",
+                    selector = "#reglScatter", # id of the reglScatterCanvas
                     multiple = FALSE,
                     immediate = TRUE,
                     session = session

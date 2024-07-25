@@ -22,7 +22,6 @@ mod_mainClusterPlot_ui <- function(id){
              height="600px",
              style = "position: relative",
              class = "align-items-center m-0 p-1",
-             div(id = ns("note"), class = "mainClusterPlotNote shadow"),
              mod_FeaturePlot_ui(ns("featurePlot"))
          )
      )
