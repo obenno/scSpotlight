@@ -455,7 +455,7 @@ export class reglScatterCanvas {
                         zData["point_Z_data"][i*2] = split_z[Object.keys(split_z)[i]];
                         zData["labelData"][i*2] = split_category[Object.keys(split_category)[i]].map(e => catTag.concat(e));
                         zData["panelTitles"][i*2] = Object.keys(split_category)[i] + " : " + group_by;
-                        zData["point_Z_data"][i*2+1] = scaleDataZ(split_expr[Object.keys(split_expr)[i]]); // expr panel
+                        zData["point_Z_data"][i*2+1] = reglScatterCanvas.scaleDataZ(split_expr[Object.keys(split_expr)[i]]); // expr panel
                         zData["labelData"][i*2+1] = split_expr[Object.keys(split_expr)[i]].map(e => exprTag.concat(d3.format(".3f")(e)));
                         zData["panelTitles"][i*2+1] = Object.keys(split_category)[i] + " : " + exprTitle;
                         zData["colorData"][i*2] = catColors;
