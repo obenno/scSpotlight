@@ -123,7 +123,7 @@ export class reglScatterCanvas {
 
         this.renderer.refresh();
         // Create scatter instances
-        this.scatterplots = Array.from(this.plotEl.querySelectorAll("canvas")).map((canvas) =>
+        this.scatterplots = Array.from(this.plotEl.querySelectorAll(".scatter-canvas")).map((canvas) =>
             this.constructor.createReglScatterInstance(this.renderer, canvas)
         );
 
@@ -138,6 +138,8 @@ export class reglScatterCanvas {
                 "scatterPlotNote"
             );
         });
+
+        this.showCatLabel();
     }
 
     updatePlotData() {
@@ -230,13 +232,77 @@ export class reglScatterCanvas {
             plotTitle.innerHTML = this.plotData.panelTitles[i];
             canvas_wrapper.appendChild(plotTitle);
 
-            const canvas = document.createElement("canvas");
-            canvas_wrapper.appendChild(canvas);
+            const scatterCanvas = document.createElement("canvas");
+            scatterCanvas.classList.add("scatter-canvas");
+            scatterCanvas.style.position = "absolute";
+            scatterCanvas.style.width = "100%";
+            scatterCanvas.style.height = "100%";
+            //scatterCanvas.style.zIndex = 1;
+            canvas_wrapper.appendChild(scatterCanvas);
+
+            const labelCanvas = document.createElement("canvas");
+            labelCanvas.classList.add("label-canvas");
+            labelCanvas.style.position = "absolute";
+            labelCanvas.style.width = "100%";
+            labelCanvas.style.height = "100%";
+            labelCanvas.style.inset = 0;
+            labelCanvas.style.pointerEvents = 'none';
+            //labelCanvas.style.zIndex = 0;
+            canvas_wrapper.appendChild(labelCanvas);
 
             canvasContainer.appendChild(canvas_wrapper);
         }
         this.plotEl.appendChild(canvasContainer);
     };
+
+    showCatLabel() {
+        // generate category name
+        let catTitles = [...new Set(this.origData.cellMetaData[this.plotMetaData.group_by])].sort(sortStringArray);
+        // get category panel index
+        let catPanel = this.plotData.zType.map((e,i) => {
+            if(e === "category"){
+                return i
+            }
+        })
+
+        //console.log(catTitles);
+        let labelcoordinates = [];
+        for(let k = 0; k < this.plotData.pointsData.length; ++k){
+            labelcoordinates[k] = [];
+            catTitles.forEach((e,i) => {
+                let x_data = [];
+                let y_data = [];
+                this.plotData.labelData[k].forEach((el, idx) => {
+                    let label = el.replace("Cat:", "");
+                    if(label == e){
+                        x_data.push(this.plotData.pointsData[k].x[idx])
+                        y_data.push(this.plotData.pointsData[k].y[idx])
+                    }
+
+                });
+
+                labelcoordinates[k][i] = [d3.mean(x_data), d3.mean(y_data)];
+            });
+
+        }
+
+
+        // Add label
+        Array.from(this.plotEl.querySelectorAll(".label-canvas")).forEach((e,i) => {
+            const ctx = e.getContext("2d");
+            ctx.clearRect(0, 0, e.width, e.height);
+            ctx.font = "30px Arial";
+            ctx.fillText("Hello", 50, 50);
+            for(let k = 0; k < catTitles.length; ++k){
+                ctx.fillText(catTitles[k],labelcoordinates[i][0],labelcoordinates[i][1]);
+            };
+        });
+
+    }
+
+    removeCatLabel() {
+
+    }
 
     static createReglScatterInstance(renderer, canvas) {
 
@@ -455,7 +521,7 @@ export class reglScatterCanvas {
                         zData["point_Z_data"][i*2] = split_z[Object.keys(split_z)[i]];
                         zData["labelData"][i*2] = split_category[Object.keys(split_category)[i]].map(e => catTag.concat(e));
                         zData["panelTitles"][i*2] = Object.keys(split_category)[i] + " : " + group_by;
-                        zData["point_Z_data"][i*2+1] = reglScatterCanvas.scaleDataZ(split_expr[Object.keys(split_expr)[i]]); // expr panel
+                        zData["point_Z_data"][i*2+1] = scaleDataZ(split_expr[Object.keys(split_expr)[i]]); // expr panel
                         zData["labelData"][i*2+1] = split_expr[Object.keys(split_expr)[i]].map(e => exprTag.concat(d3.format(".3f")(e)));
                         zData["panelTitles"][i*2+1] = Object.keys(split_category)[i] + " : " + exprTitle;
                         zData["colorData"][i*2] = catColors;

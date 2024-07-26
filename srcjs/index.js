@@ -115,7 +115,7 @@ Shiny.addCustomMessageHandler('reglScatter_plot', (msg) => {
     //myWaiter.show(waiterSpinner);
 
     // Transfer plotting meta data and init scatterplot
-    console.log("plotMetaData", msg);
+    //console.log("plotMetaData", msg);
     let mode = msg.mode;
     let nPanels = msg.nPanels;
     let group_by = msg.group_by;
@@ -132,6 +132,7 @@ Shiny.addCustomMessageHandler('reglScatter_plot', (msg) => {
 
     // update reglScatterCanvas data
     reglElementData.clear();
+    // have to invoke update method in order
     reglElementData.updatePlotMetaData({
         mode: mode,
         nPanels: nPanels,
@@ -142,6 +143,8 @@ Shiny.addCustomMessageHandler('reglScatter_plot', (msg) => {
         selectedFeature: selectedFeature
     });
     reglElementData.updatePlotData();
+    console.log(reglElementData.plotMetaData);
+    console.log(reglElementData.plotData);
     reglElementData.updateCanvas();
     reglElementData.updateCatLegend();
     reglElementData.updateExpLegend();
