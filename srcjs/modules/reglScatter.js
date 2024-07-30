@@ -401,6 +401,11 @@ export class reglScatterCanvas {
 
         ctx.font = `700 ${baseFontSize * window.devicePixelRatio}px Arial, Helvetica, sans-serif`;
         ctx.textAlign = "center";
+        // add shadow
+        ctx.shadowOffsetX = 3;
+        ctx.shadowOffsetY = 3;
+        ctx.shadowColor = "rgba(0,0,0,0.3)";
+        ctx.shadowBlur = 4;
         const dpr = window.devicePixelRatio;
 
         for (let i = 0; i < labelCoordinates.length; i++) {
