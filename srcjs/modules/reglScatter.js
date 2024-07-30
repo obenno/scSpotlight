@@ -111,6 +111,27 @@ export class reglScatterCanvas {
         };
 
         this.renderer.refresh();
+
+        // add element position adjustment observer
+        //const adjustObserver = new MutationObserver((mutationList, observer) => {
+        //    for (const mutation of mutationList) {
+        //        if(mutation.target.parentElement){
+        //            mutation.target.parentElement.addEventListener('scroll', () => {
+        //                const containerEl = entry.target.parentElement;
+        //
+        //                const infoEl = containerEl.querySelector("#info");
+        //                infoEl.style.bottom = "1%";
+        //                infoEl.style.bottom = `calc(${infoEl.style.bottom} - ${containerEl.scrollTop}px)`;
+        //
+        //                const noteEl = containerEl.querySelector("#scatterPlotNote");
+        //                noteEl.style.bottom = "2%";
+        //                noteEl.style.bottom = `calc(${noteEl.style.bottom} - ${containerEl.scrollTop}px)`;
+        //            });
+        //        }
+        //    }
+        //});
+        //
+        //adjustObserver.observe(this.plotEl, { attributes: true, childList: true, subtree: true });
     }
 
     updateCanvas() {
@@ -142,6 +163,9 @@ export class reglScatterCanvas {
         });
 
         this.showCatLabel();
+
+
+
     }
 
     updatePlotData() {
@@ -492,6 +516,7 @@ export class reglScatterCanvas {
         noteEl.id = noteId;
         noteEl.classList.add("mainClusterPlotNote");
         noteEl.classList.add("shadow");
+
         this.plotEl.appendChild(noteEl);
     };
 

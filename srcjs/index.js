@@ -36,30 +36,24 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
 
-    // note element auto adjust
-    const adjustNoteEl = () => {
+    // Adjust widget elements on scroll
+    document.getElementById(mainClusterPlotElID).addEventListener('scroll', () => {
         const containerEl = document.getElementById(mainClusterPlotElID)
-        const noteEl = containerEl.querySelector("#scatterPlotNote");
-    
-        noteEl.style.bottom = "2%"
-        noteEl.style.bottom = `calc(${noteEl.style.bottom} - ${containerEl.scrollTop}px)`;
-    }
 
-    // info element auto adjuat
-    const adjustInfoEl = () => {
-        const containerEl = document.getElementById(mainClusterPlotElID)
+        const noteEl = containerEl.querySelector("#scatterPlotNote");
+
+        noteEl.style.bottom = "2%";
+        noteEl.style.bottom = `calc(${noteEl.style.bottom} - ${containerEl.scrollTop}px)`;
+
         const infoEl = containerEl.querySelector("#info");
-    
-        infoEl.style.bottom = "1%"
+
+        infoEl.style.bottom = "1%";
         infoEl.style.bottom = `calc(${infoEl.style.bottom} - ${containerEl.scrollTop}px)`;
-    }
-    
-    // Initial adjustment
-    //adjustCenteredElement();
-    
-    // Adjust on scroll
-    document.getElementById(mainClusterPlotElID).addEventListener('scroll', adjustNoteEl);
-    document.getElementById(mainClusterPlotElID).addEventListener('scroll', adjustInfoEl);
+
+        const sliderEl = containerEl.querySelector(".label-slider");
+        sliderEl.style.bottom = "1%";
+        sliderEl.style.bottom = `calc(${sliderEl.style.bottom} - ${containerEl.scrollTop}px)`;
+    });
 
 }, false);
 
