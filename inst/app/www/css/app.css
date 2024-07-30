@@ -199,3 +199,15 @@ hr.setting {
     margin-left: auto;
     margin-right: 5px;
 }
+
+.label-slider {
+    position: absolute;
+    z-index: 1;
+    bottom: 1%;
+    left: 2.5rem;
+    height: 2rem;
+    padding: 0.5rem;
+    font-size: 0.9rem;
+    background-color: rgba(var(--bs-secondary-rgb), 0);
+    border-radius: 0.2rem;
+}

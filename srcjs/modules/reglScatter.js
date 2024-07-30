@@ -120,6 +120,8 @@ export class reglScatterCanvas {
         this.createNote("scatterPlotNote");
         // create info widget
         this.createInfoWidget("info");
+        // create slider widget
+        this.createLabelSlider("labelSlider");
 
         this.renderer.refresh();
         // Create scatter instances
@@ -177,11 +179,52 @@ export class reglScatterCanvas {
                 z: zData["point_Z_data"][i]
             };
         };
+
+        // labelData stores note/tooltip data
         plotData["labelData"] = zData["labelData"];
         plotData["panelTitles"] = zData["panelTitles"];
         plotData["colorData"] = zData["colorData"];
         plotData["zType"] = zData["zType"];
         plotData["cells"] = zData["cells"];
+
+        // generate category label data for each panel
+        let catTitles = [...new Set(this.origData.cellMetaData[this.plotMetaData.group_by])].sort(sortStringArray);
+        // get category panel index
+        let catPanel = plotData.zType.map((e,i) => {
+            if(e === "category"){
+                return i
+            }
+        })
+
+        // generate category label coordinates
+        // for each panel, assign empty value for expr panel
+        let labelCoordinates = [];
+        for(let k = 0; k < plotData.pointsData.length; ++k){
+            labelCoordinates[k] = [];
+            let labelData = plotData.labelData[k];
+            catTitles.forEach((e,i) => {
+                let x_data = [];
+                let y_data = [];
+                labelData.forEach((el, idx) => {
+                    let label = el.replace("Cat: ", "");
+                    if(label == e){
+                        x_data.push(plotData.pointsData[k].x[idx]);
+                        y_data.push(plotData.pointsData[k].y[idx]);
+                    }
+                });
+
+                labelCoordinates[k].push({
+                    x: d3.mean(x_data),
+                    y: d3.mean(y_data),
+                    label: e
+                });
+            });
+
+        }
+
+
+        // catLabelData stores cat label coordinates for each panel
+        plotData["catLabelCoordinates"] = labelCoordinates;
         this.plotData = plotData;
     };
 
@@ -247,7 +290,20 @@ export class reglScatterCanvas {
             labelCanvas.style.height = "100%";
             labelCanvas.style.inset = 0;
             labelCanvas.style.pointerEvents = 'none';
-            //labelCanvas.style.zIndex = 0;
+            labelCanvas.width = "600px";
+            labelCanvas.height = "600px";
+            // Add resize events to label canvas
+            const canvasObserver = new ResizeObserver((entries) => {
+                for (const entry of entries) {
+                    const { width, height } = entry.target.getBoundingClientRect();
+                    //canvas.width = window.innerWidth * window.devicePixelRatio;
+                    //canvas.height = window.innerHeight * window.devicePixelRatio;
+                    entry.target.width = width * window.devicePixelRatio;
+                    entry.target.height = height * window.devicePixelRatio;
+                }
+            });
+            canvasObserver.observe(labelCanvas);
+
             canvas_wrapper.appendChild(labelCanvas);
 
             canvasContainer.appendChild(canvas_wrapper);
@@ -256,52 +312,84 @@ export class reglScatterCanvas {
     };
 
     showCatLabel() {
-        // generate category name
-        let catTitles = [...new Set(this.origData.cellMetaData[this.plotMetaData.group_by])].sort(sortStringArray);
-        // get category panel index
-        let catPanel = this.plotData.zType.map((e,i) => {
-            if(e === "category"){
-                return i
-            }
-        })
-
-        //console.log(catTitles);
-        let labelcoordinates = [];
-        for(let k = 0; k < this.plotData.pointsData.length; ++k){
-            labelcoordinates[k] = [];
-            catTitles.forEach((e,i) => {
-                let x_data = [];
-                let y_data = [];
-                this.plotData.labelData[k].forEach((el, idx) => {
-                    let label = el.replace("Cat:", "");
-                    if(label == e){
-                        x_data.push(this.plotData.pointsData[k].x[idx])
-                        y_data.push(this.plotData.pointsData[k].y[idx])
-                    }
-
-                });
-
-                labelcoordinates[k][i] = [d3.mean(x_data), d3.mean(y_data)];
-            });
-
-        }
-
-
         // Add label
-        Array.from(this.plotEl.querySelectorAll(".label-canvas")).forEach((e,i) => {
-            const ctx = e.getContext("2d");
-            ctx.clearRect(0, 0, e.width, e.height);
-            ctx.font = "30px Arial";
-            ctx.fillText("Hello", 50, 50);
-            for(let k = 0; k < catTitles.length; ++k){
-                ctx.fillText(catTitles[k],labelcoordinates[i][0],labelcoordinates[i][1]);
-            };
+        this.scatterplots.forEach((sp, idx) => {
+            const labelCanvas = Array.from(this.plotEl.querySelectorAll(".label-canvas"));
+            //console.log("baseFontSize: ", baseFontSize);
+            sp.subscribe('drawing', ({ xScale, yScale}) => {
+                let sliderInput = this.plotEl.querySelector(".label-slider").querySelector("input");
+                let baseFontSize = sliderInput ? sliderInput.value : 0;
+                this.constructor.fillLabelCanvas(
+                    this.plotData.catLabelCoordinates[idx],
+                    labelCanvas[idx],
+                    baseFontSize,
+                    xScale,
+                    yScale
+                );
+            });
         });
+    }
+
+    createLabelSlider(ElId) {
+        const slider = document.createElement("div");
+        slider.id = ElId;
+        slider.classList.add("label-slider");
+        const sliderInput = document.createElement("input");
+        sliderInput.type = "range";
+        sliderInput.value = 0;
+        sliderInput.min = 0;
+        sliderInput.max = 50;
+        sliderInput.style.opacity = 0.6;
+        slider.appendChild(sliderInput);
+
+        sliderInput.addEventListener("mouseover", () => {
+            sliderInput.style.opacity = 0.8;
+        });
+        sliderInput.addEventListener("mouseout", () => {
+            sliderInput.style.opacity = 0.6;
+        });
+        // Add Eventlistener
+        sliderInput.addEventListener("input", () => {
+            let canvas = Array.from(this.plotEl.querySelectorAll(".label-canvas"));
+            canvas.forEach((e,i) => this.constructor.fillLabelCanvas(
+                this.plotData.catLabelCoordinates[i],
+                e,
+                sliderInput.value,
+                this.scatterplots[i].get("xScale"),
+                this.scatterplots[i].get("yScale")
+            ));
+
+        });
+
+        this.plotEl.appendChild(slider);
+
 
     }
 
-    removeCatLabel() {
+    static fillLabelCanvas(labelCoordinates, textCanvas, baseFontSize, xScale, yScale) {
+        // https://github.com/flekschas/regl-scatterplot/blob/master/example/text-labels.js#L128
+        // here labelCoordinates was calculated by original point data
+        //
+        const ctx = textCanvas.getContext("2d");
+        ctx.clearRect(0, 0, textCanvas.width, textCanvas.height);
+        ctx.fillStyle = 'rgba(0, 0, 0, 1)';
+        //const baseFontSize = 20;
 
+        ctx.font = `700 ${baseFontSize * window.devicePixelRatio}px Arial, Helvetica, sans-serif`;
+        ctx.textAlign = "center";
+        const dpr = window.devicePixelRatio;
+
+        for (let i = 0; i < labelCoordinates.length; i++) {
+            const x= labelCoordinates[i].x;
+            const y= labelCoordinates[i].y;
+            ctx.fillText(
+                labelCoordinates[i].label,
+                xScale(x) * dpr,
+                yScale(y) * dpr
+                // if use on single points, add a little adjustment
+                //yScale(y) * dpr - baseFontSize * 1.2 * dpr
+            );
+        }
     }
 
     static createReglScatterInstance(renderer, canvas) {
@@ -313,12 +401,15 @@ export class reglScatterCanvas {
             canvas,
             //width,
             //height,
+            xScale: d3.scaleLinear().domain([-1, 1]).nice(),
+            yScale: d3.scaleLinear().domain([-1, 1]).nice(),
             lassoMinDelay: 10,
             lassoMinDist: 2,
             showReticle: true,
             reticleColor: [1, 1, 0.878431373, 0.33],
             pointSize: 3,
             opacity: 0.5,
+            keyMap: { shift: 'lasso'}, // disable rotate
             lassoOnLongPress: true,
             lassoInitiator: true,
         });
@@ -429,7 +520,8 @@ export class reglScatterCanvas {
         infoContentEl.id = "info-content";
         let introduction = ["Pan: Click and drag your mouse.",
                             "Zoom: Scroll vertically.",
-                            `Rotate: While pressing <kbd>ALT</kbd>, click and drag your mouse.`,
+                            // disable rotate, the label canvas will not synchronize
+                            //`Rotate: While pressing <kbd>ALT</kbd>, click and drag your mouse.`,
                             `Lasso: Pressing <kbd>SHIFT</kbd> and drag your mouse.`];
 
         for(let i = 0; i< introduction.length; ++i){
@@ -470,14 +562,14 @@ export class reglScatterCanvas {
         let split_expr = null;
         let split_cells = null;
         let exprTag = null;
-        let catTag = "Cat:";
+        let catTag = "Cat: ";
         let exprTitle = null;
 
         if(moduleScore){
-            exprTag = "ModuleScore:";
+            exprTag = "ModuleScore: ";
             exprTitle = "ModuleScore";
         }else{
-            exprTag = "Expr:";
+            exprTag = "Expr: ";
             exprTitle = selectedFeature;
         };
         // d3.interpolate will generate rgb value by default
@@ -521,7 +613,7 @@ export class reglScatterCanvas {
                         zData["point_Z_data"][i*2] = split_z[Object.keys(split_z)[i]];
                         zData["labelData"][i*2] = split_category[Object.keys(split_category)[i]].map(e => catTag.concat(e));
                         zData["panelTitles"][i*2] = Object.keys(split_category)[i] + " : " + group_by;
-                        zData["point_Z_data"][i*2+1] = scaleDataZ(split_expr[Object.keys(split_expr)[i]]); // expr panel
+                        zData["point_Z_data"][i*2+1] = reglScatterCanvas.scaleDataZ(split_expr[Object.keys(split_expr)[i]]); // expr panel
                         zData["labelData"][i*2+1] = split_expr[Object.keys(split_expr)[i]].map(e => exprTag.concat(d3.format(".3f")(e)));
                         zData["panelTitles"][i*2+1] = Object.keys(split_category)[i] + " : " + exprTitle;
                         zData["colorData"][i*2] = catColors;
