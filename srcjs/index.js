@@ -4,7 +4,8 @@ import { resize_infoBox, update_collapse_icon } from './modules/collapse_infoBox
 import * as myWaiter from './modules/myWaiter.js';
 export * as myWaiter from './modules/myWaiter.js';
 
-import { reglScatterCanvas } from './modules/reglScatter.js'
+import { reglScatterCanvas } from './modules/reglScatter.js';
+export * from 'html2canvas';
 
 // id of the mainClusterPlot parent div
 var mainClusterPlotElID = "mainClusterPlot-clusterPlot";
@@ -38,7 +39,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Adjust widget elements on scroll
     document.getElementById(mainClusterPlotElID).addEventListener('scroll', () => {
-        const containerEl = document.getElementById(mainClusterPlotElID)
+        const containerEl = document.getElementById(mainClusterPlotElID);
 
         const noteEl = containerEl.querySelector("#scatterPlotNote");
 
@@ -136,8 +137,9 @@ Shiny.addCustomMessageHandler('reglScatter_plot', (msg) => {
         catColors: catColors,
         selectedFeature: selectedFeature
     });
+
+    //console.log(reglElementData.plotMetaData);
     reglElementData.updatePlotData();
-    console.log(reglElementData.plotMetaData);
     console.log(reglElementData.plotData);
     reglElementData.updateCanvas();
     reglElementData.updateCatLegend();
@@ -180,7 +182,7 @@ Shiny.addCustomMessageHandler('reglScatter_plot', (msg) => {
             const hoveredElements = Array.from(document.querySelectorAll(':hover'));
 
             const filteredElements = hoveredElements.filter(e => {
-                return e.classList.contains('scatter-legend')
+                return e.classList.contains('scatter-legend');
             });
             // ensure the legend was not hovered
             if(filteredElements.length == 0){

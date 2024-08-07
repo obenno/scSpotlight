@@ -1,5 +1,6 @@
 import createScatterplot, { createRenderer } from 'regl-scatterplot';
 import * as d3 from "d3";
+import html2canvas from 'html2canvas';
 
 export class reglScatterCanvas {
     // this will create a element containing all the elements of the scatter plot
@@ -46,7 +47,8 @@ export class reglScatterCanvas {
             split_by: null,
             catColors: [],
             selectedFeature: null,
-            moduleScore: false
+            moduleScore: false,
+            labelSize: 0
         };
 
         // Create a reusable renderer
@@ -67,7 +69,10 @@ export class reglScatterCanvas {
     }
 
     updatePlotMetaData(plotMetaData){
-        this.plotMetaData = plotMetaData
+        // plotMetaData may only have subset keys of the plotMetaData
+        for (let key in plotMetaData) {
+            this.plotMetaData[key] = plotMetaData[key];
+        }
     }
 
 
@@ -99,16 +104,16 @@ export class reglScatterCanvas {
             cells: [],
             panelTitles: []
         };
-        // init plotMetaData
-        this.plotMetaData = {
-            mode: null,
-            nPanels: null,
-            group_by: null,
-            split_by: null,
-            catColors: [],
-            selectedFeature: null,
-            moduleScore: false
-        };
+        
+        // clear plotMetaData
+        // this.plotMetaData.labelSize shall remains the same as previous
+        this.plotMetaData.mode = null;
+        this.plotMetaData.nPanels = null;
+        this.plotMetaData.group_by = null;
+        this.plotMetaData.split_by = null;
+        this.plotMetaData.catColors = [];
+        this.plotMetaData.selectedFeature = null;
+        this.plotMetaData.moduleScore = false;
 
         this.renderer.refresh();
 
@@ -143,6 +148,8 @@ export class reglScatterCanvas {
         this.createInfoWidget("info");
         // create slider widget
         this.createLabelSlider("labelSlider");
+        // create download icon
+        this.createDownloadIcon("downloadIcon");
 
         this.renderer.refresh();
         // Create scatter instances
@@ -216,9 +223,9 @@ export class reglScatterCanvas {
         // get category panel index
         let catPanel = plotData.zType.map((e,i) => {
             if(e === "category"){
-                return i
+                return i;
             }
-        })
+        });
 
         // generate category label coordinates
         // for each panel, assign empty value for expr panel
@@ -343,13 +350,15 @@ export class reglScatterCanvas {
             sp.subscribe('drawing', ({ xScale, yScale}) => {
                 let sliderInput = this.plotEl.querySelector(".label-slider").querySelector("input");
                 let baseFontSize = sliderInput ? sliderInput.value : 0;
-                this.constructor.fillLabelCanvas(
-                    this.plotData.catLabelCoordinates[idx],
-                    labelCanvas[idx],
-                    baseFontSize,
-                    xScale,
-                    yScale
-                );
+                if(typeof this.plotData.catLabelCoordinates[idx] != 'undefined'){
+                    this.constructor.fillLabelCanvas(
+                        this.plotData.catLabelCoordinates[idx],
+                        labelCanvas[idx],
+                        baseFontSize,
+                        xScale,
+                        yScale
+                    );
+                }
             });
         });
     }
@@ -360,10 +369,11 @@ export class reglScatterCanvas {
         slider.classList.add("label-slider");
         const sliderInput = document.createElement("input");
         sliderInput.type = "range";
-        sliderInput.value = 0;
+        sliderInput.value = this.plotMetaData.labelSize;
         sliderInput.min = 0;
         sliderInput.max = 50;
         sliderInput.style.opacity = 0.6;
+        sliderInput.style.width = "6rem";
         slider.appendChild(sliderInput);
 
         sliderInput.addEventListener("mouseover", () => {
@@ -373,15 +383,18 @@ export class reglScatterCanvas {
             sliderInput.style.opacity = 0.6;
         });
         // Add Eventlistener
-        sliderInput.addEventListener("input", () => {
+        sliderInput.addEventListener("input", (event) => {
+
+            this.plotMetaData.labelSize = event.target.value;
             let canvas = Array.from(this.plotEl.querySelectorAll(".label-canvas"));
             canvas.forEach((e,i) => this.constructor.fillLabelCanvas(
                 this.plotData.catLabelCoordinates[i],
                 e,
-                sliderInput.value,
+                event.target.value,
                 this.scatterplots[i].get("xScale"),
                 this.scatterplots[i].get("yScale")
             ));
+
 
         });
 
@@ -565,6 +578,113 @@ export class reglScatterCanvas {
         this.plotEl.appendChild(infoEl);
 
     };
+
+    createDownloadIcon(elId) {
+        const downloadEl = document.createElement("div");
+        downloadEl.id = elId;
+        downloadEl.style.width = "2rem";
+        downloadEl.style.height = "2rem";
+        downloadEl.style.position = "absolute";
+        downloadEl.style.zIndex = 1;
+        downloadEl.style.bottom = "1%";
+        downloadEl.style.left = "9.5rem";
+        downloadEl.style.padding = "0.2rem";
+        downloadEl.style.backgroundColor = "rgba(var(--bs-secondary-rgb), 0.4)";
+        downloadEl.style.display = "inline-block";
+        //downloadEl.style.transition = "background 0.15s cubic-bezier(0.25, 0.1, 0.25, 1)";
+
+        const svg = document.createElement("svg");
+        const path = document.createElement("path");
+        path.setAttribute("d", 'M149.1 64.8L138.7 96 64 96C28.7 96 0 124.7 0 160L0 416c0 35.3 28.7 64 64 64l384 0c35.3 0 64-28.7 64-64l0-256c0-35.3-28.7-64-64-64l-74.7 0L362.9 64.8C356.4 45.2 338.1 32 317.4 32L194.6 32c-20.7 0-39 13.2-45.5 32.8zM256 192a96 96 0 1 1 0 192 96 96 0 1 1 0-192z');
+        svg.appendChild(path);
+
+        svg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+        svg.setAttribute("viewBox", "0 0 512 512");
+        svg.style.fill = 'blue';
+        //svg.style.fill = "rgba(var(--bs-secondary-rgb), 0.2)";
+        //svg.width = "100%";
+        //svg.height = "100%";
+        downloadEl.appendChild(svg);
+
+        //downloadEl.addEventListener("mouseover", () => {
+        //    downloadEl.querySelector("svg").style.opacity = 0.8;
+        //});
+        //downloadEl.addEventListener("mouseover", () => {
+        //    downloadEl.querySelector("svg").style.opacity = 0.2;
+        //});
+        //
+        downloadEl.addEventListener("click", () => {
+
+            const scatterCanvas = html2canvas(
+                this.plotEl.querySelector("#canvas-wrapper"),
+                {
+                    backgroundColor: null,
+                    scale: window.devicePixelRatio*4
+                }
+            );
+            scatterCanvas.then(canvas => {
+                // create new div with the same dimension
+                const scatterWidth = parseFloat(this.plotEl.parentElement.scrollWidth);
+                const scatterHeight = parseFloat(this.plotEl.parentElement.scrollHeight);
+                console.log("width, height: ", scatterWidth, scatterHeight);
+
+                // clone catLegendEl
+                const catLegendClone = this.catLegendEl.cloneNode(true);
+                catLegendClone.style.width = "200px";
+
+                // clone expLegendEl
+                const expLegendClone = this.expLegendEl.cloneNode(true);
+                expLegendClone.style.width = "100%";
+                expLegendClone.style.marginLeft = "5px";
+                expLegendClone.style.marginRight = "5px";
+                expLegendClone.style.height = "10px";
+
+                const tempDiv = document.createElement("div");
+
+                tempDiv.style.width = 5 + 5 + scatterWidth + 5 + catLegendClone.style.width + 5 + "px";
+                tempDiv.style.height = Math.max(scatterHeight, catLegendClone.style.height) + "px";
+                console.log("tempDiv width, height: ", tempDiv.style.width, tempDiv.style.height);
+                tempDiv.style.position = 'absolute';
+                tempDiv.style.left = '-9999px'; // Move off-screen
+                tempDiv.style.display = "flex";
+                tempDiv.style.justifyContent = "space-between";
+                tempDiv.style.alignItems = "center";
+                tempDiv.style.overflow = 'hidden';
+
+                const canvasColDiv = document.createElement("div");
+                canvasColDiv.style.margin = "5px";
+                canvasColDiv.style.padding = 0;
+                canvasColDiv.style.alignItems = "center";
+                canvasColDiv.style.justifyContent = "center";
+                canvasColDiv.appendChild(canvas);
+                tempDiv.appendChild(canvasColDiv);
+
+                const legendColDiv = document.createElement("div");
+                legendColDiv.style.display = "flex";
+                legendColDiv.style.flexDirection = "column";
+                legendColDiv.style.width = "200px";
+                legendColDiv.style.margin = "5px";
+                legendColDiv.style.padding = 0;
+                legendColDiv.style.alignItems = "center";
+                legendColDiv.style.justifyContent = "center";
+
+                legendColDiv.appendChild(catLegendClone);
+                legendColDiv.appendChild(expLegendClone);
+
+                tempDiv.appendChild(legendColDiv);
+
+                document.body.appendChild(tempDiv);
+                html2canvas(tempDiv, {
+                    backgroundColor: null, // or 'transparent'
+                    scale: window.devicePixelRatio*4
+                }).then(canvas => {
+                    downloadCanvasAsPNG(canvas, "scatter.png");
+                    document.body.removeChild(tempDiv);
+                });
+            });
+        });
+        this.plotEl.appendChild(downloadEl);
+    }
 
     static prepare_Z_data (
         metaData,
@@ -1140,4 +1260,30 @@ export function Legend(color, {
         .text(title));
 
   return svg.node();
+};
+
+const downloadCanvasAsPNG = (
+    canvas,
+    fileName = 'canvas.png'
+) => {
+    return new Promise((resolve, reject) => {
+        canvas.toBlob(blob => {
+            if (!blob) {
+                reject(new Error('Canvas to Blob conversion failed'));
+                return;
+            }
+
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = fileName;
+
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            URL.revokeObjectURL(url);
+            resolve();
+        }, 'image/png');
+    });
 };
