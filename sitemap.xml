@@ -1,39 +1,15 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url>
-    <loc>https://obenno.github.io/scSpotlight/404.html</loc>
-  </url>
-  <url>
-    <loc>https://obenno.github.io/scSpotlight/LICENSE-text.html</loc>
-  </url>
-  <url>
-    <loc>https://obenno.github.io/scSpotlight/LICENSE.html</loc>
-  </url>
-  <url>
-    <loc>https://obenno.github.io/scSpotlight/articles/index.html</loc>
-  </url>
-  <url>
-    <loc>https://obenno.github.io/scSpotlight/articles/scSpotlight.html</loc>
-  </url>
-  <url>
-    <loc>https://obenno.github.io/scSpotlight/authors.html</loc>
-  </url>
-  <url>
-    <loc>https://obenno.github.io/scSpotlight/index.html</loc>
-  </url>
-  <url>
-    <loc>https://obenno.github.io/scSpotlight/news/index.html</loc>
-  </url>
-  <url>
-    <loc>https://obenno.github.io/scSpotlight/reference/index.html</loc>
-  </url>
-  <url>
-    <loc>https://obenno.github.io/scSpotlight/reference/pipe.html</loc>
-  </url>
-  <url>
-    <loc>https://obenno.github.io/scSpotlight/reference/run_app.html</loc>
-  </url>
-  <url>
-    <loc>https://obenno.github.io/scSpotlight/reference/scSpotlight-package.html</loc>
-  </url>
+<urlset xmlns = 'http://www.sitemaps.org/schemas/sitemap/0.9'>
+<url><loc>https://obenno.github.io/scSpotlight/404.html</loc></url>
+<url><loc>https://obenno.github.io/scSpotlight/LICENSE-text.html</loc></url>
+<url><loc>https://obenno.github.io/scSpotlight/LICENSE.html</loc></url>
+<url><loc>https://obenno.github.io/scSpotlight/articles/index.html</loc></url>
+<url><loc>https://obenno.github.io/scSpotlight/articles/scSpotlight.html</loc></url>
+<url><loc>https://obenno.github.io/scSpotlight/authors.html</loc></url>
+<url><loc>https://obenno.github.io/scSpotlight/index.html</loc></url>
+<url><loc>https://obenno.github.io/scSpotlight/news/index.html</loc></url>
+<url><loc>https://obenno.github.io/scSpotlight/reference/index.html</loc></url>
+<url><loc>https://obenno.github.io/scSpotlight/reference/pipe.html</loc></url>
+<url><loc>https://obenno.github.io/scSpotlight/reference/run_app.html</loc></url>
+<url><loc>https://obenno.github.io/scSpotlight/reference/scSpotlight-package.html</loc></url>
 </urlset>
+
