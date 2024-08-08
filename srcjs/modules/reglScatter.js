@@ -565,7 +565,9 @@ export class reglScatterCanvas {
                             "Zoom: Scroll vertically.",
                             // disable rotate, the label canvas will not synchronize
                             //`Rotate: While pressing <kbd>ALT</kbd>, click and drag your mouse.`,
-                            `Lasso: Pressing <kbd>SHIFT</kbd> and drag your mouse.`];
+                            `Lasso: Pressing <kbd>SHIFT</kbd> and drag your mouse.`,
+                            "Change slider to adjust label size.",
+                            "Click download icon to save the image."];
 
         for(let i = 0; i< introduction.length; ++i){
             let li = document.createElement('li');
@@ -589,30 +591,41 @@ export class reglScatterCanvas {
         downloadEl.style.bottom = "1%";
         downloadEl.style.left = "9.5rem";
         downloadEl.style.padding = "0.2rem";
-        downloadEl.style.backgroundColor = "rgba(var(--bs-secondary-rgb), 0.4)";
-        downloadEl.style.display = "inline-block";
+        //downloadEl.style.backgroundColor = "rgba(var(--bs-secondary-rgb), 0.4)";
+        downloadEl.style.display = "flex";
+        downloadEl.style.justifyContent = "center";
+        downloadEl.style.alignItems = "center";
+        //downloadEl.style.overflow = "hidden;"
         //downloadEl.style.transition = "background 0.15s cubic-bezier(0.25, 0.1, 0.25, 1)";
 
-        const svg = document.createElement("svg");
-        const path = document.createElement("path");
-        path.setAttribute("d", 'M149.1 64.8L138.7 96 64 96C28.7 96 0 124.7 0 160L0 416c0 35.3 28.7 64 64 64l384 0c35.3 0 64-28.7 64-64l0-256c0-35.3-28.7-64-64-64l-74.7 0L362.9 64.8C356.4 45.2 338.1 32 317.4 32L194.6 32c-20.7 0-39 13.2-45.5 32.8zM256 192a96 96 0 1 1 0 192 96 96 0 1 1 0-192z');
-        svg.appendChild(path);
 
-        svg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-        svg.setAttribute("viewBox", "0 0 512 512");
-        svg.style.fill = 'blue';
-        //svg.style.fill = "rgba(var(--bs-secondary-rgb), 0.2)";
-        //svg.width = "100%";
-        //svg.height = "100%";
-        downloadEl.appendChild(svg);
+        const ns = "http://www.w3.org/2000/svg";
+        const icon = document.createElementNS(ns, "svg");
+        icon.setAttribute("width", "100%");
+        icon.setAttribute("height", "100%");
+        icon.setAttribute("viewBox", "0 0 24 24");
+        //icon.style.background = "rgba(255,0,0,0.1)";
+        icon.style.overflow = "visible";
+        icon.style.width = "100%";
+        icon.style.height = "100%";
 
-        //downloadEl.addEventListener("mouseover", () => {
-        //    downloadEl.querySelector("svg").style.opacity = 0.8;
-        //});
-        //downloadEl.addEventListener("mouseover", () => {
-        //    downloadEl.querySelector("svg").style.opacity = 0.2;
-        //});
-        //
+
+        const path = document.createElementNS(ns, "path");
+        path.setAttribute("d", 'M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z');
+        path.setAttribute("fill", "#fff");
+        path.setAttribute("stroke", "rgba(var(--bs-secondary-rgb), 0.4)"); // Red stroke
+        path.setAttribute("stroke-width", "1.5"); // Thin stroke
+        icon.appendChild(path);
+
+        downloadEl.appendChild(icon);
+
+        icon.addEventListener("mouseover", () => {
+            path.setAttribute("stroke", "rgba(var(--bs-secondary-rgb), 1)");
+        });
+        icon.addEventListener("mouseout", () => {
+            path.setAttribute("stroke", "rgba(var(--bs-secondary-rgb), 0.4)");
+        });
+
         downloadEl.addEventListener("click", () => {
 
             const scatterCanvas = html2canvas(
@@ -626,7 +639,6 @@ export class reglScatterCanvas {
                 // create new div with the same dimension
                 const scatterWidth = parseFloat(this.plotEl.parentElement.scrollWidth);
                 const scatterHeight = parseFloat(this.plotEl.parentElement.scrollHeight);
-                console.log("width, height: ", scatterWidth, scatterHeight);
 
                 // clone catLegendEl
                 const catLegendClone = this.catLegendEl.cloneNode(true);
@@ -643,7 +655,7 @@ export class reglScatterCanvas {
 
                 tempDiv.style.width = 5 + 5 + scatterWidth + 5 + catLegendClone.style.width + 5 + "px";
                 tempDiv.style.height = Math.max(scatterHeight, catLegendClone.style.height) + "px";
-                console.log("tempDiv width, height: ", tempDiv.style.width, tempDiv.style.height);
+
                 tempDiv.style.position = 'absolute';
                 tempDiv.style.left = '-9999px'; // Move off-screen
                 tempDiv.style.display = "flex";
