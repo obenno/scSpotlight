@@ -14,6 +14,10 @@ jobs:
   docker:
     runs-on: ubuntu-latest
     steps:
+      - name: Get latest tag
+        run: |
+          # This command gets the latest tag, removing the 'v' prefix if it exists
+          echo "TAG=$(git describe --tags --abbrev=0 | sed 's/^v//')" >> "$GITHUB_ENV"
       - name: Checkout
         uses: actions/checkout@v4
       - name: Set up QEMU
@@ -31,10 +35,6 @@ jobs:
           registry: registry-intl.cn-hangzhou.aliyuncs.com
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_TOKEN }}
-      - name: Get latest tag
-        run: |
-          # This command gets the latest tag, removing the 'v' prefix if it exists
-          echo "TAG=$(git describe --tags --abbrev=0 | sed 's/^v//')" >> "$GITHUB_ENV"
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
