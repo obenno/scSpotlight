@@ -3,7 +3,7 @@ pkgdown: 2.1.0
 pkgdown_sha: ~
 articles:
   articles/scSpotlight: scSpotlight.html
-last_built: 2024-08-08T11:51Z
+last_built: 2024-08-08T12:14Z
 urls:
   reference: https://obenno.github.io/scSpotlight/reference
   article: https://obenno.github.io/scSpotlight/articles
