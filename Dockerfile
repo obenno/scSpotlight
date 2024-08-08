@@ -30,7 +30,8 @@ WORKDIR /work
 
 
 ## Install scSpotlight
-RUN Rscript -e 'install.packages("pak"); pak::repo_add(scSpotlight = "https://obenno.r-universe.dev"); pak::pkg_install("scSpotlight")'
+RUN Rscript -e 'install.packages("pak");'
+RUN Rscript -e 'pak::repo_add(scSpotlight = "https://obenno.r-universe.dev"); pak::pkg_install("scSpotlight");'
 ## Install suggested packages
 RUN Rscript -e 'pak::repo_add(bpcells = "https://bnprks.r-universe.dev"); pak::pkg_install("BPCells")'
 RUN Rscript -e 'pak::repo_add(satijalab = "https://satijalab.r-universe.dev"); pak::pkg_install(c("presto", "glmGamPoi"))'
