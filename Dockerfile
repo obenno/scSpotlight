@@ -12,7 +12,7 @@ MAINTAINER oben <obennoname@gmail.com>
 
 ## Install pre-requisites
 USER root
-RUN apt update && apt install -y libhdf5-dev libxml2-dev libgsl-dev libfontconfig1-dev libharfbuzz-dev libfribidi-dev libfreetype-dev libpng-dev libtiff5-dev libjpeg-dev libglpk-dev
+##RUN apt update && apt install -y libhdf5-dev libxml2-dev libgsl-dev libfontconfig1-dev libharfbuzz-dev libfribidi-dev libfreetype-dev libpng-dev libtiff5-dev libjpeg-dev libglpk-dev
 
 WORKDIR /work
 ## Install R packages
