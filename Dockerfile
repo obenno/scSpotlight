@@ -35,6 +35,8 @@ WORKDIR /work
 RUN Rscript -e 'install.packages("pak", repos = sprintf("https://r-lib.github.io/p/pak/stable/%s/%s/%s", .Platform$pkgType, R.Version()$os, R.Version()$arch))'
 ## Install Matrix 1.6.5 manually, the latest version 1.7.0 requires R>4.4.0
 RUN Rscript -e 'pak::pkg_install("cran/Matrix@1.6-5")'
+## Install MASS 7.3-60.0.1, the latest version also requires R>4.4.0
+RUN Rscript -e 'pak::pkg_install("cran/MASS@7.3-60.0.1")'
 ## Install scSpotlight
 RUN Rscript -e 'pak::repo_add(scSpotlight = "https://obenno.r-universe.dev"); pak::pkg_install("scSpotlight");'
 ## Install suggested packages
