@@ -29,7 +29,7 @@ export class reglScatterCanvas {
             reductionData: {},
             cellMetaData:  {},
             expressionData: []
-        }
+        };
         // init plotData
         this.plotData = {
             pointsData: [],
@@ -57,15 +57,15 @@ export class reglScatterCanvas {
     }
 
     updateReductionData(reductionData) {
-        this.origData.reductionData = reductionData
+        this.origData.reductionData = reductionData;
     }
 
     updateCellMetaData(cellMetaData) {
-        this.origData.cellMetaData = cellMetaData
+        this.origData.cellMetaData = cellMetaData;
     }
 
     updateExpressionData(expressionData) {
-        this.origData.expressionData = expressionData
+        this.origData.expressionData = expressionData;
     }
 
     updatePlotMetaData(plotMetaData){

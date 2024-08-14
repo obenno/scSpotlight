@@ -383,10 +383,6 @@ infoBox_ui <- function(){
         stop("runningMode is not supported")
     }
 
-    ## Add id to infoBox
-    bottom_box <- tagAppendAttributes(bottom_box,
-                                      id = "infoBox")
-
     ## Add collapse class to tab-content
     bottom_box <- tagAppendAttributes(bottom_box,
                                       .cssSelector = ".tab-content",

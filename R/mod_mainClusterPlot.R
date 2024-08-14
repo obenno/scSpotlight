@@ -13,7 +13,6 @@ mod_mainClusterPlot_ui <- function(id){
      card(
          id = ns("mainClusterPlot"),
          full_screen = TRUE,
-         height = "500px",
          class = c("border", "border-primary", "border-2", "mb-1", "shadow"),
          ## add resize property
          style = "resize:both; width:100%",

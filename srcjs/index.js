@@ -8,7 +8,7 @@ import { reglScatterCanvas } from './modules/reglScatter.js';
 export * from 'html2canvas';
 
 // id of the mainClusterPlot parent div
-var mainClusterPlotElID = "mainClusterPlot-clusterPlot";
+const mainPlotElId = "mainClusterPlot-clusterPlot";
 
 // legend hover event indicator
 // to distinguish legend hover and manualy selecting events
@@ -18,28 +18,29 @@ var legendHover = 0;
 // thus here init scatterplot instance
 document.addEventListener('DOMContentLoaded', function () {
 
-
+    // Get infoBoxId
+    const infoBoxId = document.getElementById("bottom_box").parentElement.parentElement.id;
     // init infoBox size to shrinked
-    resize_infoBox(56);
-    document.getElementById("infoBox").querySelector(".bslib-full-screen-enter").style.display = "none";
+    resize_infoBox(mainPlotElId, infoBoxId, 56);
+    document.getElementById(infoBoxId).querySelector(".bslib-full-screen-enter").style.display = "none";
     // Add event listener to infoBox collapsing icon
     const collapsing_icon = document.getElementById("infoBox_show");
     collapsing_icon.addEventListener("click", function() {
-        update_collapse_icon();
+        update_collapse_icon(this.id);
         if(collapsing_icon.classList.contains("collapsed")){
-            resize_infoBox(56);
+            resize_infoBox(mainPlotElId, infoBoxId, 56);
             // hide full screen button
-            document.getElementById("infoBox").querySelector(".bslib-full-screen-enter").style.display = "none";
+            document.getElementById(infoBoxId).querySelector(".bslib-full-screen-enter").style.display = "none";
         }else{
-            resize_infoBox(250);
+            resize_infoBox(mainPlotElId, infoBoxId, 250);
             // show full screen button
-            document.getElementById("infoBox").querySelector(".bslib-full-screen-enter").style.display = "";
+            document.getElementById(infoBoxId).querySelector(".bslib-full-screen-enter").style.display = "";
         }
     });
 
     // Adjust widget elements on scroll
-    document.getElementById(mainClusterPlotElID).addEventListener('scroll', () => {
-        const containerEl = document.getElementById(mainClusterPlotElID);
+    document.getElementById(mainPlotElId).addEventListener('scroll', () => {
+        const containerEl = document.getElementById(mainPlotElId);
 
         const noteEl = containerEl.querySelector("#scatterPlotNote");
 
@@ -87,6 +88,15 @@ const tellShinyGoBack = () => {
     console.log("Executing go back code");
     Shiny.setInputValue("goBack", 1);
 };
+
+const clearMainPlotEl = () => {
+    // used to remove "parent-wrapper" div
+    let el = document.getElementById("canvas-wrapper");
+    if(el){
+        el.remove();
+    }
+};
+
 
 Shiny.addCustomMessageHandler('transfer_reduction', (msg) => {
     const reductionData = msg;
@@ -151,7 +161,7 @@ Shiny.addCustomMessageHandler('reglScatter_plot', (msg) => {
     if(previous_canvas){
         previous_canvas.remove();
     }
-    document.getElementById(mainClusterPlotElID).appendChild(reglElementData.plotEl);
+    document.getElementById(mainPlotElId).appendChild(reglElementData.plotEl);
 
     const accordions = document.querySelectorAll(".accordion-item");
     const category_accordion = [...accordions].filter((e) => {
