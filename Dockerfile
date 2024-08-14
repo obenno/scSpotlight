@@ -5,7 +5,7 @@
 #############################################
 
 ## From seurat docker
-FROM r-base:4.4.1
+FROM r-base:4.4.0
 
 ## Maintainer
 MAINTAINER oben <obennoname@gmail.com>
