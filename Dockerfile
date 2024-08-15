@@ -17,23 +17,15 @@ USER root
 
 WORKDIR /work
 ## Install R packages
-##RUN Rscript -e 'install.packages(c("Seurat", "shiny", "bsicons", "bslib", "config", "golem", "htmltools", "promises", "tidyverse", "readxl", "scales", "shinycssloaders", "shinyjs", "shinyWidgets", "waiter", "remotes"))'
-##RUN Rscript -e 'setRepositories(ind = 1:3, addURLs = c("https://satijalab.r-universe.dev", "https://bnprks.r-universe.dev/")); install.packages(c("BPCells", "presto", "glmGamPoi"))'
-##RUN Rscript -e 'options(timeout=600); remotes::install_github("satijalab/seurat-data", quiet = TRUE)'
-##RUN Rscript -e 'options(timeout=600); remotes::install_github("satijalab/azimuth", quiet = TRUE)'
-##RUN Rscript -e 'options(timeout=600); remotes::install_github("satijalab/seurat-wrappers", quiet = TRUE)'
 #### Install harmony
 ##RUN Rscript -e 'install.packages("harmony")'
 #### Install FastMNN
 ##RUN Rscript -e 'BiocManager::install("batchelor")'
-#### Install RhpcBLASctl
-##RUN Rscript -e 'install.packages("RhpcBLASctl")'
-
 
 ## Install scSpotlight
 RUN Rscript -e 'install.packages("pak", repos = sprintf("https://r-lib.github.io/p/pak/stable/%s/%s/%s", .Platform$pkgType, R.Version()$os, R.Version()$arch))'
 ## Install scSpotlight
-RUN Rscript -e 'pak::repo_add(scSpotlight = "https://obenno.r-universe.dev"); pak::pkg_install("scSpotlight", ask=FALSE, dependencies = TRUE, upgrade = "always");'
+RUN Rscript -e 'pak::repo_add(scSpotlight = "https://obenno.r-universe.dev"); pak::pkg_install("scSpotlight", ask=FALSE, dependencies = NA, upgrade = TRUE);'
 ## Install suggested packages
 RUN Rscript -e 'pak::repo_add(bpcells = "https://bnprks.r-universe.dev"); pak::pkg_install("BPCells", ask=FALSE, dependencies = TRUE, upgrade = "always")'
 RUN Rscript -e 'pak::repo_add(satijalab = "https://satijalab.r-universe.dev"); pak::pkg_install(c("presto", "glmGamPoi"), ask=FALSE, dependencies = TRUE, upgrade = "always")'
