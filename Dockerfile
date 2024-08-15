@@ -28,7 +28,7 @@ RUN Rscript -e 'install.packages("pak", repos = sprintf("https://r-lib.github.io
 RUN Rscript -e 'pak::repo_add(scSpotlight = "https://obenno.r-universe.dev"); pak::pkg_install("scSpotlight", ask=FALSE, dependencies = NA, upgrade = TRUE);'
 ## Install suggested packages
 RUN Rscript -e 'pak::repo_add(bpcells = "https://bnprks.r-universe.dev"); pak::pkg_install("BPCells", ask=FALSE, dependencies = TRUE, upgrade = "always")'
-RUN Rscript -e 'pak::repo_add(satijalab = "https://satijalab.r-universe.dev"); pak::pkg_install(c("presto", "glmGamPoi"), ask=FALSE, dependencies = TRUE, upgrade = "always")'
+RUN Rscript -e 'pak::repo_add(satijalab = "https://satijalab.r-universe.dev"); pak::pkg_install(c("presto", "glmGamPoi"), ask=FALSE, dependencies = NA, upgrade = TRUE)'
 
 ## Follow Dockstore's guide
 ## switch back to the ubuntu user so this tool (and the files written) are not owned by root
