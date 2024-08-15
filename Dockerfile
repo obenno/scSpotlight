@@ -13,7 +13,7 @@ MAINTAINER oben <obennoname@gmail.com>
 ## Install pre-requisites
 USER root
 ## BPCells requires libhdf5, which will not be properly handled when installing with pak
-##RUN apt update && apt install -y libhdf5-dev libxml2-dev libgsl-dev libfontconfig1-dev libharfbuzz-dev libfribidi-dev libfreetype-dev libpng-dev libtiff5-dev libjpeg-dev libglpk-dev libcurl4-openssl-dev
+RUN apt update && apt install -y libhdf5-dev libxml2-dev libgsl-dev libfontconfig1-dev libharfbuzz-dev libfribidi-dev libfreetype-dev libpng-dev libtiff5-dev libjpeg-dev libglpk-dev libcurl4-openssl-dev pandoc python3
 
 WORKDIR /work
 ## Install R packages
