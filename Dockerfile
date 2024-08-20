@@ -25,7 +25,8 @@ WORKDIR /work
 ## Install pak
 RUN Rscript -e 'install.packages("pak", repos = sprintf("https://r-lib.github.io/p/pak/stable/%s/%s/%s", .Platform$pkgType, R.Version()$os, R.Version()$arch))'
 ## Install scSpotlight dep
-RUN Rscript -e 'pak::pkg_install(c("Seurat", "shiny", "bslib", "shinyjs"))'
+RUN Rscript -e 'pak::pkg_install("Seurat")'
+RUN Rscript -e 'pak::pkg_install(c("shiny", "bslib", "shinyjs"))'
 RUN Rscript -e 'pak::pkg_install(c("plotly", "dplyr", "htmltools", "stringr", "tibble", readr", "readxl", "DT", "future", "scales", "promises", "RhpcBLASctl", "shinyWidgets"))'
 ##RUN Rscript -e 'pak::repo_add(scSpotlight = "https://obenno.r-universe.dev"); pak::pkg_install("scSpotlight");'
 RUN Rscript -e 'install.packages("scSpotlight", repos = c("https://obenno.r-universe.dev", "https://cloud.r-project.org"))'
