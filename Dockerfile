@@ -24,8 +24,7 @@ WORKDIR /work
 
 ## Install pak
 RUN Rscript -e 'install.packages("pak", repos = sprintf("https://r-lib.github.io/p/pak/stable/%s/%s/%s", .Platform$pkgType, R.Version()$os, R.Version()$arch))'
-##RUN Rscript -e 'pak::repo_add(scSpotlight = "https://obenno.r-universe.dev"); pak::pkg_install("scSpotlight");'
-RUN Rscript -e 'install.packages("scSpotlight", repos = c("https://obenno.r-universe.dev", "https://cloud.r-project.org"))'
+RUN Rscript -e 'pak::repo_add(scSpotlight = "https://obenno.r-universe.dev"); pak::pkg_install("scSpotlight");'
 ## Install suggested packages
 RUN Rscript -e 'pak::repo_add(bpcells = "https://bnprks.r-universe.dev"); pak::pkg_install("BPCells")'
 RUN Rscript -e 'pak::repo_add(satijalab = "https://satijalab.r-universe.dev"); pak::pkg_install(c("presto", "glmGamPoi"))'
