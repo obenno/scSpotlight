@@ -5,7 +5,7 @@
 #############################################
 
 ## From seurat docker
-FROM r-base:4.4.1
+FROM r-base:4.4.0
 
 ## Maintainer
 MAINTAINER oben <obennoname@gmail.com>
@@ -25,6 +25,7 @@ WORKDIR /work
 ## Install pak
 RUN Rscript -e 'install.packages("pak", repos = sprintf("https://r-lib.github.io/p/pak/stable/%s/%s/%s", .Platform$pkgType, R.Version()$os, R.Version()$arch))'
 ## Install scSpotlight dep
+RUN Rscript -e 'pak::pkg_install("dplyr")'
 RUN Rscript -e 'pak::pkg_install("Seurat")'
 RUN Rscript -e 'pak::pkg_install(c("shiny", "bslib", "shinyjs"))'
 RUN Rscript -e 'pak::pkg_install(c("plotly", "dplyr", "htmltools", "stringr", "tibble", readr", "readxl", "DT", "future", "scales", "promises", "RhpcBLASctl", "shinyWidgets"))'
