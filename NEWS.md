@@ -1,3 +1,7 @@
+# scSpotlight 0.0.5
+
+- Fixed a layout issue after updating bslib to v0.8.0
+
 # scSpotlight 0.0.4
 
 - Added cluster label widget to the scatter plot
