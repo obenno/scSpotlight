@@ -47,5 +47,3 @@ jobs:
             obenno/scspotlight:${{ env.TAG }}
             registry-intl.cn-hangzhou.aliyuncs.com/thunderbio/scspotlight:latest
             registry-intl.cn-hangzhou.aliyuncs.com/thunderbio/scspotlight:${{ env.TAG }}
-          cache-from: type=registry,ref=obenno/scspotlight:latest
-          cache-to: type=inline
