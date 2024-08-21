@@ -1,3 +1,5 @@
+# scSpotlight (development version)
+
 # scSpotlight 0.0.5
 
 - Fixed a layout issue after updating bslib to v0.8.0
