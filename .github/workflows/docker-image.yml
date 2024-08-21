@@ -5,7 +5,8 @@ on:
     paths:
       - ".github/workflows/docker-image.yml"
       - "Dockerfile"
-  create:
+  release:
+    types: [published]
     tags:
       - 'v*'
 
@@ -13,17 +14,26 @@ jobs:
   docker:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout all
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Get latest tag
+        run: |
+          # This command gets the latest tag, removing the 'v' prefix if it exists
+          echo "IMAGE_TAG=$(git describe --tags --abbrev=0 | sed 's/^v//')" >> "$GITHUB_ENV"
+          echo "REPO_TAG=$(git describe --tags --abbrev=0)" >> "$GITHUB_ENV"
+      - name: Checkout to tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.REPO_TAG }}
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         with:
           platforms: linux/amd64
-          config-inline: |
+          buildkitd-config-inline: |
             [worker.oci]
               max-parallelism = 1
       - name: Login to Docker Hub
@@ -37,10 +47,6 @@ jobs:
           registry: registry-intl.cn-hangzhou.aliyuncs.com
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_TOKEN }}
-      - name: Get latest tag
-        run: |
-          # This command gets the latest tag, removing the 'v' prefix if it exists
-          echo "TAG=$(git describe --tags --abbrev=0 | sed 's/^v//')" >> "$GITHUB_ENV"
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
@@ -49,6 +55,6 @@ jobs:
           push: true
           tags: |
             obenno/scspotlight:latest
-            obenno/scspotlight:${{ env.TAG }}
+            obenno/scspotlight:${{ env.IMAGE_TAG }}
             registry-intl.cn-hangzhou.aliyuncs.com/thunderbio/scspotlight:latest
-            registry-intl.cn-hangzhou.aliyuncs.com/thunderbio/scspotlight:${{ env.TAG }}
+            registry-intl.cn-hangzhou.aliyuncs.com/thunderbio/scspotlight:${{ env.IMAGE_TAG }}

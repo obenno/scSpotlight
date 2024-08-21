@@ -15,16 +15,17 @@ USER root
 ## BPCells requires libhdf5, which will not be properly handled when installing with pak
 RUN apt update && apt install -y libhdf5-dev libxml2-dev libgsl-dev libfontconfig1-dev libharfbuzz-dev libfribidi-dev libfreetype-dev libpng-dev libtiff5-dev libjpeg-dev libglpk-dev libcurl4-openssl-dev pandoc python3
 
-WORKDIR /work
-## Install R packages
-#### Install harmony
-##RUN Rscript -e 'install.packages("harmony")'
-#### Install FastMNN
-##RUN Rscript -e 'BiocManager::install("batchelor")'
-
 ## Install pak
 RUN Rscript -e 'install.packages("pak", repos = sprintf("https://r-lib.github.io/p/pak/stable/%s/%s/%s", .Platform$pkgType, R.Version()$os, R.Version()$arch))'
-RUN Rscript -e 'pak::repo_add(scSpotlight = "https://obenno.r-universe.dev"); pak::pkg_install("scSpotlight");'
+
+## Set workdir
+WORKDIR /app
+
+## Copy repo from host into the container
+COPY . .
+
+## Install the app
+RUN Rscript -e 'pak::pkg_install("local::.");'
 ## Install suggested packages
 RUN Rscript -e 'pak::repo_add(bpcells = "https://bnprks.r-universe.dev"); pak::pkg_install("BPCells")'
 RUN Rscript -e 'pak::repo_add(satijalab = "https://satijalab.r-universe.dev"); pak::pkg_install(c("presto", "glmGamPoi"))'
@@ -35,7 +36,7 @@ RUN groupadd -r -g 1001 ubuntu && useradd -m -r -g ubuntu -u 1001 ubuntu
 USER ubuntu
 
 ## Install scVI
-WORKDIR /app
+WORKDIR /work
 ##RUN wget https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge-pypy3-Linux-x86_64.sh && bash Miniforge-pypy3-Linux-x86_64.sh -b -p /home/ubuntu/miniforge-pypy3 && rm Miniforge-pypy3-Linux-x86_64.sh
 
 ## Use interactive shell (-i) to source ~/.bashrc
