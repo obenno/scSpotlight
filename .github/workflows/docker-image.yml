@@ -1,10 +1,6 @@
 name: build docker image CI
 
 on:
-  push:
-    paths:
-      - ".github/workflows/docker-image.yml"
-      - "Dockerfile"
   release:
     types: [published]
     tags:
