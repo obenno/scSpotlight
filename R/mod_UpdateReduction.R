@@ -26,22 +26,23 @@ mod_UpdateReduction_ui <- function(id){
 #'
 #' @noRd 
 mod_UpdateReduction_server <- function(id,
-                                       obj,
-                                       scatterReductionIndicator, scatterColorIndicator){
+                                       duckdbConnection,
+                                       scatterReductionIndicator,
+                                       scatterColorIndicator){
 
   moduleServer( id, function(input, output, session){
       ns <- session$ns
-
+      message("Inside updateReduction module")
       reduction_list <- reactive({
-          req(obj())
-          k <- Reductions(obj())
+          req(duckdbConnection())
+          k <- listDuckReduction(duckdbConnection())
           idx <- na.omit(match(c("umap", "tsne", "pca"), k))
           ordered_reduction <- k[c(idx, setdiff(1:length(k), idx))]
           return(ordered_reduction)
       })
 
       observeEvent(reduction_list(),{
-          req(obj())
+          req(reduction_list())
           ## update input list
           updateSelectInput(
             session = session,
@@ -53,13 +54,13 @@ mod_UpdateReduction_server <- function(id,
 
       })
 
-      observeEvent(list(obj(), input$reduction), {
-          req(obj())
+      observeEvent(input$reduction, {
+          req(duckdbConnection())
           req(input$reduction!="None")
           message("UpdateReduction module increased scatter indicator")
           scatterReductionIndicator(scatterReductionIndicator()+1)
           scatterColorIndicator(scatterColorIndicator()+1)
-          d <- Embeddings(obj()[[input$reduction]]) %>% as.data.frame()
+          d <- queryDuckReduction(duckdbConnection())
           colnames(d) <- c("X", "Y")
           showNotification(
               ui = div(div(class = c("spinner-border", "spinner-border-sm", "text-primary"),
@@ -75,14 +76,12 @@ mod_UpdateReduction_server <- function(id,
           )
           transfer_reduction(d, session)
           removeNotification(id = "update_reduction_notification", session)
-      }, priority = -10)
+      }, priority = -500)
 
       selectedReduction <- reactive({
-          req(obj())
-          input$reduction
+        input$reduction
       })
 
-      return(selectedReduction)
   })
 }
 

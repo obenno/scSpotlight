@@ -16,10 +16,10 @@
 #' }
 #'
 #' @export
-#' @importFrom SeuratObject Layers
+#' @importFrom SeuratObject Layers Embeddings
+#' @importFrom tibble tibble
 #' @importFrom DBI dbWriteTable dbListTables
-#' @importFrom dbplyr
-seurat2duckdb <- function(object = obj,
+seurat2duckdb <- function(object,
                           dbFile = "output.duckdb",
                           assay = "RNA",
                           layers = c("counts", "data"),
@@ -27,9 +27,9 @@ seurat2duckdb <- function(object = obj,
                           overwrite = TRUE){
 
   stopifnot(!file.exists(dbFile))
-  con <- dbConnect(duckdb(), dbdir = db, read_only = FALSE)
+  con <- dbConnect(duckdb::duckdb(), dbdir = dbFile, read_only = FALSE)
 
-  existLayers <- SeuratObject::Layers(obj, assay = assay)
+  existLayers <- SeuratObject::Layers(object, assay = assay)
   selectedLayers <- intersect(layers, existLayers)
 
   dbTables <- dbListTables(con)
@@ -39,12 +39,13 @@ seurat2duckdb <- function(object = obj,
   for(l in selectedLayers){
   ## Add counts layer
 
-    m <- LayerData(obj, assay = "RNA", layer = l)
+    m <- LayerData(object, assay = "RNA", layer = l)
     stopifnot(class(m) == "dgCMatrix")
 
-    d <- summary(m) %>% as.data.frame
+    d <- Matrix::summary(m) %>% as.data.frame
 
     tableName <- paste0(assay, "__", l)
+
     dbWriteTable(con, tableName, d, overwrite = overwrite)
     tableName <- paste0(assay, "__", "featureTbl")
     if(!(tableName %in% dbListTables(con)) || overwrite) {
@@ -64,11 +65,11 @@ seurat2duckdb <- function(object = obj,
   }
 
   ## Add all of the reductions
-  selectedReductions <- intersect(reductions, Reductions(obj))
-  message("Reductions: ", paste(selectedReductions, collapse=", "))
+  selectedReductions <- intersect(reductions, Reductions(object))
+
   if(length(selectedReductions) > 0){
     for(i in seq_along(selectedReductions)){
-      d <- Embeddings(obj[[selectedReductions[i]]]) %>%
+      d <- Embeddings(object[[selectedReductions[i]]]) %>%
         as.data.frame %>%
         tibble::rownames_to_column("cell") %>%
         tibble::as_tibble()
@@ -79,7 +80,7 @@ seurat2duckdb <- function(object = obj,
   }
   ## Add meta data
   if(!("metaData" %in% dbListTables(con)) || overwrite) {
-    metaData <- obj[[]] %>%
+    metaData <- object[[]] %>%
       tibble::rownames_to_column("cell") %>%
       tibble::as_tibble()
     dbWriteTable(con, "metaData", metaData, overwrite= overwrite)
@@ -100,7 +101,8 @@ seurat2duckdb <- function(object = obj,
 #'
 #' @return A list containing gene's expression, each of the element was neamed by gene's name, and 0 value was discarded.
 #'
-#' @importFrom dbplyr tbl
+#' @importFrom dplyr tbl collect select mutate pull
+#' @importFrom tidyr pivot_wider
 #' @export
 queryDuckExpr <- function(con,
                           assay = "RNA",
@@ -111,22 +113,22 @@ queryDuckExpr <- function(con,
   featureTableName <- paste0(assay, "__", "featureTbl")
   cellTableName <- paste0(assay, "__", "cellTbl")
   idx <- tbl(con, featureTableName) %>%
-    dbplyr::mutate(rowIndex = row_number()) %>%
-    dbplyr::filter(features %in% feature) %>%
-    dbplyr::pull(rowIndex)
-  df <- dbplyr::tbl(con, dataTableName) %>%
-    dbplyr::filter(i %in% idx) %>%
-    dbplyr::collect()
+    mutate(rowIndex = row_number()) %>%
+    filter(features %in% feature) %>%
+    pull(rowIndex)
+  df <- tbl(con, dataTableName) %>%
+    filter(i %in% idx) %>%
+    collect()
 
-  allCells <- tbl(con, cellTableName) %>% dbplyr::pull("cells")
+  allCells <- tbl(con, cellTableName) %>% pull("cells")
   cells <- allCells[df$j]
-  filteredFeatures <- dbplyr::pull(tbl(con, featureTableName), "features")[df$i]
+  filteredFeatures <- pull(tbl(con, featureTableName), "features")[df$i]
 
   d0 <- df %>%
-    dplyr::mutate(feature = filteredFeatures,
-                  cell = cells) %>%
-    dplyr::select(feature, cell, x) %>%
-    dplyr::pivot_wider(id_cols = "cell", names_from = "feature", values_from = "x") %>%
+    mutate(feature = filteredFeatures,
+           cell = cells) %>%
+    select(feature, cell, x) %>%
+    pivot_wider(id_cols = "cell", names_from = "feature", values_from = "x") %>%
     tibble::column_to_rownames("cell") %>%
     as.data.frame()
   d0 <- d0[allCells[which(allCells %in% rownames(d0))], feature]
@@ -150,12 +152,12 @@ queryDuckExpr <- function(con,
 #'
 #' @return A list containing gene's expression, each of the element was neamed by gene's name, and 0 value was discarded.
 #'
-#' @importFrom dbplyr tbl collect
+#' @importFrom dplyr tbl collect
 #' @importFrom DBI dbListTables
 #' @export
 queryDuckMeta <- function(con, meta = "metaData"){
 
-  stopifnot(tableName %in% dbListTables(con))
+  stopifnot(meta %in% dbListTables(con))
 
   d <- tbl(con, meta) %>%
     collect() %>%
@@ -174,7 +176,7 @@ queryDuckMeta <- function(con, meta = "metaData"){
 #'
 #' @return A list containing gene's expression, each of the element was neamed by gene's name, and 0 value was discarded.
 #'
-#' @importFrom dbplyr tbl collect
+#' @importFrom dplyr tbl collect
 #' @importFrom DBI dbListTables
 #' @export
 queryDuckReduction <- function(con,
@@ -194,4 +196,23 @@ queryDuckReduction <- function(con,
   d <- d %>% dplyr::select(1:n)
 
   return(d)
+}
+
+#' listDuckReduction
+#'
+#' Query reduction data from duckdb database
+#'
+#' @param con duckdb connection object
+#'
+#' @return Table names of the reductions stored in the duckdb
+#'
+#' @importFrom stringr str_detect str_remove
+#' @importFrom DBI dbListTables
+#' @export
+listDuckReduction <- function(con){
+
+  dbTables <- dbListTables(con)
+  dbTables <- dbTables[which(str_detect(dbTables, "^Reductions__"))]
+  return(str_remove(dbTables, "^Reductions__"))
+
 }

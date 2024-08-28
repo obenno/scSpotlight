@@ -34,8 +34,11 @@ mod_mainClusterPlot_ui <- function(id){
 #' @importFrom promises future_promise %...>% %...!%
 mod_mainClusterPlot_server <- function(id,
                                        obj,
-                                       scatterReductionIndicator, scatterColorIndicator,
-                                       scatterReductionInput, scatterColorInput,
+                                       duckdbConnection,
+                                       scatterReductionIndicator,
+                                       scatterColorIndicator,
+                                       scatterReductionInput,
+                                       scatterColorInput,
                                        selectedReduction,
                                        group.by,
                                        split.by,
@@ -152,7 +155,7 @@ mod_mainClusterPlot_server <- function(id,
               exprData <- NULL
           }
 
-          d <- prepare_scatterMeta(obj(),
+          d <- prepare_scatterMeta(con = duckdbConnection(),
                                    group.by = group.by(),
                                    mode = plottingMode(),
                                    split.by = split.by(),

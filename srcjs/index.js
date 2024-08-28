@@ -5,7 +5,6 @@ import * as myWaiter from './modules/myWaiter.js';
 export * as myWaiter from './modules/myWaiter.js';
 
 import { reglScatterCanvas } from './modules/reglScatter.js';
-export * from 'html2canvas';
 
 // id of the mainClusterPlot parent div
 const mainPlotElId = "mainClusterPlot-clusterPlot";
@@ -60,6 +59,8 @@ document.addEventListener('DOMContentLoaded', function () {
 }, false);
 
 var reglElementData = new reglScatterCanvas("reglScatter");
+console.log("Created reglElementData");
+
 
 // R waiter package spinners
 // keep the style exactly the same with R function
@@ -134,7 +135,7 @@ Shiny.addCustomMessageHandler('reglScatter_plot', (msg) => {
         catColors = [catColors];
     }
 
-
+    console.log("transferred");
     // update reglScatterCanvas data
     reglElementData.clear();
     // have to invoke update method in order
@@ -148,13 +149,13 @@ Shiny.addCustomMessageHandler('reglScatter_plot', (msg) => {
         selectedFeature: selectedFeature
     });
 
-    //console.log(reglElementData.plotMetaData);
+    console.log(reglElementData.plotMetaData);
     reglElementData.updatePlotData();
     console.log(reglElementData.plotData);
     reglElementData.updateCanvas();
     reglElementData.updateCatLegend();
     reglElementData.updateExpLegend();
-
+    //console.log(reglElementData);
 
     // update legend elements
     const previous_canvas = document.getElementById(reglElementData.plotEl.id);

@@ -34,29 +34,28 @@ mod_UpdateCategory_ui <- function(id){
 #' UpdateCategory Server Functions
 #'
 #'
-#' @importFrom dplyr starts_with
+#' @importFrom dplyr starts_with select collect
 #' @import Seurat
 #' @import shiny
 #' @noRd
 mod_UpdateCategory_server <- function(id,
-                                      obj,
+                                      duckdbConnection,
                                       scatterReductionIndicator,
                                       scatterColorIndicator){
   moduleServer( id, function(input, output, session){
 
       ns <- session$ns
       obj_meta <- reactive({
-          req(obj())
+          req(duckdbConnection())
           ##req(selectedAssay())
           ## select only non-numeric columns
-          obj()[[]] %>%
+          queryDuckMeta(duckdbConnection(), "metaData") %>%
               select(-starts_with(c("nFeature_", "nCount_", "percent.mt"))) %>%
               dplyr::select(!where(is.numeric)) %>%
               colnames()
       })
 
       observeEvent(obj_meta(), {
-          req(obj())
           req(obj_meta())
           if("seurat_clusters" %in% obj_meta()){
               selected <- "seurat_clusters"
@@ -84,12 +83,11 @@ mod_UpdateCategory_server <- function(id,
               session = session
           )
           message("Transfering metaData...")
-          transfer_meta(tibble::rownames_to_column(obj()[[]], "cells"), session)
+          transfer_meta(tibble::rownames_to_column(queryDuckMeta(duckdbConnection(), "metaData"), "cells"), session)
           removeNotification(id = "update_meta_notification", session)
       }, priority = -10)
 
       observeEvent(obj_meta(), {
-          req(obj())
           req(obj_meta())
           ## use all non-numeric columns in meta data
           updateSelectInput(
@@ -109,7 +107,7 @@ mod_UpdateCategory_server <- function(id,
       }, ignoreInit = TRUE)
 
       observeEvent(input$split.by, {
-          req(obj())
+          req(duckdbConnection())
           scatterReductionIndicator(scatterReductionIndicator()+1)
           scatterColorIndicator(scatterColorIndicator()+1)
       }, ignoreInit = TRUE)

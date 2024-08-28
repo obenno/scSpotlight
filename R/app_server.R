@@ -3,14 +3,23 @@
 #' @param input,output,session Internal parameters for {shiny}.
 #'     DO NOT REMOVE.
 #' @import shiny
+#' @import DBI
 #' @noRd
 app_server <- function(input, output, session) {
     ## Your application server logic
     ## create mainClusterPlot via R, javascript instance init will fail, don't know why
     ##session$sendCustomMessage(type = "reglScatter_mainClusterPlot", "")
 
+    ## store duckdb file in userData space
+    session$userData$duckdb <- tempfile(pattern = paste0("session", session$token, "_"),
+                                        fileext = ".duckdb",
+                                        tmpdir = getwd())
+
     ## setup universal status indicator
     seuratObj <- reactiveVal(NULL)
+    duckdbFile <- session$userData$duckdb
+    message("Init duckdbConnection...")
+    duckdbConnection <- reactiveVal(NULL)
     objIndicator <- reactiveVal(0)
     metaIndicator <- reactiveVal(0)
     scatterReductionIndicator <- reactiveVal(0)
@@ -64,15 +73,39 @@ app_server <- function(input, output, session) {
     mod_ElbowPlot_server("elbowPlot",
                          seuratObj)
 
+    observeEvent(seuratObj(), {
+        req(seuratObj())
+        ## convert seuratObj to duckdb
+        ## Get the layers
+        selectedLayers <- intersect(c("counts", "data"), Layers(seuratObj()))
+        stopifnot(length(selectedLayers)>0)
+        ## first stope connection if already exists
+        if(isTruthy(duckdbConnection())){
+            dbDisconnect(duckdbConnection())
+        }
+        message("Coverting duckdb")
+        seurat2duckdb(
+            object = seuratObj(),
+            dbFile = duckdbFile,
+            assay = DefaultAssay(seuratObj()),
+            layers = selectedLayers,
+            reductions = Reductions(seuratObj())
+        )
+        message("Finished Coverting...")
+        ## open new connection
+        con <- dbConnect(duckdb::duckdb(), duckdbFile)
+        duckdbConnection(con)
+    }, priority = -100)
+
     ## Update reductions
     selectedReduction <- mod_UpdateReduction_server("reductionUpdate",
-                                                    seuratObj,
+                                                    duckdbConnection,
                                                     scatterReductionIndicator,
                                                     scatterColorIndicator)
 
     ## Update category
     categoryInfo <- mod_UpdateCategory_server("categoryUpdate",
-                                              seuratObj,
+                                              duckdbConnection,
                                               scatterReductionIndicator,
                                               scatterColorIndicator)
 
@@ -101,6 +134,7 @@ app_server <- function(input, output, session) {
     ## Draw cluster plot
     selectedFeature <- mod_mainClusterPlot_server("mainClusterPlot",
                                                   seuratObj,
+                                                  duckdbConnection,
                                                   scatterReductionIndicator,
                                                   scatterColorIndicator,
                                                   scatterReductionInput,
@@ -160,4 +194,12 @@ app_server <- function(input, output, session) {
     ## Download Object
     mod_Download_server("downloadObj",
                         seuratObj)
+
+    ## close duckdb when session ends
+    session$onSessionEnded(function(){
+        if(isTruthy(isolate(duckdbConnection()))){
+            dbDisconnect(isolate(duckdbConnection()))
+        }
+
+    })
 }
