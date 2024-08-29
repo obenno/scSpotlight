@@ -60,7 +60,7 @@ mod_UpdateReduction_server <- function(id,
           message("UpdateReduction module increased scatter indicator")
           scatterReductionIndicator(scatterReductionIndicator()+1)
           scatterColorIndicator(scatterColorIndicator()+1)
-          d <- queryDuckReduction(duckdbConnection())
+          d <- queryDuckReduction(duckdbConnection(), reduction = input$reduction)
           colnames(d) <- c("X", "Y")
           showNotification(
               ui = div(div(class = c("spinner-border", "spinner-border-sm", "text-primary"),

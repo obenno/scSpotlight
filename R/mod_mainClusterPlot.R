@@ -212,7 +212,7 @@ mod_mainClusterPlot_server <- function(id,
           ##on.exit({
           ##    w$hide()
           ##})
-      }, priority = -100)
+      }, priority = -1000)
 
       return(reactive(selectedFeature()))
   })

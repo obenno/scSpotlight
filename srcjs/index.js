@@ -59,8 +59,6 @@ document.addEventListener('DOMContentLoaded', function () {
 }, false);
 
 var reglElementData = new reglScatterCanvas("reglScatter");
-console.log("Created reglElementData");
-
 
 // R waiter package spinners
 // keep the style exactly the same with R function

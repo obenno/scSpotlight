@@ -200,6 +200,13 @@ app_server <- function(input, output, session) {
         if(isTruthy(isolate(duckdbConnection()))){
             dbDisconnect(isolate(duckdbConnection()))
         }
-
+        try(
+          {
+            file.remove(duckdbFile)
+          },
+          error = {
+            message("Remove db file failed...")
+          }
+        )
     })
 }
