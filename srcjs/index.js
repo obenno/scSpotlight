@@ -18,22 +18,23 @@ var legendHover = 0;
 document.addEventListener('DOMContentLoaded', function () {
 
     // Get infoBoxId
-    const infoBoxId = document.getElementById("bottom_box").parentElement.parentElement.id;
+    const infoBoxEl = document.getElementById("bottom_box").parentElement.parentElement;
+    const mainPlotEl = document.getElementById(mainPlotElId);
     // init infoBox size to shrinked
-    resize_infoBox(mainPlotElId, infoBoxId, 56);
-    document.getElementById(infoBoxId).querySelector(".bslib-full-screen-enter").style.display = "none";
+    resize_infoBox(mainPlotEl, infoBoxEl, 56);
+    infoBoxEl.querySelector(".bslib-full-screen-enter").style.display = "none";
     // Add event listener to infoBox collapsing icon
     const collapsing_icon = document.getElementById("infoBox_show");
     collapsing_icon.addEventListener("click", function() {
         update_collapse_icon(this.id);
         if(collapsing_icon.classList.contains("collapsed")){
-            resize_infoBox(mainPlotElId, infoBoxId, 56);
+            resize_infoBox(mainPlotEl, infoBoxEl, 56);
             // hide full screen button
-            document.getElementById(infoBoxId).querySelector(".bslib-full-screen-enter").style.display = "none";
+            infoBoxEl.querySelector(".bslib-full-screen-enter").style.display = "none";
         }else{
-            resize_infoBox(mainPlotElId, infoBoxId, 250);
+            resize_infoBox(mainPlotEl, infoBoxEl, 250);
             // show full screen button
-            document.getElementById(infoBoxId).querySelector(".bslib-full-screen-enter").style.display = "";
+            infoBoxEl.querySelector(".bslib-full-screen-enter").style.display = "";
         }
     });
 
