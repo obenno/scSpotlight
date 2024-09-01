@@ -90,7 +90,6 @@ seurat2duckdb <- function(object,
   dbDisconnect(con)
 }
 
-
 #' queryDuckExpr
 #'
 #' Query feature expressions from duckdb database
@@ -98,6 +97,8 @@ seurat2duckdb <- function(object,
 #' @param con duckdb connection object
 #' @param assay searat assay to be queried, which was used as prefix of the table name in duckdb
 #' @param layer layers to be queried, default "data"
+#' @param feature A vector containing features to be extracted
+#' @param populateZero Whether 0 value will be populated into the result list to ensure each element having the same order and equal length
 #'
 #' @return A list containing gene's expression, each of the element was neamed by gene's name, and 0 value was discarded.
 #'
@@ -107,7 +108,8 @@ seurat2duckdb <- function(object,
 queryDuckExpr <- function(con,
                           assay = "RNA",
                           layer = "data",
-                          feature){
+                          feature = NULL,
+                          populateZero = FALSE){
 
   dataTableName <- paste0(assay, "__", layer)
   featureTableName <- paste0(assay, "__", "featureTbl")
@@ -139,6 +141,14 @@ queryDuckExpr <- function(con,
       x[!is.na(x)]
     })
 
+  if(populateZero){
+    expr <- lapply(expr, function(x){
+      y <- rep(0, length(allCells));
+      names(y) <- allCells
+      y[match(names(x), names(y))] <- x
+      return(y)
+    })
+  }
   return(expr)
 }
 
@@ -424,16 +434,16 @@ duckColMeans <- function(con,
 #' @importFrom DBI dbListTables
 #' @export
 duckModuleScore <- function(con,
-                               features,
-                               pool = NULL,
-                               nbin = 24,
-                               ctrl = 100,
-                               assay = "RNA",
-                               name = 'Cluster',
-                               seed = 1,
-                               search = FALSE,
-                               slot = 'data',
-                               ...){
+                            features,
+                            pool = NULL,
+                            nbin = 24,
+                            ctrl = 100,
+                            assay = "RNA",
+                            name = 'Cluster',
+                            seed = 1,
+                            search = FALSE,
+                            slot = 'data',
+                            ...){
 
     if (!is.null(x = seed)) {
         set.seed(seed = seed)

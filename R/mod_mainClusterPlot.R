@@ -35,6 +35,7 @@ mod_mainClusterPlot_ui <- function(id){
 mod_mainClusterPlot_server <- function(id,
                                        obj,
                                        duckdbConnection,
+                                       assay,
                                        scatterReductionIndicator,
                                        scatterColorIndicator,
                                        scatterReductionInput,
@@ -73,7 +74,7 @@ mod_mainClusterPlot_server <- function(id,
 
       ## Extract gene expressions
       observeEvent(selectedFeature(), {
-          req(obj())
+          req(duckdbConnection())
           if(isTruthy(selectedFeature())){
               ## Transfer expressionData
               showNotification(
@@ -89,9 +90,17 @@ mod_mainClusterPlot_server <- function(id,
                   session = session
               )
               if(isTruthy(moduleScore())){
-                  expr <- AddModuleScore(obj(), features = filteredInputFeatures()) %>% pull()
+                expr <- duckModuleScore(
+                  con = duckdbConnection(),
+                  assay = assay(),
+                  features = filteredInputFeatures()
+                )
               }else{
-                  expr <- FetchData(obj(), vars = selectedFeature()) %>% pull()
+                expr <- queryDuckExpr(con = duckdbConnection(),
+                                      assay = assay(),
+                                      layer = "data",
+                                      feature = selectedFeature(),
+                                      populateZero = TRUE) %>% pull()
               }
               transfer_expression(expr, session)
               removeNotification(id = "extract_expr_notification", session)
@@ -110,10 +119,12 @@ mod_mainClusterPlot_server <- function(id,
               mode <- "cluster+expr+noSplit"
           }else if(isTruthy(filteredInputFeatures()) &&
                    split.by() != "None"){
-              split.by.length <- obj()[[split.by()]] %>%
-                  pull() %>%
-                  unique() %>%
-                  length()
+            split.by.length <- queryDuckMeta(
+              con = duckdbConnection()
+            ) %>%
+              pull(split.by()) %>%
+              unique() %>%
+              length()
               if(split.by.length <= 2){
                   mode <- "cluster+expr+twoSplit"
               }else{
@@ -142,15 +153,20 @@ mod_mainClusterPlot_server <- function(id,
 
       ## Update scatterColorInput only when scatterColorIndicator changes
       observeEvent(scatterColorIndicator(), {
-          req(obj())
+          req(duckdbConnection())
           validate(
-              need(selectedReduction() %in% Reductions(obj()),
+              need(selectedReduction() %in% listDuckReduction(con = duckdbConnection()),
                    paste0(selectedReduction(), " is not in object reductions"))
           )
           message("Updating scatterColorInput")
           if(isTruthy(filteredInputFeatures()) &&
              isTruthy(moduleScore())){
-              exprData <- AddModuleScore(obj(), features = filteredInputFeatures()) %>% pull()
+            exprData <- duckModuleScore(
+              con = duckdbConnection(),
+              assay = assay(),
+              features = filteredInputFeatures()
+            ) %>%
+              pull()
           }else{
               exprData <- NULL
           }

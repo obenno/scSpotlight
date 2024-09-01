@@ -4,7 +4,13 @@
 \alias{queryDuckExpr}
 \title{queryDuckExpr}
 \usage{
-queryDuckExpr(con, assay = "RNA", layer = "data", feature)
+queryDuckExpr(
+  con,
+  assay = "RNA",
+  layer = "data",
+  feature = NULL,
+  populateZero = FALSE
+)
 }
 \arguments{
 \item{con}{duckdb connection object}
@@ -12,6 +18,10 @@ queryDuckExpr(con, assay = "RNA", layer = "data", feature)
 \item{assay}{searat assay to be queried, which was used as prefix of the table name in duckdb}
 
 \item{layer}{layers to be queried, default "data"}
+
+\item{feature}{A vector containing features to be extracted}
+
+\item{populateZero}{Whether 0 value will be populated into the result list to ensure each element having the same order and equal length}
 }
 \value{
 A list containing gene's expression, each of the element was neamed by gene's name, and 0 value was discarded.

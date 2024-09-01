@@ -5,6 +5,8 @@ import * as myWaiter from './modules/myWaiter.js';
 export * as myWaiter from './modules/myWaiter.js';
 
 import { reglScatterCanvas } from './modules/reglScatter.js';
+import { featurePlot } from './modules/featurePlot.js';
+
 
 // id of the mainClusterPlot parent div
 const mainPlotElId = "mainClusterPlot-clusterPlot";
@@ -209,6 +211,9 @@ Shiny.addCustomMessageHandler('reglScatter_plot', (msg) => {
 
      // hide spinner
     //waiter.hide('mainClusterPlot-clusterPlot');
+
+    featurePlot().then({});
+
 });
 
 

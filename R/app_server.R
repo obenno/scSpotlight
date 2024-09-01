@@ -135,6 +135,7 @@ app_server <- function(input, output, session) {
     selectedFeature <- mod_mainClusterPlot_server("mainClusterPlot",
                                                   seuratObj,
                                                   duckdbConnection,
+                                                  selectedAssay,
                                                   scatterReductionIndicator,
                                                   scatterColorIndicator,
                                                   scatterReductionInput,
