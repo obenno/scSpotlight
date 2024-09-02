@@ -100,7 +100,9 @@ mod_mainClusterPlot_server <- function(id,
                                       assay = assay(),
                                       layer = "data",
                                       feature = selectedFeature(),
-                                      populateZero = TRUE) %>% pull()
+                                      populateZero = TRUE) %>%
+                  as.data.frame() %>%
+                  pull()
               }
               transfer_expression(expr, session)
               removeNotification(id = "extract_expr_notification", session)

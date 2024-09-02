@@ -205,7 +205,7 @@ app_server <- function(input, output, session) {
         {
           if(file.exists(duckdbFile)){
             message("removing duckdbFile: ", duckdbFile)
-            file.remove(duckdbFile)
+            unlink(duckdbFile)
           }
         },
         error = {

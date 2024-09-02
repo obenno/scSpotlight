@@ -104,6 +104,7 @@ seurat2duckdb <- function(object,
 #'
 #' @importFrom dplyr tbl collect select mutate pull
 #' @importFrom tidyr pivot_wider
+#' @importFrom arrow as_arrow_table
 #' @export
 queryDuckExpr <- function(con,
                           assay = "RNA",
@@ -123,23 +124,34 @@ queryDuckExpr <- function(con,
     collect()
 
   allCells <- tbl(con, cellTableName) %>% pull("cells")
-  cells <- allCells[df$j]
-  filteredFeatures <- pull(tbl(con, featureTableName), "features")[df$i]
-
+  cells <- allCells[as.vector(df$j)]
+  filteredFeatures <- pull(tbl(con, featureTableName), "features")[as.vector(df$i)]
   d0 <- df %>%
+    select(x) %>%
     mutate(feature = filteredFeatures,
            cell = cells) %>%
-    select(feature, cell, x) %>%
+    ##select(feature, cell, x) %>%
     pivot_wider(id_cols = "cell", names_from = "feature", values_from = "x") %>%
     tibble::column_to_rownames("cell") %>%
+    collect() %>%
     as.data.frame()
-  d0 <- d0[allCells[which(allCells %in% rownames(d0))], feature]
+
+  selectedFeatures <- intersect(feature, unique(filteredFeatures))
+  d0.cells <- allCells[which(allCells %in% rownames(d0))]
+  d0 <- d0[d0.cells, selectedFeatures]
+  if(is.data.frame(d0)){
   expr <- d0 %>%
     as.list() %>%
     sapply(FUN = function(x){
       names(x) <- rownames(d0);
       x[!is.na(x)]
     })
+  }else{
+    expr <- list()
+    expr[[1]] <- d0
+    names(expr) <- selectedFeatures
+    names(expr[[1]]) <- d0.cells
+  }
 
   if(populateZero){
     expr <- lapply(expr, function(x){
