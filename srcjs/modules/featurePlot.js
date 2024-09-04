@@ -1,8 +1,6 @@
 import { WebR } from 'webr';
 
-export async function featurePlot(){
-
-  console.log("inside featurePlot");
+export async function initFeaturePlotWebR() {
 
   const webR = new WebR();
   await webR.init();
@@ -43,9 +41,16 @@ library(scattermore)
 library(dplyr)
 library(patchwork)
 library(cowplot)
+options(device=webr::canvas)
 `);
 
-  await webR.evalR(`
+  return(shelter)
+}
+
+export async function featurePlot(shelter, figWidth, figHeight, dr, expr){
+
+
+  let result = await shelter.captureR(`
 mapColor <- function(x, low = "#E5E4E2", high = "#800080"){
   ## default colors:
   ## low: #E5E4E -> Platinum
@@ -105,7 +110,42 @@ plotFeature <- function(expr, raster = FALSE){
       theme(plot.title = element_text(face ="bold", hjust=0.5))
   }
 }
-`)
-  //res = await loadLib.toArray();
+
+features <- colnames(exprList)
+
+pList <- list()
+for(i in seq_along(features)){
+    df <- cbind(reduction, exprList[i])
+    colnames(df)[1] <- "DR1"
+    colnames(df)[2] <- "DR2"
+    if(nrow(df) >  30000){
+        raster <- TRUE
+    }else{
+        raster <- FALSE
+    }
+    pList[[i]] <- plotFeature(df, raster = raster)
+}
+if(length(pList) >=3){
+    ncol <- 3
+}else{
+    ncol <- length(pList)
+}
+wrap_plots(pList, ncol=ncol)
+`, {
+  env: {
+    exprList: expr,
+    reduction: dr
+  },
+  captureGraphics: {
+    width: figWidth,
+    height: figHeight,
+    bg: "cornsilk"
+  },
+  withAutoprint: true,
+  captureStreams: true,
+  captureConditions: true
+});
+
+  return(result);
   //console.log("new library: ", res);
 }

@@ -99,6 +99,8 @@ seurat2duckdb <- function(object,
 #' @param layer layers to be queried, default "data"
 #' @param feature A vector containing features to be extracted
 #' @param populateZero Whether 0 value will be populated into the result list to ensure each element having the same order and equal length
+#' @param cellNames Whether to name the expression value with cell names, by default it's TRUE, this will make it easily to convert
+#' result list to dataframe with as.data.frame().
 #'
 #' @return A list containing gene's expression, each of the element was neamed by gene's name, and 0 value was discarded.
 #'
@@ -109,15 +111,17 @@ seurat2duckdb <- function(object,
 queryDuckExpr <- function(con,
                           assay = "RNA",
                           layer = "data",
-                          feature = NULL,
-                          populateZero = FALSE){
+                          features = NULL,
+                          populateZero = FALSE,
+                          cellNames = TRUE){
 
+  inputFeatures <- features
   dataTableName <- paste0(assay, "__", layer)
   featureTableName <- paste0(assay, "__", "featureTbl")
   cellTableName <- paste0(assay, "__", "cellTbl")
   idx <- tbl(con, featureTableName) %>%
     mutate(rowIndex = row_number()) %>%
-    filter(features %in% feature) %>%
+    filter(features %in% inputFeatures) %>%
     pull(rowIndex)
   df <- tbl(con, dataTableName) %>%
     filter(i %in% idx) %>%
@@ -126,18 +130,23 @@ queryDuckExpr <- function(con,
   allCells <- tbl(con, cellTableName) %>% pull("cells")
   cells <- allCells[as.vector(df$j)]
   filteredFeatures <- pull(tbl(con, featureTableName), "features")[as.vector(df$i)]
+
+  ## arrow tidyr::pivot_wider seems not implemented yet
+  ## https://github.com/apache/arrow/issues/34265
   d0 <- df %>%
-    select(x) %>%
-    mutate(feature = filteredFeatures,
-           cell = cells) %>%
-    ##select(feature, cell, x) %>%
+    select(x)
+  d0$feature <- filteredFeatures
+  d0$cell <- cells
+  d0 <- as_tibble(d0)
+  d0 <- d0 %>%
     pivot_wider(id_cols = "cell", names_from = "feature", values_from = "x") %>%
     tibble::column_to_rownames("cell") %>%
     collect() %>%
     as.data.frame()
 
-  selectedFeatures <- intersect(feature, unique(filteredFeatures))
+  selectedFeatures <- intersect(inputFeatures, unique(filteredFeatures))
   d0.cells <- allCells[which(allCells %in% rownames(d0))]
+
   d0 <- d0[d0.cells, selectedFeatures]
   if(is.data.frame(d0)){
   expr <- d0 %>%
@@ -159,6 +168,13 @@ queryDuckExpr <- function(con,
       names(y) <- allCells
       y[match(names(x), names(y))] <- x
       return(y)
+    })
+  }
+
+  if(!cellNames){
+    expr <- lapply(expr, function(x){
+      names(x) <- NULL;
+      return(x)
     })
   }
   return(expr)
@@ -437,7 +453,7 @@ duckColMeans <- function(con,
 #' @inheritParams Seurat::AddModuleScore
 #' @param con duckdb connection object
 #'
-#' @return Table names of the reductions stored in the duckdb
+#' @return A dataframe with a single column of module score, using cells as rownames
 #'
 #' @importFrom Seurat AddModuleScore
 #' @importFrom SeuratObject %||%

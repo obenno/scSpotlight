@@ -77,10 +77,11 @@ mod_InputFeature_ui <- function(id){
 #' @importFrom shinyWidgets updateSwitchInput
 #' @import shiny
 #' @noRd
-mod_InputFeature_server <- function(id, obj){
+mod_InputFeature_server <- function(id, duckdbConnection){
   moduleServer( id, function(input, output, session){
       ns <- session$ns
 
+      ## Two input mode: upload feature list or manually input
       observeEvent(input$featureInputMode, {
           if(input$featureInputMode == "Manual Input"){
               shinyjs::show("features")
@@ -179,21 +180,20 @@ mod_InputFeature_server <- function(id, obj){
                   filter(`geneSet` == input$geneSet) %>%
                   pull(`geneName`)
           }else if(input$featureInputMode == "Manual Input"){ ##&&
-                   ##isTruthy(inputFeatureList())){
-              ##message("inputFeatureList() is ", inputFeatureList())
+
               userInputFeatures <- inputFeatureList()
           }else{
               userInputFeatures <- NULL
           }
           userInputFeatures
-          ##intersect(selectedFeatures, rownames(seuratObj_final()))
-      }) %>% debounce(millis = 1000)
+
+      }) %>% debounce(millis = 1500)
 
       ## Check if featuers exist in the object
       filteredInputFeatures <- eventReactive(userInputFeatures(), {
 
-          if(isTruthy(userInputFeatures()) && isTruthy(obj())){
-              genes <- rownames(obj())
+          if(isTruthy(userInputFeatures()) && isTruthy(duckdbConnection())){
+              genes <- queryDuckFeatures(duckdbConnection())
               featuresNotDetected <- setdiff(userInputFeatures(), genes)
               if(length(featuresNotDetected)>0){
                   showNotification(

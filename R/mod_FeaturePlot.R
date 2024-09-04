@@ -35,7 +35,7 @@ mod_FeaturePlot_ui <- function(id){
 #'
 #' @noRd
 mod_FeaturePlot_server <- function(id,
-                                   obj,
+                                   duckdbConnection,
                                    reduction,
                                    split.by,
                                    selectedFeature,
@@ -44,7 +44,7 @@ mod_FeaturePlot_server <- function(id,
         ns <- session$ns
 
         w <- Waiter$new(id = ns("multiFeaturePlot"))
-
+       message("inside featureplot")
         ## Then draw multiFeaturePlot
         observeEvent(list(
             selectedFeature(),
@@ -52,7 +52,7 @@ mod_FeaturePlot_server <- function(id,
             reduction(),
             split.by()
         ), {
-            req(obj())
+            req(duckdbConnection())
             if(isTruthy(inputFeatures()) &&
                length(inputFeatures())>1 &&
                !isTruthy(selectedFeature())){
@@ -66,58 +66,61 @@ mod_FeaturePlot_server <- function(id,
                 shinyjs::show("multiFeaturePlot")
                 ## show spinner
                 w$show()
-                output$multiFeaturePlot <- renderCachedPlot({
-                    req(obj())
-                    validate(
-                        need(reduction(), "redcution not defined"),
-                        need(inputFeatures(), "Please specify inputFeatures()")
-                    )
-                    ## Remove scatterplot grid
-                    if(split.by() == "None"){
-                        split.by <- NULL
-                    }else{
-                        split.by <- split.by()
-                    }
 
-                    seuratObj <- obj()
-                    features <- inputFeatures()
-                    selectedReduction <- reduction()
-                    message("featureplot reduction is ", selectedReduction)
-                    message("featureplot split.by is ", split.by)
-                    ##future_promise({
-                    p <- FeaturePlot(
-                        seuratObj,
-                        features = features,
-                        ##features = inputFeatures(),
-                        ##reduction = reduction(),
-                        reduction = selectedReduction,
-                        split.by = split.by,
-                        ##ncol = min(length(inputFeatures()), 3),
-                        ncol = min(length(features), 3),
-                        cols = c("lightgrey", "#5D3FD3"),
-                        combine = TRUE,
-                        raster = FALSE ## It seems that raster is not supported by shiny
-                        ##raster.dpi = c(144,144)
-                    )
-                    p
-                    ##})
-                },
-                cacheKeyExpr = {
-                    list(
-                        obj(),
-                        split.by(),
-                        inputFeatures(),
-                        reduction()
-                    )
-                },
-                cache = "session"
-                ##,
-                ##sizePolicy = sizeGrowthRatio(
-                ##    width = min(length(inputFeatures()), 3)*480,
-                ##    height = ceiling(length(inputFeatures())/3)*480,
-                ##    growthRate = 1.2
+                expr <- queryDuckExpr(duckdbConnection(), features = inputFeatures)
+                transfer_multiFeatureExpression(expr, session)
+                ##output$multiFeaturePlot <- renderCachedPlot({
+                ##    req(obj())
+                ##    validate(
+                ##        need(reduction(), "redcution not defined"),
+                ##        need(inputFeatures(), "Please specify inputFeatures()")
+                ##    )
+                ##    ## Remove scatterplot grid
+                ##    if(split.by() == "None"){
+                ##        split.by <- NULL
+                ##    }else{
+                ##        split.by <- split.by()
+                ##    }
+                ##
+                ##    seuratObj <- obj()
+                ##    features <- inputFeatures()
+                ##    selectedReduction <- reduction()
+                ##    message("featureplot reduction is ", selectedReduction)
+                ##    message("featureplot split.by is ", split.by)
+                ##    ##future_promise({
+                ##    p <- FeaturePlot(
+                ##        seuratObj,
+                ##        features = features,
+                ##        ##features = inputFeatures(),
+                ##        ##reduction = reduction(),
+                ##        reduction = selectedReduction,
+                ##        split.by = split.by,
+                ##        ##ncol = min(length(inputFeatures()), 3),
+                ##        ncol = min(length(features), 3),
+                ##        cols = c("lightgrey", "#5D3FD3"),
+                ##        combine = TRUE,
+                ##        raster = FALSE ## It seems that raster is not supported by shiny
+                ##        ##raster.dpi = c(144,144)
+                ##    )
+                ##    p
+                ##    ##})
+                ##},
+                ##cacheKeyExpr = {
+                ##    list(
+                ##        obj(),
+                ##        split.by(),
+                ##        inputFeatures(),
+                ##        reduction()
+                ##    )
+                ##},
+                ##cache = "session"
+                ####,
+                ####sizePolicy = sizeGrowthRatio(
+                ####    width = min(length(inputFeatures()), 3)*480,
+                ####    height = ceiling(length(inputFeatures())/3)*480,
+                ####    growthRate = 1.2
+                ####)
                 ##)
-                )
                 on.exit({
                     w$hide()
                 })
@@ -131,65 +134,65 @@ mod_FeaturePlot_server <- function(id,
             }
         })
 
-        featurePlot_ncol <- reactive({
-            req(obj())
-            req(inputFeatures())
-            req(input$multiFeaturePlot_dblclick$x)
-            if(split.by() == "None"){
-                min(length(inputFeatures()), 3)
-            }else{
-                obj()[[]] %>%
-                    pull(split.by()) %>%
-                    unique() %>%
-                    length()
-            }
-        })
-
-        featurePlot_nrow <- reactive({
-            req(obj())
-            req(inputFeatures())
-            req(input$multiFeaturePlot_dblclick$x)
-            if(split.by() == "None"){
-                nFeature <- length(inputFeatures())
-                if(nFeature <= 3){
-                    rowNum <- 1
-                }else{
-                    rowNum <- ceiling(nFeature/3)
-                }
-            }else{
-                rowNum <- length(inputFeatures())
-            }
-            rowNum
-        })
-
-        fig_idx <- reactive({
-            req(input$multiFeaturePlot_dblclick$x, input$multiFeaturePlot_dblclick$y,
-                featurePlot_ncol(), featurePlot_nrow())
-            ##req(input$multiFeaturePlot_dblclick$y)
-            ##req(featurePlot_ncol())
-            ##req(featurePlot_nrow())
-            retrieve_panel_idx(
-                input$multiFeaturePlot_dblclick$x,
-                input$multiFeaturePlot_dblclick$y,
-                featurePlot_ncol(),
-                featurePlot_nrow()
-            )
-        })
-
-        observeEvent(fig_idx(), {
-            req(fig_idx())
-            ##message("fig_idx: ", paste(fig_idx(), collapse=", "))
-            ## Assign selectedFeature()
-            fig_idx <- fig_idx()
-            if(split.by() == "None"){
-                feature_idx <- (fig_idx[1]-1) * featurePlot_ncol() + fig_idx[2]
-            }else{
-                feature_idx <- fig_idx[1]
-            }
-            selected <- inputFeatures()[feature_idx]
-            message("Selected Feature: ", selected)
-            selectedFeature(selected)
-        })
+        ##featurePlot_ncol <- reactive({
+        ##    req(obj())
+        ##    req(inputFeatures())
+        ##    req(input$multiFeaturePlot_dblclick$x)
+        ##    if(split.by() == "None"){
+        ##        min(length(inputFeatures()), 3)
+        ##    }else{
+        ##        obj()[[]] %>%
+        ##            pull(split.by()) %>%
+        ##            unique() %>%
+        ##            length()
+        ##    }
+        ##})
+        ##
+        ##featurePlot_nrow <- reactive({
+        ##    req(obj())
+        ##    req(inputFeatures())
+        ##    req(input$multiFeaturePlot_dblclick$x)
+        ##    if(split.by() == "None"){
+        ##        nFeature <- length(inputFeatures())
+        ##        if(nFeature <= 3){
+        ##            rowNum <- 1
+        ##        }else{
+        ##            rowNum <- ceiling(nFeature/3)
+        ##        }
+        ##    }else{
+        ##        rowNum <- length(inputFeatures())
+        ##    }
+        ##    rowNum
+        ##})
+        ##
+        ##fig_idx <- reactive({
+        ##    req(input$multiFeaturePlot_dblclick$x, input$multiFeaturePlot_dblclick$y,
+        ##        featurePlot_ncol(), featurePlot_nrow())
+        ##    ##req(input$multiFeaturePlot_dblclick$y)
+        ##    ##req(featurePlot_ncol())
+        ##    ##req(featurePlot_nrow())
+        ##    retrieve_panel_idx(
+        ##        input$multiFeaturePlot_dblclick$x,
+        ##        input$multiFeaturePlot_dblclick$y,
+        ##        featurePlot_ncol(),
+        ##        featurePlot_nrow()
+        ##    )
+        ##})
+        ##
+        ##observeEvent(fig_idx(), {
+        ##    req(fig_idx())
+        ##    ##message("fig_idx: ", paste(fig_idx(), collapse=", "))
+        ##    ## Assign selectedFeature()
+        ##    fig_idx <- fig_idx()
+        ##    if(split.by() == "None"){
+        ##        feature_idx <- (fig_idx[1]-1) * featurePlot_ncol() + fig_idx[2]
+        ##    }else{
+        ##        feature_idx <- fig_idx[1]
+        ##    }
+        ##    selected <- inputFeatures()[feature_idx]
+        ##    message("Selected Feature: ", selected)
+        ##    selectedFeature(selected)
+        ##})
 
     })
 }

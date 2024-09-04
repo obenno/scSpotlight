@@ -11,9 +11,11 @@ app_server <- function(input, output, session) {
     ##session$sendCustomMessage(type = "reglScatter_mainClusterPlot", "")
 
     ## store duckdb file in userData space
-    session$userData$duckdb <- tempfile(pattern = paste0("session", session$token, "_"),
-                                        fileext = ".duckdb",
-                                        tmpdir = getwd())
+    session$userData$duckdb <- tempfile(
+        pattern = paste0("session", session$token, "_"),
+        fileext = ".duckdb",
+        tmpdir = getwd()
+    )
 
     ## setup universal status indicator
     seuratObj <- reactiveVal(NULL)
@@ -123,7 +125,7 @@ app_server <- function(input, output, session) {
 
     ## Input Features
     ##selectedFeature <- reactiveVal(NULL)
-    featureInfo <- mod_InputFeature_server("inputFeatures", seuratObj)
+    featureInfo <- mod_InputFeature_server("inputFeatures", duckdbConnection)
 
     goBackButton <- reactive({
         ## goBack cannot be read directly in module
@@ -132,20 +134,18 @@ app_server <- function(input, output, session) {
     })
 
     ## Draw cluster plot
-    selectedFeature <- mod_mainClusterPlot_server("mainClusterPlot",
-                                                  seuratObj,
-                                                  duckdbConnection,
-                                                  selectedAssay,
-                                                  scatterReductionIndicator,
-                                                  scatterColorIndicator,
-                                                  scatterReductionInput,
-                                                  scatterColorInput,
-                                                  selectedReduction,
-                                                  categoryInfo$group.by,
-                                                  categoryInfo$split.by,
-                                                  featureInfo$filteredInputFeatures,
-                                                  featureInfo$moduleScore,
-                                                  goBackButton)
+    mod_mainClusterPlot_server("mainClusterPlot",
+                               duckdbConnection,
+                               selectedAssay,
+                               scatterReductionIndicator,
+                               scatterColorIndicator,
+                               scatterReductionInput,
+                               scatterColorInput,
+                               selectedReduction,
+                               categoryInfo$group.by,
+                               categoryInfo$split.by,
+                               featureInfo$filteredInputFeatures,
+                               featureInfo$moduleScore)
 
     ## infoBox needs to be collapsed by default
     observeEvent(input$infoBox_show, {
@@ -160,13 +160,13 @@ app_server <- function(input, output, session) {
         }
     }, priority = 100) # high priority for UI components
     ## Draw VlnPlot
-    mod_VlnPlot_server("vlnPlot",
-                       seuratObj,
-                       categoryInfo$group.by,
-                       categoryInfo$split.by,
-                       selectedFeature,
-                       featureInfo$filteredInputFeatures,
-                       featureInfo$moduleScore)
+    ##mod_VlnPlot_server("vlnPlot",
+    ##                   seuratObj,
+    ##                   categoryInfo$group.by,
+    ##                   categoryInfo$split.by,
+    ##                   selectedFeature,
+    ##                   featureInfo$filteredInputFeatures,
+    ##                   featureInfo$moduleScore)
 
     ## Draw DotPlot
     mod_DotPlot_server("dotPlot",

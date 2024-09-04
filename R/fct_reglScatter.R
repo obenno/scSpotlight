@@ -1,4 +1,4 @@
-#' transfer reduction
+#' transfer_reduction
 #'
 #' transfer reduction dataframe to javascript
 #'
@@ -7,7 +7,7 @@ transfer_reduction <- function(reductionData, session){
     session$sendCustomMessage(type = "transfer_reduction", reductionData)
 }
 
-#' transfer reduction
+#' transfer_meta
 #'
 #' transfer reduction dataframe to javascript
 #'
@@ -16,13 +16,22 @@ transfer_meta <- function(metaData, session){
     session$sendCustomMessage(type = "transfer_meta", metaData)
 }
 
-#' transfer reduction
+#' transfer_expression
 #'
-#' transfer reduction dataframe to javascript
+#' transfer multi feature expression dataframe to javascript
 #'
 #' @noRd
 transfer_expression <- function(expressionData, session){
-    session$sendCustomMessage(type = "transfer_expression", expressionData)
+  ## use memCompress to shrink the data
+  ## https://github.com/rstudio/shiny/issues/3633
+  ##data  <- expressionData %>%
+  ##  shiny:::toJSON() %>%
+  ##  memCompress("gzip") %>%
+  ##  jsonlite::base64_enc()
+  session$sendCustomMessage(
+    type = "transfer_expression",
+    expressionData
+  )
 }
 
 reglScatter_plot <- function(plotMetaData, session){

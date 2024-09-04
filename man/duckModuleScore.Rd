@@ -51,7 +51,7 @@ database; see \code{\link[Seurat]{UpdateSymbolList}} for more details}
 \item{...}{Extra parameters passed to \code{\link[Seurat]{UpdateSymbolList}}}
 }
 \value{
-Table names of the reductions stored in the duckdb
+A dataframe with a single column of module score, using cells as rownames
 }
 \description{
 A modified version of Seurat::AddModuleScore() function querying expression data

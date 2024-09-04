@@ -8,8 +8,9 @@ queryDuckExpr(
   con,
   assay = "RNA",
   layer = "data",
-  feature = NULL,
-  populateZero = FALSE
+  features = NULL,
+  populateZero = FALSE,
+  cellNames = TRUE
 )
 }
 \arguments{
@@ -19,9 +20,12 @@ queryDuckExpr(
 
 \item{layer}{layers to be queried, default "data"}
 
-\item{feature}{A vector containing features to be extracted}
-
 \item{populateZero}{Whether 0 value will be populated into the result list to ensure each element having the same order and equal length}
+
+\item{cellNames}{Whether to name the expression value with cell names, by default it's TRUE, this will make it easily to convert
+result list to dataframe with as.data.frame().}
+
+\item{feature}{A vector containing features to be extracted}
 }
 \value{
 A list containing gene's expression, each of the element was neamed by gene's name, and 0 value was discarded.

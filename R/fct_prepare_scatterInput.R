@@ -3,6 +3,7 @@
 #' @importFrom dplyr pull tbl select
 #' @importFrom shiny validate need
 #' @importFrom scales hue_pal
+#' @importFrom SeuratObject %||%
 #' @noRd
 prepare_scatterMeta <- function(con,
                                 group.by = NULL,
@@ -11,14 +12,7 @@ prepare_scatterMeta <- function(con,
                                 inputFeatures = NULL,
                                 selectedFeature = NULL,
                                 moduleScore = FALSE){
-  ## Translate 'split.by = None' to NULL
-  if(split.by == "None"){
-    split.by <- NULL
-  }
-  if(isTruthy(split.by)){
-    ## Get number of the "split.by" column levels
-    n_split.by <- tbl(con, "metaData") %>% select(split.by) %>% pull() %>% unique %>% length
-  }
+  ## ensure mode is in the list
   mode_supported <- c("clusterOnly",
                       "cluster+expr+noSplit",
                       "cluster+expr+twoSplit",
@@ -31,10 +25,28 @@ prepare_scatterMeta <- function(con,
     need(mode %in% mode_supported, "Plotting mode is not supported")
   )
 
-  ## Get panel numbers
-  nPanels <- get_nPanels(mode = mode,
-                         n_split.by = n_split.by)
+  ## Translate 'split.by = None' to NULL
+  if(split.by == "None"){
+    split.by <- NULL
+  }
+  if(isTruthy(split.by)){
+    ## Get number of the "split.by" column levels
+    n_split.by <- tbl(con, "metaData") %>%
+      select(split.by) %>%
+      pull() %>%
+      unique() %>%
+      length()
+  }
 
+    ## Get panel numbers
+    nPanels = switch(
+        mode,
+        "clusterOnly" = 1,
+        "cluster+expr+noSplit" = 2,
+        "cluster+expr+twoSplit" = 4,
+        "cluster+multiSplit" = n_split.by %||% 1,
+        "cluster+expr+multiSplit" = n_split.by %||% 1
+    )
 
   nCat <- tbl(con, "metaData") %>% select(group.by) %>% pull() %>% unique %>% length
   catColors <- scales::hue_pal()(nCat)
@@ -52,37 +64,6 @@ prepare_scatterMeta <- function(con,
   )
 
   return(d)
-}
-
-
-#' get_nPanels
-#'
-#' @description Auxiliary function to get nPanels for different plotting mode
-#'
-#' @import Seurat
-#' @importFrom dplyr pull
-#' @importFrom shiny validate need
-#' @noRd
-get_nPanels <- function(mode, obj, n_split.by = FALSE){
-
-    mode_supported <- c("clusterOnly",
-                        "cluster+expr+noSplit",
-                        "cluster+expr+twoSplit",
-                        "cluster+multiSplit",
-                        "cluster+expr+multiSplit")
-    validate(
-        need(mode %in% mode_supported, "Plotting mode is not supported")
-    )
-
-    nPanels = switch(
-        mode,
-        "clusterOnly" = 1,
-        "cluster+expr+noSplit" = 2,
-        "cluster+expr+twoSplit" = 4,
-        "cluster+multiSplit" = n_split.by,
-        "cluster+expr+multiSplit" = n_split.by
-    )
-    return(nPanels)
 }
 
 

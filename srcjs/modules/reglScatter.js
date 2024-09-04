@@ -28,7 +28,7 @@ export class reglScatterCanvas {
         this.origData = {
             reductionData: {},
             cellMetaData:  {},
-            expressionData: []
+            expressionData: {}
         };
         // init plotData
         this.plotData = {
@@ -139,6 +139,13 @@ export class reglScatterCanvas {
         //adjustObserver.observe(this.plotEl, { attributes: true, childList: true, subtree: true });
     }
 
+    generatePlotEl(){
+        this.updatePlotData();
+        this.updateCanvas();
+        this.updateCatLegend();
+        this.updateExpLegend();
+    }
+
     updateCanvas() {
         // append canvas elements, wrapped by an outter element with id "canvas-wrapper"
         this.createCanvas("canvas-wrapper");
@@ -176,6 +183,7 @@ export class reglScatterCanvas {
     }
 
     updatePlotData() {
+        // reset plotData
         let plotData = {
             pointsData: [],
             colorData: [],
@@ -184,6 +192,7 @@ export class reglScatterCanvas {
             cells: [],
             panelTitles: []
         };
+
         let point_XY_data = this.constructor.prepare_XY_data(
             this.origData.reductionData,
             this.origData.cellMetaData,
@@ -191,9 +200,13 @@ export class reglScatterCanvas {
             this.plotMetaData.nPanels,
             this.plotMetaData.split_by
         );
+
+        // select the first gene in expression data
+        let selectedFeature = Object.keys(this.origData.expressionData)[0] ?? null;
+        this.updatePlotMetaData({ "selectedFeature" : selectedFeature });
         let zData = this.constructor.prepare_Z_data(
             this.origData.cellMetaData,
-            this.origData.expressionData,
+            this.origData.expressionData[this.plotMetaData.selectedFeature],
             this.plotMetaData.mode,
             this.plotMetaData.nPanels,
             this.plotMetaData.group_by,
@@ -202,6 +215,7 @@ export class reglScatterCanvas {
             this.plotMetaData.selectedFeature,
             this.plotMetaData.moduleScore
         );
+
         // create plotData
         for( let i=0; i<this.plotMetaData.nPanels; i++){
             plotData["pointsData"][i] = {
@@ -971,7 +985,8 @@ export class reglScatterCanvas {
     updateExpLegend(){
         // Add expression legend element
         if(this.plotMetaData.mode === "cluster+expr+noSplit" || this.plotMetaData.mode === "cluster+expr+twoSplit" || this.plotMetaData.mode === "cluster+expr+multiSplit"){
-            const exprLegendColor = d3.scaleSequential([d3.min(this.origData.expressionData), d3.max(this.origData.expressionData)], d3.interpolate("#D3D3D3", "#6450B5"));
+            const exprArray = this.origData.expressionData[this.plotMetaData.selectedFeature];
+            const exprLegendColor = d3.scaleSequential([d3.min(exprArray), d3.max(exprArray)], d3.interpolate("#D3D3D3", "#6450B5"));
             const exprLegendTitle = this.plotMetaData.moduleScore ? "ModuleScore" : "Expresson";
             const exprLegend = Legend(exprLegendColor, {title: exprLegendTitle, width: 200});
             this.expLegendEl.appendChild(exprLegend);
