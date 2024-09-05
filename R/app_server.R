@@ -35,6 +35,7 @@ app_server <- function(input, output, session) {
     ## Thus filterCells and ClusterSetting do not need to alter indicators
     selectedAssay <- mod_dataInput_server("dataInput",
                                           seuratObj,
+                                          duckdbConnection,
                                           clusterSettings$hvgSelectMethod,
                                           clusterSettings$clusterDims,
                                           clusterSettings$clusterResolution,

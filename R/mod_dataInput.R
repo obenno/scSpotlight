@@ -8,6 +8,8 @@
 #'
 #' @importFrom shiny NS tagList fileInput
 #' @importFrom shinyWidgets prettySwitch
+#' @importFrom DBI dbConnect dbListTables
+#' @importFrom duckdb duckdb
 #'
 mod_dataInput_inputUI <- function(id){
     ns <- NS(id)
@@ -54,12 +56,13 @@ mod_dataInput_inputUI <- function(id){
                         infoIcon("Please upload processed seuratObj (RDS), or compressed matrix directory (zip, tgz, tbz2)", "right")),
                 multiple = FALSE,
                 width = "100%",
-                accept = c(##".h5seurat", ".h5Seurat", ".H5Seurat", "H5seurat",
-                    ".rds",
-                    ".zip",
-                    ".tar.gz", ".tgz",
-                    ".tar.bz2", ".tbz2"
-                )
+              accept = c(
+                ".duckdb",
+                ".rds",
+                ".zip",
+                ".tar.gz", ".tgz",
+                ".tar.bz2", ".tbz2"
+              )
             ),
             selectInput(
                 ns("selectAssay"),
@@ -97,6 +100,7 @@ mod_dataInput_inputUI <- function(id){
 #' @noRd
 mod_dataInput_server <- function(id,
                                  obj,
+                                 duckdbConnection,
                                  hvgSelectMethod,
                                  clusterDims,
                                  clusterResolution,
@@ -114,7 +118,7 @@ mod_dataInput_server <- function(id,
         if(runningMode == "processing"){
             supportedFileInputPattern <- paste0(rdsFormatPattern, "|", compressionFormatPattern)
         }else{
-            supportedFileInputPattern <- rdsFormatPattern
+            supportedFileInputPattern <- paste0(rdsFormatPattern, "|", "duckdb")
         }
         if(isTruthy(dataDir)){
             if(!file.exists(dataDir)){
@@ -133,10 +137,11 @@ mod_dataInput_server <- function(id,
                 updateSelectInput(
                     session,
                     inputId = "dataDirFile",
-                    choices = list.files(path = dataDir,
-                                         pattern = supportedFileInputPattern,
-                                         recursive = TRUE),
-                    selected = ""
+                  choices = list.files(
+                    path = dataDir,
+                    pattern = supportedFileInputPattern,
+                    recursive = TRUE),
+                  selected = ""
                 )
             }
         }
@@ -315,18 +320,41 @@ mod_dataInput_server <- function(id,
                     seuratObj <- standard_process_seurat(seuratObj, hvg_method = hvg_method,
                                                          ndims = clusterDims(), res = clusterResolution())
                 }
+            }else if(str_detect(inputFileName(), ".duckdb$")){
+                newCon <- dbConnect(duckdb::duckdb(), inputFilePath(), read_only = TRUE)
+                duckdbConnection(newCon)
             }else{
                 waiter_update(html = waiting_screen("Input format not supported, please reload the page..."))
                 stop("Input format not supported")
             }
 
             ## update assay list
-            updateSelectInput(
-                session = session,
-                inputId = "selectAssay",
-                choices = ifelse(isTruthy(seuratObj), Assays(seuratObj), ""),
-                selected = ifelse(isTruthy(seuratObj), DefaultAssay(seuratObj), NULL)
-            )
+            if(isTruthy(duckdbConnection())){
+              duckdbTables <- dbListTables(duckdbConnection())
+                if(any(str_detect(duckdbTables, "__counts"))){
+                    duckdbAssays <- duckdbTables[str_detect(duckdbTables, "__counts")] %>%
+                      str_remove("__counts")
+                }else if(any(str_detect(duckdbTables,"__data"))){
+                    duckdbAssays <- duckdbTables[str_detect(duckdbTables, "__data")] %>%
+                        str_remove("__data")
+                }else{
+                    stop("no counts and data table detected in duckdb file.")
+                }
+
+                updateSelectInput(
+                    session = session,
+                    inputId = "selectAssay",
+                    choices = duckdbAssays,
+                    selected = duckdbAssays[1]
+                )
+            }else{
+                updateSelectInput(
+                    session = session,
+                    inputId = "selectAssay",
+                    choices = ifelse(isTruthy(seuratObj), Assays(seuratObj), ""),
+                    selected = ifelse(isTruthy(seuratObj), DefaultAssay(seuratObj), NULL)
+                )
+            }
             obj(seuratObj)
             waiter_hide()
         })
