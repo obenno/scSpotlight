@@ -271,16 +271,18 @@ const updateFeaturePlot = (canvas) => {
     const containerPadding = getPadding(container);
     const canvasWidth = rect.width - containerPadding.left - containerPadding.right;
     const canvasHeight = rect.height - containerPadding.top - containerPadding.bottom;
-    canvas.width = canvasWidth;
-    canvas.height = canvasHeight;
+    canvas.width = canvasWidth*2;
+    canvas.height = canvasHeight*2;
+    canvas.style.width = "100%";
+    canvas.style.height = "100%";
     featurePlot(shelterInstance, canvasWidth, canvasHeight,
                 reglElementData.origData.reductionData,
                 reglElementData.origData.expressionData)
         .then(res => {
             const ctx = canvas.getContext("2d");
-            ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
             let img = res.images[0];
-            ctx.drawImage(img, 0, 0, canvasWidth, canvasHeight);
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         });
     shelterInstance.purge();
 };
