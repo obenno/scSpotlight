@@ -14,20 +14,19 @@ mod_InputFeature_ui <- function(id){
         selectInput(
             ns("featureInputMode"),
             "Choose Input Mode",
-            choices = c("Manual Input", "Upload Feature List"),
-            selected = "Manual Input",
+            choices = c("Manual Select", "Upload Feature List"),
+            selected = "Manual Select",
             multiple = FALSE,
             selectize = TRUE,
             width = NULL
         ),
-        textAreaInput(
+        selectInput(
             ns("features"),
             "Input Gene Names",
-            value = NULL,
-            width = NULL,
-            height = "200px",
-            placeholder = paste("MS4A1", "GNLY","CD3E", "CD14",
-                                "FCGR3A", "LYZ", "PPBP", sep="\n")
+            choices = NULL,
+            multiple = TRUE,
+            selectize = TRUE,
+            width = NULL
         ),
         div(
             ## button needs to be wrapped in a div element to make
@@ -39,12 +38,6 @@ mod_InputFeature_ui <- function(id){
                 class = "border border-1 border-primary shadow mb-2"
             )
         ),
-        ##actionButton(
-        ##    ns("checkFeature"),
-        ##    "Check",
-        ##    style = "position:relative; float:right",
-        ##    class = "border border-1 border-primary shadow mb-2"
-        ##),
         shinyjs::hidden(fileInput(
             ns("featureList"),
             "or Upload Gene Set List",
@@ -77,16 +70,42 @@ mod_InputFeature_ui <- function(id){
 #' @importFrom shinyWidgets updateSwitchInput
 #' @import shiny
 #' @noRd
-mod_InputFeature_server <- function(id, duckdbConnection){
+mod_InputFeature_server <- function(id, duckdbConnection, assay){
   moduleServer( id, function(input, output, session){
       ns <- session$ns
 
+
+      observe({
+          if(input$featureInputMode == "Manual Select"){
+              if(isTruthy(duckdbConnection()) &&
+                 isTruthy(assay())){
+                  genes <- queryDuckFeatures(
+                      con = duckdbConnection(),
+                      assay = assay()
+                  )
+                  message("genes: ", length(genes))
+              }else{
+                  genes <- NULL
+              }
+
+              updateSelectizeInput(
+                  session = session,
+                  inputId = 'features',
+                  selected = NULL,
+                  choices = genes,
+                  server = TRUE
+              )
+          }
+      }, priority = 10)
+
       ## Two input mode: upload feature list or manually input
       observeEvent(input$featureInputMode, {
-          if(input$featureInputMode == "Manual Input"){
+          if(input$featureInputMode == "Manual Select"){
               shinyjs::show("features")
               shinyjs::show("clearFeature")
               shinyjs::hide("featureList")
+
+
           }else{
               shinyjs::hide("features")
               shinyjs::hide("clearFeature")
@@ -97,7 +116,7 @@ mod_InputFeature_server <- function(id, duckdbConnection){
               inputId = "moduleScore",
               value = FALSE
           )
-      })
+      }, priority = -10)
 
       uploadedFeatureList <- reactive({
           if(!is.null(input$featureList)){
@@ -140,27 +159,23 @@ mod_InputFeature_server <- function(id, duckdbConnection){
 
       })
 
-      ## Not sure if the reactiveVal inited here is global, guess not
-      inputFeatureList <- reactive({
-          if(isTruthy(input$features)){
-              featureList <- input$features %>%
-                  strsplit(split = "\n") %>%
-                  unlist()
-              featureList <- featureList[featureList != ""] %>%
-                  unique()
-          }else{
-              featureList <- NULL
-          }
-          ##message("inputFeatureList is ", inputFeatureList())
-      })
-
       observeEvent(input$clearFeature, {
 
-          updateTextAreaInput(
+          if(isTruthy(duckdbConnection()) &&
+             isTruthy(assay())){
+              genes <- queryDuckFeatures(
+                  con = duckdbConnection(),
+                  assay = assay()
+              )
+          }else{
+              genes <- NULL
+          }
+          updateSelectizeInput(
               session = session,
-              inputId = "features",
-              label = "Input Gene Names",
-              value = ""
+              inputId = 'features',
+              selected = NULL,
+              choices = genes,
+              server = TRUE
           )
           updateSwitchInput(
               session = session,
@@ -179,21 +194,26 @@ mod_InputFeature_server <- function(id, duckdbConnection){
               userInputFeatures <- uploadedFeatureList() %>%
                   filter(`geneSet` == input$geneSet) %>%
                   pull(`geneName`)
-          }else if(input$featureInputMode == "Manual Input"){ ##&&
-
-              userInputFeatures <- inputFeatureList()
+          }else if(input$featureInputMode == "Manual Select"){ ##&&
+              userInputFeatures <- input$features
           }else{
               userInputFeatures <- NULL
           }
+
           userInputFeatures
 
-      }) %>% debounce(millis = 1500)
+      })
 
       ## Check if featuers exist in the object
       filteredInputFeatures <- eventReactive(userInputFeatures(), {
 
-          if(isTruthy(userInputFeatures()) && isTruthy(duckdbConnection())){
-              genes <- queryDuckFeatures(duckdbConnection())
+          if(isTruthy(userInputFeatures()) &&
+             isTruthy(duckdbConnection()) &&
+             isTruthy(assay())){
+              genes <- queryDuckFeatures(
+                  con = duckdbConnection(),
+                  assay = assay()
+              )
               featuresNotDetected <- setdiff(userInputFeatures(), genes)
               if(length(featuresNotDetected)>0){
                   showNotification(
@@ -209,6 +229,7 @@ mod_InputFeature_server <- function(id, duckdbConnection){
           }else{
               filteredFeatures <- NULL
           }
+
           return(filteredFeatures)
       }, ignoreNULL = FALSE)
 
@@ -222,29 +243,6 @@ mod_InputFeature_server <- function(id, duckdbConnection){
               moduleScore = moduleScore
           )
       )
-
-      ## Check if any group of genes not in the dataset
-      ##geneSet <- unique(uploadedFeatureList()$geneSet)
-      ##removedGroup <- c()
-      ##for(i in geneSet){
-      ##    genes <- uploadedFeatureList() %>%
-      ##        filter(`geneSet` == {{ i }}) %>%
-      ##        pull(`geneName`)
-      ##    if(!any(genes %in% rownames(seuratObj_final()))){
-      ##        removedGroup <- c(removedGroup, i)
-      ##    }
-      ##}
-      ##geneSet <- setdiff(geneSet, removedGroup)
-      ##if(length(removedGroup)>0){
-      ##    showNotification(
-      ##        ui = paste0("Group ", paste(removedGroup, collapse = ", "), " has no feature detected."),
-      ##        action = NULL,
-      ##        duration = 3,
-      ##        closeButton = TRUE,
-      ##        type = "default",
-      ##        session = session
-      ##    )
-      ##}
 
   })
 }

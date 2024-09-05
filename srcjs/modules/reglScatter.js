@@ -485,7 +485,7 @@ export class reglScatterCanvas {
         // zType could be either "category" or "expr"
         // regl-scatterplot will only treat float numbers of [0,1] as continuous value
         let points = null;
-        let exprColorScale = d3.interpolate("#D3D3D3", "#6450B5"); // lightgrey, iris
+        let exprColorScale = d3.interpolate("#E5E4E2", "#800080"); // lightgrey, iris
 
         scatterplot.clear();
 
@@ -722,7 +722,7 @@ export class reglScatterCanvas {
         catColors,
         selectedFeature,
         moduleScore,
-        exprColorScale = d3.interpolate("#D3D3D3", "#6450B5") // lightgrey, iris
+        exprColorScale = d3.interpolate("#E5E4E2", "#800080") // platinum, purple
     ) {
         // This function prepare Z data and associated data: labels, pointColors etc.
         let zData = {
@@ -986,7 +986,7 @@ export class reglScatterCanvas {
         // Add expression legend element
         if(this.plotMetaData.mode === "cluster+expr+noSplit" || this.plotMetaData.mode === "cluster+expr+twoSplit" || this.plotMetaData.mode === "cluster+expr+multiSplit"){
             const exprArray = this.origData.expressionData[this.plotMetaData.selectedFeature];
-            const exprLegendColor = d3.scaleSequential([d3.min(exprArray), d3.max(exprArray)], d3.interpolate("#D3D3D3", "#6450B5"));
+            const exprLegendColor = d3.scaleSequential([d3.min(exprArray), d3.max(exprArray)], d3.interpolate("#E5E4E2", "#800080"));
             const exprLegendTitle = this.plotMetaData.moduleScore ? "ModuleScore" : "Expresson";
             const exprLegend = Legend(exprLegendColor, {title: exprLegendTitle, width: 200});
             this.expLegendEl.appendChild(exprLegend);

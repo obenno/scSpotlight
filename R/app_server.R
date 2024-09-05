@@ -27,7 +27,6 @@ app_server <- function(input, output, session) {
     scatterReductionIndicator <- reactiveVal(0)
     scatterColorIndicator <- reactiveVal(0)
     scatterReductionInput <- reactiveVal(NULL)
-    scatterColorInput <- reactiveVal(NULL)
 
     ## Reads input data and save to a seuratObj
     ##seuratObj <- mod_dataInput_server("dataInput", objIndicator, metaIndicator, scatterReductionIndicator, scatterColorIndicator)
@@ -111,21 +110,11 @@ app_server <- function(input, output, session) {
                                               scatterReductionIndicator,
                                               scatterColorIndicator)
 
-    observeEvent(list(
-        categoryInfo$group.by(),
-        categoryInfo$split.by(),
-        scatterReductionIndicator(),
-        scatterColorIndicator()
-    ), {
-        message("Selected group.by is ", categoryInfo$group.by())
-        message("Selected split.by is ", categoryInfo$split.by())
-        message("scatterReductionIndicator() is ", scatterReductionIndicator())
-        message("scatterColorIndicator() is ", scatterColorIndicator())
-    })
-
     ## Input Features
     ##selectedFeature <- reactiveVal(NULL)
-    featureInfo <- mod_InputFeature_server("inputFeatures", duckdbConnection)
+    featureInfo <- mod_InputFeature_server("inputFeatures",
+                                           duckdbConnection,
+                                           selectedAssay)
 
     goBackButton <- reactive({
         ## goBack cannot be read directly in module
@@ -139,9 +128,6 @@ app_server <- function(input, output, session) {
                                selectedAssay,
                                scatterReductionIndicator,
                                scatterColorIndicator,
-                               scatterReductionInput,
-                               scatterColorInput,
-                               selectedReduction,
                                categoryInfo$group.by,
                                categoryInfo$split.by,
                                featureInfo$filteredInputFeatures,

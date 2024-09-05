@@ -10,7 +10,6 @@ import { initFeaturePlotWebR, featurePlot } from './modules/featurePlot.js';
 
 // id of the mainClusterPlot parent div
 const mainPlotElId = "mainClusterPlot-clusterPlot";
-var featurePlotCanvas = null;
 
 // legend hover event indicator
 // to distinguish legend hover and manualy selecting events
@@ -69,25 +68,11 @@ document.addEventListener('DOMContentLoaded', function () {
         const sliderEl = containerEl.querySelector(".label-slider");
         sliderEl.style.bottom = "1%";
         sliderEl.style.bottom = `calc(${sliderEl.style.bottom} - ${containerEl.scrollTop}px)`;
-    });
 
-    // get featurePlot canvas
-    featurePlotCanvas = document.getElementById("featurePlotCanvas");
-    // Add featurePlot canvas resize observer
-    // Create a ResizeObserver instance
-    //const resizeObserver = new ResizeObserver(entries => {
-    //    for (let entry of entries) {
-    //        // This callback is triggered when the observed div is resized
-    //        const { width, height } = entry.contentRect;
-    //        console.log(`Div resized to ${width}x${height}`);
-    //        console.log(featurePlotCanvas.style.display);
-    //        if(featurePlotCanvas.style.display != "none"){
-    //            updateFeaturePlot(featurePlotCanvas);
-    //        }
-    //    }
-    //});
-    // Start observing the div
-    //resizeObserver.observe(featurePlotCanvas.parentElement);
+        const downloadEl = containerEl.querySelector("#downloadIcon");
+        downloadEl.style.bottom = "1%";
+        downloadEl.style.bottom = `calc(${downloadEl.style.bottom} - ${containerEl.scrollTop}px)`;
+    });
 
 }, false);
 
@@ -170,8 +155,34 @@ Shiny.addCustomMessageHandler('reglScatter_plot', (msg) => {
     // waiter is from R waiter package
     //myWaiter.show(waiterSpinner);
 
+    // do necessary cleanups
     // ensure the featurePlot canvas is hidden
+    const parentDiv = document.getElementById(mainPlotElId);
+    const featurePlotCanvas = document.getElementById("featurePlotCanvas");
     featurePlotCanvas.style.display = "none";
+    // remove canvas
+    const previous_canvas = document.getElementById("reglScatter");
+    if(previous_canvas){
+        previous_canvas.remove();
+    }
+    const accordions = document.querySelectorAll(".accordion-item");
+    const category_accordion = [...accordions].filter((e) => {
+        if(e.dataset.value == "analysis_category"){
+            return e;
+        }
+    });
+    // remove legends
+    const category_accordion_body = category_accordion[0].querySelector(".accordion-body");
+    // firstly remove old ones if exists
+    const previous_catLegend = category_accordion_body.querySelectorAll(".scatter-legend");
+    if(previous_catLegend.length > 0){
+        previous_catLegend.forEach((e) => e.remove());
+    }
+
+    const previous_expLegend = category_accordion_body.querySelectorAll("svg");
+    if(previous_expLegend.length > 0){
+        previous_expLegend.forEach(e => e.remove());
+    }
 
     // Transfer plotting meta data and init scatterplot
     let mode = msg.mode;
@@ -203,35 +214,23 @@ Shiny.addCustomMessageHandler('reglScatter_plot', (msg) => {
     reglElementData.generatePlotEl();
     console.log("Generated plotEl");
 
-    console.log("reglElementData :", reglElementData);
+    if(Object.keys(reglElementData.origData.expressionData).length > 1 &&
+      !reglElementData.plotMetaData.moduleScore){
 
-    // update legend elements
-    const previous_canvas = document.getElementById(reglElementData.plotEl.id);
-    if(previous_canvas){
-        previous_canvas.remove();
+        console.log("Drawing featurePlot...");
+        updateFeaturePlot(featurePlotCanvas);
+
+        // show featurePlotCanvas
+        featurePlotCanvas.style.display = "flex"
+        //reglElementData.plotEl.style.display = "none";
+
+    }else{
+        console.log("reglElementData :", reglElementData);
+        // update legend elements
+        parentDiv.appendChild(reglElementData.plotEl);
+        category_accordion_body.appendChild(reglElementData.catLegendEl);
+        category_accordion_body.appendChild(reglElementData.expLegendEl);
     }
-    document.getElementById(mainPlotElId).appendChild(reglElementData.plotEl);
-
-    const accordions = document.querySelectorAll(".accordion-item");
-    const category_accordion = [...accordions].filter((e) => {
-        if(e.dataset.value == "analysis_category"){
-            return e;
-        }
-    });
-    const category_accordion_body = category_accordion[0].querySelector(".accordion-body");
-    // firstly remove old ones if exists
-    const previous_catLegend = category_accordion_body.querySelectorAll(".scatter-legend");
-    if(previous_catLegend.length > 0){
-        previous_catLegend.forEach((e) => e.remove());
-    }
-    category_accordion_body.appendChild(reglElementData.catLegendEl);
-
-    const previous_expLegend = category_accordion_body.querySelectorAll("svg");
-    if(previous_expLegend.length > 0){
-        previous_expLegend.forEach(e => e.remove());
-    }
-    category_accordion_body.appendChild(reglElementData.expLegendEl);
-
 
     // return selected points to server side
     //reglElementData.scatterplots.forEach((sp, idx) => {
@@ -256,13 +255,7 @@ Shiny.addCustomMessageHandler('reglScatter_plot', (msg) => {
     //});
 
 
-    if(Object.keys(reglElementData.origData.expressionData).length > 1 &&
-      !reglElementData.plotMetaData.moduleScore){
 
-        console.log("Drawing featurePlot...");
-        updateFeaturePlot(featurePlotCanvas);
-
-    }
 
 
      // hide spinner
@@ -288,9 +281,6 @@ const updateFeaturePlot = (canvas) => {
             ctx.clearRect(0, 0, canvasWidth, canvasHeight);
             let img = res.images[0];
             ctx.drawImage(img, 0, 0, canvasWidth, canvasHeight);
-            canvas.style.display = "flex";
-            // hidder reglscatter div
-            reglElementData.plotEl.style.display = "none";
         });
     shelterInstance.purge();
 };

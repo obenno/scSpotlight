@@ -129,7 +129,8 @@ queryDuckExpr <- function(con,
 
   allCells <- tbl(con, cellTableName) %>% pull("cells")
   cells <- allCells[as.vector(df$j)]
-  filteredFeatures <- pull(tbl(con, featureTableName), "features")[as.vector(df$i)]
+  allFeatures <- tbl(con, featureTableName) %>% pull("features")
+  filteredFeatures <- allFeatures[as.vector(df$i)]
 
   ## arrow tidyr::pivot_wider seems not implemented yet
   ## https://github.com/apache/arrow/issues/34265
@@ -163,12 +164,22 @@ queryDuckExpr <- function(con,
   }
 
   if(populateZero){
-    expr <- lapply(expr, function(x){
-      y <- rep(0, length(allCells));
-      names(y) <- allCells
-      y[match(names(x), names(y))] <- x
-      return(y)
+    ## some feature may have only 0 expr
+    existFeatures <- intersect(inputFeatures, allFeatures)
+    nFeature <- existFeatures %>%
+      length()
+    fullexpr <- lapply(1:nFeature, function(x){
+      k <- rep(0, length(allCells))
+      names(k) <- allCells
+      return(k)
     })
+    names(fullexpr) <- existFeatures
+    for(f in existFeatures){
+      if(f %in% names(expr)){
+        fullexpr[[f]][match(names(expr[[f]]), names(fullexpr[[f]]))] <- expr[[f]]
+      }
+    }
+    expr <- fullexpr
   }
 
   if(!cellNames){

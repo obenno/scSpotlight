@@ -40,9 +40,6 @@ mod_mainClusterPlot_server <- function(id,
                                        assay,
                                        scatterReductionIndicator,
                                        scatterColorIndicator,
-                                       scatterReductionInput,
-                                       scatterColorInput,
-                                       selectedReduction,
                                        group.by,
                                        split.by,
                                        filteredInputFeatures,
@@ -51,13 +48,11 @@ mod_mainClusterPlot_server <- function(id,
       ns <- session$ns
 
       ## Extracting gene expression or calculating module score
-      observeEvent(list(
-          selectedReduction(),
-          split.by(),
-          filteredInputFeatures()
-      ), {
+      observeEvent(filteredInputFeatures(), {
+
           req(duckdbConnection())
-          message("filteredInputFeatures() : ", filteredInputFeatures())
+          message("filteredInputFeatures() : ", paste(filteredInputFeatures(), collapse=","))
+
           if(isTruthy(filteredInputFeatures())){
               showNotification(
                   ui = div(div(class = c("spinner-border", "spinner-border-sm", "text-primary"),
@@ -71,7 +66,6 @@ mod_mainClusterPlot_server <- function(id,
                   id = "extract_expr_notification",
                   session = session
               )
-
 
               if(isTruthy(moduleScore())){
                   tryCatch({
@@ -101,16 +95,19 @@ mod_mainClusterPlot_server <- function(id,
               }
 
           }else{
-              ## purge javascript expression data
+            ## purge javascript expression data
+            message("Purging expressions...")
               transfer_expression("", session)
           }
           scatterColorIndicator(scatterColorIndicator()+1)
-      }, priority = -10) # lower priority than plottingMode()
+      }, priority = -10, ignoreNULL = FALSE) # lower priority than plottingMode()
 
+      previous_plottingMode <- reactiveVal(NULL)
       plottingMode <- eventReactive(list(
           filteredInputFeatures(),
           split.by()
       ), {
+          ##req(duckdbConnection())
           if(isTruthy(filteredInputFeatures()) && split.by() == "None"){
               mode <- "cluster+expr+noSplit"
           }else if(isTruthy(filteredInputFeatures()) &&
@@ -133,57 +130,27 @@ mod_mainClusterPlot_server <- function(id,
               mode <- "clusterOnly"
           }
           message("Plotting mode => ", mode)
+
           return(mode)
       })
 
       observeEvent(plottingMode(), {
+        ## here we only observe plottingMode() value change, not state change
+        if (!identical(previous_plottingMode(), plottingMode())) {
           message("Plotting mode changed and indicator increased")
           scatterReductionIndicator(scatterReductionIndicator()+1)
           scatterColorIndicator(scatterColorIndicator()+1)
-      }, priority = -10)
+        }
+        previous_plottingMode(plottingMode())
+      },
+      priority = -10,
+      ignoreNULL = TRUE,
+      ignoreInit = TRUE)
 
       observeEvent(moduleScore(),{
           message("moduleScore switch changed scatterColorIndicator")
           scatterColorIndicator(scatterColorIndicator()+1)
       }, ignoreInit = TRUE)
-
-      ## Update scatterColorInput only when scatterColorIndicator changes
-      observeEvent(scatterColorIndicator(), {
-          req(duckdbConnection())
-          validate(
-              need(selectedReduction() %in% listDuckReduction(con = duckdbConnection()),
-                   paste0(selectedReduction(), " is not in object reductions"))
-          )
-          message("Updating scatterColorInput")
-
-          d <- prepare_scatterMeta(con = duckdbConnection(),
-                                   group.by = group.by(),
-                                   mode = plottingMode(),
-                                   split.by = split.by(),
-                                   inputFeatures = filteredInputFeatures(),
-                                   selectedFeature = NULL,
-                                   moduleScore = moduleScore())
-
-          scatterColorInput(d)
-          message("Finished Updating scatterColorInput")
-      }, priority = -20)
-
-      ## input$goBack was set in javacript code
-      ##observeEvent(goBack(), {
-      ##    message("goBack is ", goBack())
-      ##    ##selectedFeature(NULL)
-      ##    message("selectedFeature() is NULL")
-      ##}, ignoreNULL= TRUE, priority = 20)
-
-
-      ## Invoke multiFeaturePlot module
-      ##mod_FeaturePlot_server("featurePlot",
-      ##                       duckdbConnection,
-      ##                       selectedReduction,
-      ##                       split.by,
-      ##                       selectedFeature,
-      ##                       filteredInputFeatures)
-
 
       observeEvent(list(
           ## Include trigger events
@@ -193,25 +160,30 @@ mod_mainClusterPlot_server <- function(id,
           ##selectedFeature(),
           ##filteredInputFeatures(),
           ##moduleScore()
-          ##goBack()
           scatterReductionIndicator(),
           scatterColorIndicator()
       ), {
           ## Update plots when group.by and split.by changes
           req(group.by(), split.by())
+          message("Selected group.by is ", isolate(group.by()))
+          message("Selected split.by is ", isolate(split.by()))
+          message("scatterReductionIndicator() is ", isolate(scatterReductionIndicator()))
+          message("scatterColorIndicator() is ", isolate(scatterColorIndicator()))
+          message("Updating plotMetaData")
+          d <- prepare_scatterMeta(con = duckdbConnection(),
+                                   group.by = group.by(),
+                                   mode = plottingMode(),
+                                   split.by = split.by(),
+                                   inputFeatures = filteredInputFeatures(),
+                                   selectedFeature = NULL,
+                                   moduleScore = moduleScore())
+
           message("indicators changed, plotting clusters...")
-          ##w$show()
 
-          reglScatter_plot(scatterColorInput(), session)
+          reglScatter_plot(d, session)
 
-          ## Add goBack button and goBack() value
-          ##reglScatter_addGoBack(session)
-          ##on.exit({
-          ##    w$hide()
-          ##})
-      }, priority = -1000)
+      }, priority = -1000, ignoreInit = TRUE)
 
-      ##return(reactive(selectedFeature()))
   })
 }
 

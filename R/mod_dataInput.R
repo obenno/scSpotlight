@@ -327,12 +327,8 @@ mod_dataInput_server <- function(id,
                 choices = ifelse(isTruthy(seuratObj), Assays(seuratObj), ""),
                 selected = ifelse(isTruthy(seuratObj), DefaultAssay(seuratObj), NULL)
             )
-            waiter_hide()
-            message("dataInput module increased scatter indicator")
-            scatterReductionIndicator(scatterReductionIndicator()+1)
-            scatterColorIndicator(scatterColorIndicator()+1)
             obj(seuratObj)
-
+            waiter_hide()
         })
 
         selectedAssay <- reactive({

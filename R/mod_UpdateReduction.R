@@ -32,7 +32,7 @@ mod_UpdateReduction_server <- function(id,
 
   moduleServer( id, function(input, output, session){
       ns <- session$ns
-      message("Inside updateReduction module")
+
       reduction_list <- reactive({
           req(duckdbConnection())
           k <- listDuckReduction(duckdbConnection())
@@ -74,6 +74,7 @@ mod_UpdateReduction_server <- function(id,
               id = "update_reduction_notification",
               session = session
           )
+          message("Transferring reductionData...")
           transfer_reduction(d, session)
           removeNotification(id = "update_reduction_notification", session)
       }, priority = -500)
