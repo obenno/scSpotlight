@@ -17,6 +17,16 @@ app_server <- function(input, output, session) {
         tmpdir = getwd()
     )
 
+    ## create temp dir to store expression binary files
+    exprTempDir <- file.path(getwd(), paste0("expr_", session$token))
+    if(dir.create(exprTempDir)){
+        addResourcePath("expr", exprTempDir)
+        session$userData$exprTempDir <- exprTempDir
+    }else{
+        stop("Failed to create expression temp dir")
+    }
+
+
     ## setup universal status indicator
     seuratObj <- reactiveVal(NULL)
     duckdbFile <- session$userData$duckdb
@@ -193,6 +203,10 @@ app_server <- function(input, output, session) {
           if(file.exists(duckdbFile)){
             message("removing duckdbFile: ", duckdbFile)
             unlink(duckdbFile)
+          }
+          if(file.exists(session$userData$exprTempDir)){
+              unlink(session$userData$exprTempDir,
+                     recursive = TRUE, force = TRUE)
           }
         },
         error = {

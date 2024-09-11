@@ -191,6 +191,33 @@ queryDuckExpr <- function(con,
   return(expr)
 }
 
+#' queryDuckAssays
+#'
+#' List assays from a duckdb connection, based on existing of counts and
+#' data tables (e.g. "RNA__conunts", "RNA__data").
+#'
+#' @param con duckdb connection object
+#'
+#' @return A vector of of the assays, return NULL if none detected.
+#'
+#' @importFrom DBI dbListTables
+#' @importFrom stringr str_detect str_remove
+#' @export
+queryDuckAssays <- function(con){
+  duckdbTables <- dbListTables(con)
+  if(any(str_detect(duckdbTables, "__counts"))){
+    duckdbAssays <- duckdbTables[str_detect(duckdbTables, "__counts")] %>%
+      str_remove("__counts")
+  }else if(any(str_detect(duckdbTables,"__data"))){
+    duckdbAssays <- duckdbTables[str_detect(duckdbTables, "__data")] %>%
+      str_remove("__data")
+  }else{
+    warining("no counts and data table detected in duckdb file.")
+    duckdbAssays <- NULL
+  }
+  return(duckdbAssays)
+}
+
 
 #' queryDuckMeta
 #'

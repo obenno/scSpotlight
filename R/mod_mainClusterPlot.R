@@ -47,61 +47,6 @@ mod_mainClusterPlot_server <- function(id,
   moduleServer( id, function(input, output, session){
       ns <- session$ns
 
-      ## Extracting gene expression or calculating module score
-      observeEvent(filteredInputFeatures(), {
-
-          req(duckdbConnection())
-          message("filteredInputFeatures() : ", paste(filteredInputFeatures(), collapse=","))
-
-          if(isTruthy(filteredInputFeatures())){
-              showNotification(
-                  ui = div(div(class = c("spinner-border", "spinner-border-sm", "text-primary"),
-                               role = "status",
-                               span(class = "sr-only", "Loading...")),
-                           "Extracting expression values..."),
-                  action = NULL,
-                  duration = NULL,
-                  closeButton = FALSE,
-                  type = "default",
-                  id = "extract_expr_notification",
-                  session = session
-              )
-
-              if(isTruthy(moduleScore())){
-                  tryCatch({
-                      moduleScore <- duckModuleScore(
-                          con = duckdbConnection(),
-                          assay = assay(),
-                          features = filteredInputFeatures()
-                      )
-                      ## transfer moduleScore data
-                      transfer_expression(moduleScore, session)
-                      removeNotification(id = "extract_expr_notification", session)
-                  }, error = function(e) {
-                      removeNotification(id = "extract_expr_notification", session)
-                      showNotification("ModuleScore Calculation failed, please check your gene list")
-                      message("moduleScore failed:", "\n", e)
-                  })
-              }else{
-                  expr <- queryDuckExpr(
-                      con = duckdbConnection(),
-                      assay = assay(),
-                      layer = "data",
-                      features = filteredInputFeatures(),
-                      populateZero = TRUE, # populate zero
-                      cellNames = FALSE) # remove cellnames to shrink object size
-                  transfer_expression(expr, session)
-                  removeNotification(id = "extract_expr_notification", session)
-              }
-
-          }else{
-            ## purge javascript expression data
-            message("Purging expressions...")
-              transfer_expression("", session)
-          }
-          scatterColorIndicator(scatterColorIndicator()+1)
-      }, priority = -10, ignoreNULL = FALSE) # lower priority than plottingMode()
-
       previous_plottingMode <- reactiveVal(NULL)
       plottingMode <- eventReactive(list(
           filteredInputFeatures(),
@@ -151,6 +96,7 @@ mod_mainClusterPlot_server <- function(id,
           message("moduleScore switch changed scatterColorIndicator")
           scatterColorIndicator(scatterColorIndicator()+1)
       }, ignoreInit = TRUE)
+
 
       observeEvent(list(
           ## Include trigger events

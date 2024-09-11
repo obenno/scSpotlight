@@ -46,7 +46,7 @@ export class reglScatterCanvas {
             group_by: null,
             split_by: null,
             catColors: [],
-            selectedFeature: null,
+            selectedFeature: [],
             moduleScore: false,
             labelSize: 0
         };
@@ -57,7 +57,9 @@ export class reglScatterCanvas {
     }
 
     updateReductionData(reductionData) {
-        this.origData.reductionData = reductionData;
+        for (let key in reductionData) {
+            this.origData.reductionData[key] = new Float32Array(reductionData[key]);
+        }
     }
 
     updateCellMetaData(cellMetaData) {
@@ -65,7 +67,9 @@ export class reglScatterCanvas {
     }
 
     updateExpressionData(expressionData) {
-        this.origData.expressionData = expressionData;
+        for (let key in expressionData) {
+            this.origData.expressionData[key] = new Float32Array(expressionData[key]);
+        }
     }
 
     updatePlotMetaData(plotMetaData){
@@ -112,7 +116,7 @@ export class reglScatterCanvas {
         this.plotMetaData.group_by = null;
         this.plotMetaData.split_by = null;
         this.plotMetaData.catColors = [];
-        this.plotMetaData.selectedFeature = null;
+        this.plotMetaData.selectedFeature = [];
         this.plotMetaData.moduleScore = false;
 
         this.renderer.refresh();
@@ -200,10 +204,10 @@ export class reglScatterCanvas {
             this.plotMetaData.nPanels,
             this.plotMetaData.split_by
         );
-
+        console.log("point_XY_data", point_XY_data);
         // select the first gene in expression data
         let selectedFeature = Object.keys(this.origData.expressionData)[0] ?? null;
-        this.updatePlotMetaData({ "selectedFeature" : selectedFeature });
+        this.updatePlotMetaData({ "selectedFeature" : [selectedFeature] });
         let zData = this.constructor.prepare_Z_data(
             this.origData.cellMetaData,
             this.origData.expressionData[this.plotMetaData.selectedFeature],
@@ -215,7 +219,7 @@ export class reglScatterCanvas {
             this.plotMetaData.selectedFeature,
             this.plotMetaData.moduleScore
         );
-
+        console.log("zData: ", zData);
         // create plotData
         for( let i=0; i<this.plotMetaData.nPanels; i++){
             plotData["pointsData"][i] = {
@@ -768,7 +772,10 @@ export class reglScatterCanvas {
                     zData["point_Z_data"][0] = convert_stringArr_to_integer(metaData[group_by]);
                     zData["point_Z_data"][1] = reglScatterCanvas.scaleDataZ(expressionData); // expr panel
                     zData["labelData"][0] = metaData[group_by].map(e => catTag.concat(e));
-                    zData["labelData"][1] = expressionData.map(e => exprTag.concat(d3.format(".3f")(e)));
+                    zData["labelData"][1] = [];
+                    expressionData.forEach((e,i) => {
+                        zData["labelData"][1][i] = exprTag.concat(d3.format(".3f")(e));
+                    });
                     zData["panelTitles"][0] = group_by;
                     zData["panelTitles"][1] = exprTitle;
                     zData["colorData"][0] = catColors;
@@ -790,7 +797,10 @@ export class reglScatterCanvas {
                         zData["labelData"][i*2] = split_category[Object.keys(split_category)[i]].map(e => catTag.concat(e));
                         zData["panelTitles"][i*2] = Object.keys(split_category)[i] + " : " + group_by;
                         zData["point_Z_data"][i*2+1] = reglScatterCanvas.scaleDataZ(split_expr[Object.keys(split_expr)[i]]); // expr panel
-                        zData["labelData"][i*2+1] = split_expr[Object.keys(split_expr)[i]].map(e => exprTag.concat(d3.format(".3f")(e)));
+                        zData["labelData"][i*2+1] = [];
+                        split_expr[Object.keys(split_expr)[i]].forEach((e,idx) => {
+                            zData["labelData"][i*2+1][idx] = exprTag.concat(d3.format(".3f")(e));
+                        });
                         zData["panelTitles"][i*2+1] = Object.keys(split_category)[i] + " : " + exprTitle;
                         zData["colorData"][i*2] = catColors;
                         zData["colorData"][i*2+1] = exprColorMap;
@@ -820,7 +830,10 @@ export class reglScatterCanvas {
                 split_cells = splitArrByMeta(metaData["cells"], metaData[split_by]);
                 for(let i = 0; i < Object.keys(split_expr).length; i++){
                     zData["point_Z_data"][i] = reglScatterCanvas.scaleDataZ(split_expr[Object.keys(split_expr)[i]]); // expr panels
-                    zData["labelData"][i] = split_expr[Object.keys(split_expr)[i]].map(e => exprTag.concat(d3.format(".3f")(e)));
+                    zData["labelData"][i] = [];
+                    split_expr[Object.keys(split_expr)[i]].forEach((e,idx) => {
+                        zData["labelData"][i][idx] = exprTag.concat(d3.format(".3f")(e));
+                    });
                     zData["panelTitles"][i] = Object.keys(split_expr)[i];
                     zData["colorData"][i] = exprColorMap;
                     zData["zType"][i] = "expr";
@@ -1081,18 +1094,21 @@ export const splitArrByMeta = (Arr, meta) => {
         // split meta to object
         // for loop is faster than forEach(), reduce()
         for(const element of meta_levels){
-            let idx_arr = [];
+            splitOut[element] = [];
             for(let i=0; i<meta.length; ++i){
                 if(meta[i] === element){
-                    idx_arr.push(i);
+                    splitOut[element].push(Arr[i]);
                 }
             };
-            splitMeta[element] = idx_arr;
+            if(Arr instanceof Int32Array){
+                splitOut[element] = new Int32Array(splitOut[element]);
+            }else if(Arr instanceof Float32Array){
+                splitOut[element] = new Float32Array(splitOut[element]);
+            }else if(Arr instanceof Int16Array){
+                splitOut[element] = new Float32Array(splitOut[element]);
+            }
         }
-        // check Arr and meta has equal length
-        for (const [key, value] of Object.entries(splitMeta)) {
-            splitOut[key] = value.map(e => Arr[e]);
-        };
+
     }
     return splitOut;
 };
@@ -1105,7 +1121,7 @@ export const convert_stringArr_to_integer = (stringArray) => {
         factorLevel[e] = i;
     });
     let integerArray = stringArray.map(e => factorLevel[e]);
-    return integerArray;
+    return new Int16Array(integerArray);
 };
 
 export const rgbToHex = (rgbString) => {

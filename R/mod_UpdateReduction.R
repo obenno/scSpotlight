@@ -76,6 +76,7 @@ mod_UpdateReduction_server <- function(id,
           )
           message("Transferring reductionData...")
           transfer_reduction(d, session)
+          rm(d)
           removeNotification(id = "update_reduction_notification", session)
       }, priority = -500)
 

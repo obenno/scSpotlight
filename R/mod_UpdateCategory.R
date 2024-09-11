@@ -83,7 +83,10 @@ mod_UpdateCategory_server <- function(id,
               session = session
           )
           message("Transferring metaData...")
-          transfer_meta(tibble::rownames_to_column(queryDuckMeta(duckdbConnection(), "metaData"), "cells"), session)
+          d <- queryDuckMeta(duckdbConnection(), "metaData")
+          d <- d %>% mutate(cells=1:nrow(d)) %>% as_tibble()
+          transfer_meta(d, session)
+          rm(d)
           removeNotification(id = "update_meta_notification", session)
       }, priority = -10)
 

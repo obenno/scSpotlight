@@ -6,7 +6,8 @@ export * as myWaiter from './modules/myWaiter.js';
 
 import { reglScatterCanvas } from './modules/reglScatter.js';
 import { initFeaturePlotWebR, featurePlot } from './modules/featurePlot.js';
-
+import { createSparkLine, updateSparkLine } from './modules/featureSparkLine.js';
+import * as pako from 'pako';
 
 // id of the mainClusterPlot parent div
 const mainPlotElId = "mainClusterPlot-clusterPlot";
@@ -116,154 +117,194 @@ const clearMainPlotEl = () => {
 
 
 Shiny.addCustomMessageHandler('transfer_reduction', (msg) => {
-    const reductionData = msg;
+    const reductionData = decodeAndDecompress(msg);
     reglElementData.updateReductionData(reductionData);
 });
 
 Shiny.addCustomMessageHandler('transfer_meta', (msg) => {
-    const metaData = msg;
+    const metaData = decodeAndDecompress(msg);
     reglElementData.updateCellMetaData(metaData);
 });
 
 
-// Function to decompress gzipped data
-function decompressData(compressedData) {
-  return new Promise((resolve, reject) => {
-    const ds = new DecompressionStream('gzip');
-    const decompressedStream = new Response(compressedData).body.pipeThrough(ds);
-    new Response(decompressedStream).arrayBuffer().then(resolve).catch(reject);
-  });
+
+//Shiny.addCustomMessageHandler('transfer_expression', (msg) => {
+//    const expressionData = decodeAndDecompress(msg);
+//    console.log(expressionData);
+//    if(expressionData){
+//        reglElementData.updateExpressionData(expressionData);
+//    }else{
+//        // purge exprssion data
+//        reglElementData.updateExpressionData({});
+//    }
+//});
+
+Shiny.addCustomMessageHandler('createSparkLine', (feature) => {
+    const sparkLineEl = createSparkLine(feature);
+    const sparkLineContainer = document.getElementById("featureSparkLine");
+    sparkLineContainer.appendChild(sparkLineEl);
+});
+
+async function fetchBinaryFile(url) {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    return arrayBuffer;
+  } catch (error) {
+    console.error('There was a problem fetching the binary file:', error);
+  }
 }
 
-Shiny.addCustomMessageHandler('transfer_expression', (msg) => {
-    //onst expressionData = decompressData(msg).then(decompressedBuffer => {
-    //   new Uint8Array(decompressedBuffer);
-    //);
-    const expressionData = msg;
-    console.log("expressionData: ", msg);
-    if(expressionData){
-        reglElementData.updateExpressionData(expressionData);
-    }else{
-        // purge exprssion data
-        reglElementData.updateExpressionData({});
-    }
-});
+Shiny.addCustomMessageHandler('expr_ready', (msg) => {
+    // msg is the expr binary file name on the server
+    fetchBinaryFile("expr/" + msg).then(data => {
+        if (data) {
+            //console.log('Binary data fetched successfully:', data);
+            // Process the binary data as needed
+            const expressionData = decodeExprBinary(data);
 
-Shiny.addCustomMessageHandler('reglScatter_plot', (msg) => {
+            reglElementData.updateExpressionData(expressionData);
+            console.log("exprData", expressionData);
 
-    // Add spinners for the plot
-    // waiter is from R waiter package
-    //myWaiter.show(waiterSpinner);
-
-    // do necessary cleanups
-    // ensure the featurePlot canvas is hidden
-    const parentDiv = document.getElementById(mainPlotElId);
-    const featurePlotCanvas = document.getElementById("featurePlotCanvas");
-    featurePlotCanvas.style.display = "none";
-    // remove canvas
-    const previous_canvas = document.getElementById("reglScatter");
-    if(previous_canvas){
-        previous_canvas.remove();
-    }
-    const accordions = document.querySelectorAll(".accordion-item");
-    const category_accordion = [...accordions].filter((e) => {
-        if(e.dataset.value == "analysis_category"){
-            return e;
+            const feature = Object.keys(expressionData)[0];
+            const sparkLine = document.getElementById("featureSparkLine").querySelectorAll(".featureSparkLine")
+            const sparkLineArray = [...sparkLine];
+            sparkLineArray.forEach(e => {
+                if(e.querySelector("span").innerHTML == feature){
+                    updateSparkLine(e, reglElementData);
+                }
+            })
         }
+
     });
-    // remove legends
-    const category_accordion_body = category_accordion[0].querySelector(".accordion-body");
-    // firstly remove old ones if exists
-    const previous_catLegend = category_accordion_body.querySelectorAll(".scatter-legend");
-    if(previous_catLegend.length > 0){
-        previous_catLegend.forEach((e) => e.remove());
-    }
-
-    const previous_expLegend = category_accordion_body.querySelectorAll("svg");
-    if(previous_expLegend.length > 0){
-        previous_expLegend.forEach(e => e.remove());
-    }
-
-    // Transfer plotting meta data and init scatterplot
-    let mode = msg.mode;
-    let nPanels = msg.nPanels;
-    let group_by = msg.group_by;
-    let split_by = msg.split_by;
-    let moduleScore = msg.moduleScore;
-    let catColors = msg.catColors;
-    let selectedFeature = msg.selectedFeature;
-
-    // ensure catColors is an array
-    if(typeof catColors === "string"){
-        catColors = [catColors];
-    }
-
-    // update reglScatterCanvas data
-    reglElementData.clear();
-    // have to invoke update method in order
-    reglElementData.updatePlotMetaData({
-        mode: mode,
-        nPanels: nPanels,
-        group_by: group_by,
-        split_by: split_by,
-        moduleScore: moduleScore,
-        catColors: catColors,
-        selectedFeature: selectedFeature
-    });
-
-    reglElementData.generatePlotEl();
-    console.log("Generated plotEl");
-
-    if(Object.keys(reglElementData.origData.expressionData).length > 1 &&
-      !reglElementData.plotMetaData.moduleScore){
-
-        console.log("Drawing featurePlot...");
-        updateFeaturePlot(featurePlotCanvas);
-
-        // show featurePlotCanvas
-        featurePlotCanvas.style.display = "flex"
-        //reglElementData.plotEl.style.display = "none";
-
-    }else{
-        console.log("reglElementData :", reglElementData);
-        // update legend elements
-        parentDiv.appendChild(reglElementData.plotEl);
-        category_accordion_body.appendChild(reglElementData.catLegendEl);
-        category_accordion_body.appendChild(reglElementData.expLegendEl);
-    }
-
-    // return selected points to server side
-    //reglElementData.scatterplots.forEach((sp, idx) => {
-    //    sp.subscribe('select', ({ points: selectedPoints }) => {
-    //
-    //        const hoveredElements = Array.from(document.querySelectorAll(':hover'));
-    //
-    //        const filteredElements = hoveredElements.filter(e => {
-    //            return e.classList.contains('scatter-legend');
-    //        });
-    //        // ensure the legend was not hovered
-    //        if(filteredElements.length == 0){
-    //            let selectedCells = selectedPoints.map(i => reglElementData.plotData.cells[idx][i]);
-    //            Shiny.setInputValue("selectedPoints", selectedCells);
-    //        }
-    //    });
-    //});
-    //reglElementData.scatterplots.forEach((sp, idx) => {
-    //    sp.subscribe('deselect', () => {
-    //        Shiny.setInputValue("selectedPoints", null);
-    //    });
-    //});
-
-
-
-
-
-     // hide spinner
-    //waiter.hide('mainClusterPlot-clusterPlot');
-
-    //featurePlot().then({});
-
 });
+
+Shiny.addCustomMessageHandler('clear_expr', (msg) => {
+    // purge exprssion data
+    reglElementData.updateExpressionData({});
+    // remove all sparkline
+    document.getElementById("featureSparkLine").innerHTML = "";
+});
+
+
+//Shiny.addCustomMessageHandler('reglScatter_plot', (msg) => {
+//
+//    // Add spinners for the plot
+//    // waiter is from R waiter package
+//    //myWaiter.show(waiterSpinner);
+//
+//    // do necessary cleanups
+//    // ensure the featurePlot canvas is hidden
+//    const parentDiv = document.getElementById(mainPlotElId);
+//    const featurePlotCanvas = document.getElementById("featurePlotCanvas");
+//    featurePlotCanvas.style.display = "none";
+//    // remove canvas
+//    const previous_canvas = document.getElementById("reglScatter");
+//    if(previous_canvas){
+//        previous_canvas.remove();
+//    }
+//    const accordions = document.querySelectorAll(".accordion-item");
+//    const category_accordion = [...accordions].filter((e) => {
+//        if(e.dataset.value == "analysis_category"){
+//            return e;
+//        }
+//    });
+//    // remove legends
+//    const category_accordion_body = category_accordion[0].querySelector(".accordion-body");
+//    // firstly remove old ones if exists
+//    const previous_catLegend = category_accordion_body.querySelectorAll(".scatter-legend");
+//    if(previous_catLegend.length > 0){
+//        previous_catLegend.forEach((e) => e.remove());
+//    }
+//
+//    const previous_expLegend = category_accordion_body.querySelectorAll("svg");
+//    if(previous_expLegend.length > 0){
+//        previous_expLegend.forEach(e => e.remove());
+//    }
+//
+//    // Transfer plotting meta data and init scatterplot
+//    let mode = msg.mode;
+//    let nPanels = msg.nPanels;
+//    let group_by = msg.group_by;
+//    let split_by = msg.split_by;
+//    let moduleScore = msg.moduleScore;
+//    let catColors = msg.catColors;
+//    let selectedFeature = msg.selectedFeature;
+//
+//    // ensure catColors is an array
+//    if(typeof catColors === "string"){
+//        catColors = [catColors];
+//    }
+//
+//    // update reglScatterCanvas data
+//    reglElementData.clear();
+//    // have to invoke update method in order
+//    reglElementData.updatePlotMetaData({
+//        mode: mode,
+//        nPanels: nPanels,
+//        group_by: group_by,
+//        split_by: split_by,
+//        moduleScore: moduleScore,
+//        catColors: catColors,
+//        selectedFeature: selectedFeature
+//    });
+//
+//    reglElementData.generatePlotEl();
+//    console.log("Generated plotEl");
+//
+//    if(Object.keys(reglElementData.origData.expressionData).length > 1 &&
+//      !reglElementData.plotMetaData.moduleScore){
+//
+//        console.log("Drawing featurePlot...");
+//        updateFeaturePlot(featurePlotCanvas);
+//
+//        // show featurePlotCanvas
+//        featurePlotCanvas.style.display = "flex";
+//        //reglElementData.plotEl.style.display = "none";
+//
+//    }else{
+//        console.log("reglElementData :", reglElementData);
+//        // update legend elements
+//        parentDiv.appendChild(reglElementData.plotEl);
+//        category_accordion_body.appendChild(reglElementData.catLegendEl);
+//        category_accordion_body.appendChild(reglElementData.expLegendEl);
+//    }
+//
+//    // return selected points to server side
+//    //reglElementData.scatterplots.forEach((sp, idx) => {
+//    //    sp.subscribe('select', ({ points: selectedPoints }) => {
+//    //
+//    //        const hoveredElements = Array.from(document.querySelectorAll(':hover'));
+//    //
+//    //        const filteredElements = hoveredElements.filter(e => {
+//    //            return e.classList.contains('scatter-legend');
+//    //        });
+//    //        // ensure the legend was not hovered
+//    //        if(filteredElements.length == 0){
+//    //            let selectedCells = selectedPoints.map(i => reglElementData.plotData.cells[idx][i]);
+//    //            Shiny.setInputValue("selectedPoints", selectedCells);
+//    //        }
+//    //    });
+//    //});
+//    //reglElementData.scatterplots.forEach((sp, idx) => {
+//    //    sp.subscribe('deselect', () => {
+//    //        Shiny.setInputValue("selectedPoints", null);
+//    //    });
+//    //});
+//
+//
+//
+//
+//
+//     // hide spinner
+//    //waiter.hide('mainClusterPlot-clusterPlot');
+//
+//    //featurePlot().then({});
+//
+//});
 
 const updateFeaturePlot = (canvas) => {
     const container = canvas.parentElement;
@@ -315,4 +356,22 @@ function getPadding(element) {
     bottom: parseInt(style.paddingBottom, 10),
     left: parseInt(style.paddingLeft, 10)
   };
+}
+
+// Function to decompress gzipped data
+const decodeAndDecompress = (encodedCompressedStr) => {
+    const binaryStr = atob(encodedCompressedStr);
+    const decodedData = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) {
+            decodedData[i] = binaryStr.charCodeAt(i);
+    }
+    let decompressedStr = pako.ungzip(decodedData, { to: 'string' });
+
+    return JSON.parse(decompressedStr);
+}
+
+const decodeExprBinary = (buffer) => {
+    const decodedData = new Uint8Array(buffer);
+    let decompressedStr = pako.ungzip(decodedData, { to: 'string' });
+    return JSON.parse(decompressedStr);
 }

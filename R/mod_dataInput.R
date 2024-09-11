@@ -321,7 +321,14 @@ mod_dataInput_server <- function(id,
                                                          ndims = clusterDims(), res = clusterResolution())
                 }
             }else if(str_detect(inputFileName(), ".duckdb$")){
-                newCon <- dbConnect(duckdb::duckdb(), inputFilePath(), read_only = TRUE)
+              newCon <- dbConnect(duckdb::duckdb(),
+                                  dbdir = inputFilePath(),
+                                  read_only = TRUE,
+                                  config = list(
+                                    memory_limit = "500MB",
+                                    temp_directory = getwd()##,
+                                    ##threads = golem::get_golem_options("nCores")
+                                  ))
                 duckdbConnection(newCon)
             }else{
                 waiter_update(html = waiting_screen("Input format not supported, please reload the page..."))
@@ -330,17 +337,7 @@ mod_dataInput_server <- function(id,
 
             ## update assay list
             if(isTruthy(duckdbConnection())){
-              duckdbTables <- dbListTables(duckdbConnection())
-                if(any(str_detect(duckdbTables, "__counts"))){
-                    duckdbAssays <- duckdbTables[str_detect(duckdbTables, "__counts")] %>%
-                      str_remove("__counts")
-                }else if(any(str_detect(duckdbTables,"__data"))){
-                    duckdbAssays <- duckdbTables[str_detect(duckdbTables, "__data")] %>%
-                        str_remove("__data")
-                }else{
-                    stop("no counts and data table detected in duckdb file.")
-                }
-
+                duckdbAssays <- queryDuckAssays(duckdbConnection())
                 updateSelectInput(
                     session = session,
                     inputId = "selectAssay",

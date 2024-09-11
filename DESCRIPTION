@@ -12,11 +12,12 @@ Depends:
     R (>= 4.1.0),
     Seurat (>= 5.0.1),
     SeuratObject (>= 5.0.1),
-    shiny (>= 1.7.4)
+    shiny (>= 1.8.1)
 Imports:
     arrow,
     bsicons,
     bslib (>= 0.5.1),
+    cli,
     config (>= 0.3.2),
     dbplyr,
     dplyr,

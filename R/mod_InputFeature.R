@@ -24,28 +24,53 @@ mod_InputFeature_ui <- function(id){
             ns("features"),
             "Input Gene Names",
             choices = NULL,
-            multiple = TRUE,
+            multiple = FALSE,
             selectize = TRUE,
             width = NULL
         ),
+        shinyjs::hidden(
+          tagList(
+            fileInput(
+              ns("featureList"),
+              "or Upload Gene Set List",
+              multiple = FALSE,
+              width = "100%",
+              accept = c(".xlsx", ".csv", ".tsv", ".txt")
+            ),
+            tagAppendAttributes(
+              selectInput(
+                  ns("geneSet"),
+                  "Choose Gene Set",
+                  choices = "",
+                  selected = NULL,
+                  multiple = FALSE,
+                  selectize = TRUE,
+                  width = NULL
+              ),
+              class = c("mb-1")
+            )
+          )
+        ),
+        div(id = "featureSparkLine"),
         div(
             ## button needs to be wrapped in a div element to make
             ## the float:right style work
             actionButton(
+                ns("plotFeature"),
+                "Plot",
+                width = "75px",
+                style = "position:relative; float:left;",
+                class = "border border-1 border-primary shadow mb-2"
+            ),
+            actionButton(
                 ns("clearFeature"),
                 "Clear",
+                width = "75px",
                 style = "position:relative; float:right;",
                 class = "border border-1 border-primary shadow mb-2"
             )
         ),
-        shinyjs::hidden(fileInput(
-            ns("featureList"),
-            "or Upload Gene Set List",
-            multiple = FALSE,
-            width = "100%",
-            accept = c(".xlsx", ".csv", ".tsv", ".txt")
-        )),
-        uiOutput(ns("uploadedFeatureSet")),
+        ##uiOutput(ns("uploadedFeatureSet")),
         span(
             "Calculate Program Expression Score", style = "display: inline-block; margin-bottom: 0.5rem",
             infoIcon("This will use AddModuleScore() function to generate program expression score. ref: Tirosh et al, Science (2016)", "left")
@@ -56,7 +81,6 @@ mod_InputFeature_ui <- function(id){
             size = "mini",
             value = FALSE
         )
-        ##uiOutput("exprCutoff")
 
     )
 }
@@ -69,47 +93,45 @@ mod_InputFeature_ui <- function(id){
 #' @importFrom htmltools tagAppendAttributes
 #' @importFrom shinyWidgets updateSwitchInput
 #' @import shiny
+#' @importFrom promises future_promise %...>% %...!%
+#' @importFrom cli hash_md5
 #' @noRd
 mod_InputFeature_server <- function(id, duckdbConnection, assay){
   moduleServer( id, function(input, output, session){
       ns <- session$ns
 
-
-      observe({
+      ## Two input mode: upload feature list or manually input
+      observeEvent(
+          list(
+              input$featureInputMode,
+              duckdbConnection(),
+              assay()
+          ), {
           if(input$featureInputMode == "Manual Select"){
-              if(isTruthy(duckdbConnection()) &&
-                 isTruthy(assay())){
-                  genes <- queryDuckFeatures(
-                      con = duckdbConnection(),
-                      assay = assay()
-                  )
-                  message("genes: ", length(genes))
-              }else{
-                  genes <- NULL
-              }
+              shinyjs::show("features")
+              shinyjs::hide("featureList")
+              shinyjs::hide("geneSet")
 
+              req(duckdbConnection(), assay())
+              genes <- queryDuckFeatures(
+                  con = duckdbConnection(),
+                  assay = assay()
+              )
               updateSelectizeInput(
                   session = session,
                   inputId = 'features',
-                  selected = NULL,
-                  choices = genes,
+                  selected = "",
+                  choices = c("", genes),
                   server = TRUE
               )
-          }
-      }, priority = 10)
-
-      ## Two input mode: upload feature list or manually input
-      observeEvent(input$featureInputMode, {
-          if(input$featureInputMode == "Manual Select"){
-              shinyjs::show("features")
-              shinyjs::show("clearFeature")
-              shinyjs::hide("featureList")
-
-
           }else{
               shinyjs::hide("features")
-              shinyjs::hide("clearFeature")
+              shinyjs::show("geneSet")
               shinyjs::show("featureList")
+
+              ##selectedGeneSet <- unique(uploadedFeatureList()$geneSet)[1]
+              ##geneSet <- unique(uploadedFeatureList()$geneSet)
+
           }
           updateSwitchInput(
               session = session,
@@ -118,7 +140,10 @@ mod_InputFeature_server <- function(id, duckdbConnection, assay){
           )
       }, priority = -10)
 
+
       uploadedFeatureList <- reactive({
+          req(input$featureInputMode == "Upload Feature List")
+          message("Updating featureList")
           if(!is.null(input$featureList)){
               if(str_detect(input$featureList$name, "\\.(tsv|txt)$")){
                   featureList <- read_tsv(input$featureList$datapath, col_names = c("geneSet", "geneName"))
@@ -135,32 +160,21 @@ mod_InputFeature_server <- function(id, duckdbConnection, assay){
           featureList
       })
 
-      output$uploadedFeatureSet <- renderUI({
+      observeEvent(uploadedFeatureList(), {
+          req(uploadedFeatureList())
 
-          if(isTruthy(uploadedFeatureList()) &&
-             input$featureInputMode == "Upload Feature List"){
+          geneSet <- unique(uploadedFeatureList()$geneSet)
 
-              selectedGeneSet <- unique(uploadedFeatureList()$geneSet)[1]
-              geneSet <- unique(uploadedFeatureList()$geneSet)
-
-              selectInput(
-                  ns("geneSet"),
-                  "Choose Gene Set",
-                  choices = geneSet,
-                  selected = selectedGeneSet,
-                  multiple = FALSE,
-                  selectize = TRUE,
-                  width = NULL
-              ) %>%
-                  tagAppendAttributes(class = c("mb-1"))
-          }else{
-              NULL
-          }
-
+          updateSelectInput(
+              session = session,
+              inputId = "geneSet",
+              choices = geneSet,
+              selected = ""
+          )
       })
 
       observeEvent(input$clearFeature, {
-
+          req(duckdbConnection(), assay())
           if(isTruthy(duckdbConnection()) &&
              isTruthy(assay())){
               genes <- queryDuckFeatures(
@@ -173,8 +187,8 @@ mod_InputFeature_server <- function(id, duckdbConnection, assay){
           updateSelectizeInput(
               session = session,
               inputId = 'features',
-              selected = NULL,
-              choices = genes,
+              selected = "",
+              choices = c("", genes),
               server = TRUE
           )
           updateSwitchInput(
@@ -182,6 +196,8 @@ mod_InputFeature_server <- function(id, duckdbConnection, assay){
               inputId = "moduleScore",
               value = FALSE
           )
+          ## clear gene expression stored
+          session$sendCustomMessage(type = "clear_expr", "")
 
       }, priority = 10)
 
@@ -206,10 +222,8 @@ mod_InputFeature_server <- function(id, duckdbConnection, assay){
 
       ## Check if featuers exist in the object
       filteredInputFeatures <- eventReactive(userInputFeatures(), {
-
-          if(isTruthy(userInputFeatures()) &&
-             isTruthy(duckdbConnection()) &&
-             isTruthy(assay())){
+          req(duckdbConnection(), assay())
+          if(isTruthy(userInputFeatures())){
               genes <- queryDuckFeatures(
                   con = duckdbConnection(),
                   assay = assay()
@@ -235,6 +249,84 @@ mod_InputFeature_server <- function(id, duckdbConnection, assay){
 
       moduleScore <- reactive({
           input$moduleScore
+      })
+
+      ## Extracting gene expression or calculating module score
+      ## Init expression extraction as extendedTask class
+      extract_expression <- ExtendedTask$new(function(con, assay, features, layer = "data", filePath) {
+        future_promise({
+          expr <- queryDuckExpr(
+            con = con,
+            assay = assay,
+            layer = layer,
+            features = features,
+            populateZero = TRUE, # populate zero
+            cellNames = FALSE # remove cellnames to shrink object size
+          )
+
+          if(file.exists(filePath)){
+            file.remove(filePath)
+          }
+          write_expr_raw(expr, filePath)
+          return(basename(filePath))
+        })
+      })
+
+      observeEvent(filteredInputFeatures(), {
+
+          req(duckdbConnection())
+          message("filteredInputFeatures() : ", paste(filteredInputFeatures(), collapse=","))
+
+          if(isTruthy(filteredInputFeatures())){
+              ##showNotification(
+              ##    ui = div(div(class = c("spinner-border", "spinner-border-sm", "text-primary"),
+              ##                 role = "status",
+              ##                 span(class = "sr-only", "Loading...")),
+              ##             "Extracting expression values..."),
+              ##    action = NULL,
+              ##    duration = NULL,
+              ##    closeButton = FALSE,
+              ##    type = "default",
+              ##    id = "extract_expr_notification",
+              ##    session = session
+              ##)
+
+              if(isTruthy(moduleScore())){
+                  tryCatch({
+                      moduleScore <- duckModuleScore(
+                          con = duckdbConnection(),
+                          assay = assay(),
+                          features = filteredInputFeatures()
+                      )
+                      ## transfer moduleScore data
+                      transfer_expression(moduleScore, session)
+                      rm(moduleScore)
+                      removeNotification(id = "extract_expr_notification", session)
+                  }, error = function(e) {
+                      removeNotification(id = "extract_expr_notification", session)
+                      showNotification("ModuleScore Calculation failed, please check your gene list")
+                      message("moduleScore failed:", "\n", e)
+                  })
+              }else{
+                con <- duckdbConnection()
+                selectedAssay <- assay()
+                inputFeatures <- filteredInputFeatures()
+
+                extract_expression$invoke(con = con,
+                                          assay = selectedAssay,
+                                          features = inputFeatures,
+                                          filePath = file.path(session$userData$exprTempDir, hash_md5(inputFeatures[1])))
+                message("invoked extendedTask")
+                start_extract_expr(inputFeatures, session)
+              }
+
+          }
+          ##scatterColorIndicator(scatterColorIndicator()+1)
+      }, priority = -10, ignoreNULL = FALSE) # lower priority than plottingMode()
+
+      observe({
+        message("ExtendedTask finished...")
+        session$sendCustomMessage(type = "expr_ready", extract_expression$result())
       })
 
       return(
