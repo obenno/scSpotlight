@@ -46,13 +46,15 @@ export class reglScatterCanvas {
             group_by: null,
             split_by: null,
             catColors: [],
-            selectedFeature: [],
+            selectedFeatures: [],
             moduleScore: false,
             labelSize: 0
         };
 
         // Create a reusable renderer
         this.renderer = createRenderer();
+        // Create empty array to store scatterplots instances
+        this.scatterplots = [];
 
     }
 
@@ -82,22 +84,21 @@ export class reglScatterCanvas {
 
     clear() {
         // clear elements and plotData
-        const plotElId = this.plotEl.id;
-        this.plotEl = document.createElement("div");
-        this.plotEl.id = plotElId;
-        // by default, use 100% to fit into outside container
-        this.plotEl.style.width = "100%";
-        this.plotEl.style.height = "100%";
-
-        const catLegendElId = this.catLegendEl.id;
-        this.catLegendEl = document.createElement("div");
-        this.catLegendEl.id = catLegendElId;
-        this.catLegendEl.classList.add("html-fill-container");
-
-        const expLegendElId = this.expLegendEl.id;
-        this.expLegendEl = document.createElement("div");
-        this.expLegendEl.id = expLegendElId;
-        this.expLegendEl.classList.add("html-fill-container");
+        while (this.plotEl.firstChild) {
+            this.plotEl.firstChild.remove();
+        }
+        while (this.catLegendEl.firstChild) {
+            this.catLegendEl.firstChild.remove();
+        }
+        while (this.expLegendEl.firstChild) {
+            this.expLegendEl.firstChild.remove();
+        }
+        // clear previous scatterplot instances, important!
+        this.scatterplots.forEach(e => {
+            if(!e.get("isDestroyed")){
+                e.destroy()
+            }
+        });
 
         // Note: origData will not to modified or removed, only clear plotData and plotMetaData
         this.plotData = {
@@ -116,7 +117,7 @@ export class reglScatterCanvas {
         this.plotMetaData.group_by = null;
         this.plotMetaData.split_by = null;
         this.plotMetaData.catColors = [];
-        this.plotMetaData.selectedFeature = [];
+        this.plotMetaData.selectedFeatures = [];
         this.plotMetaData.moduleScore = false;
 
         this.renderer.refresh();
@@ -182,8 +183,6 @@ export class reglScatterCanvas {
 
         this.showCatLabel();
 
-
-
     }
 
     updatePlotData() {
@@ -206,17 +205,17 @@ export class reglScatterCanvas {
         );
         console.log("point_XY_data", point_XY_data);
         // select the first gene in expression data
-        let selectedFeature = Object.keys(this.origData.expressionData)[0] ?? null;
-        this.updatePlotMetaData({ "selectedFeature" : [selectedFeature] });
+        //let selectedFeature = Object.keys(this.origData.expressionData)[0] ?? null;
+        //this.updatePlotMetaData({ "selectedFeature" : [selectedFeature] });
         let zData = this.constructor.prepare_Z_data(
             this.origData.cellMetaData,
-            this.origData.expressionData[this.plotMetaData.selectedFeature],
+            this.origData.expressionData[this.plotMetaData.selectedFeatures],
             this.plotMetaData.mode,
             this.plotMetaData.nPanels,
             this.plotMetaData.group_by,
             this.plotMetaData.split_by,
             this.plotMetaData.catColors,
-            this.plotMetaData.selectedFeature,
+            this.plotMetaData.selectedFeatures,
             this.plotMetaData.moduleScore
         );
         console.log("zData: ", zData);
@@ -998,7 +997,7 @@ export class reglScatterCanvas {
     updateExpLegend(){
         // Add expression legend element
         if(this.plotMetaData.mode === "cluster+expr+noSplit" || this.plotMetaData.mode === "cluster+expr+twoSplit" || this.plotMetaData.mode === "cluster+expr+multiSplit"){
-            const exprArray = this.origData.expressionData[this.plotMetaData.selectedFeature];
+            const exprArray = this.origData.expressionData[this.plotMetaData.selectedFeatures];
             const exprLegendColor = d3.scaleSequential([d3.min(exprArray), d3.max(exprArray)], d3.interpolate("#E5E4E2", "#800080"));
             const exprLegendTitle = this.plotMetaData.moduleScore ? "ModuleScore" : "Expresson";
             const exprLegend = Legend(exprLegendColor, {title: exprLegendTitle, width: 200});
