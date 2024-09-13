@@ -42,24 +42,30 @@ mod_mainClusterPlot_server <- function(id,
                                        scatterColorIndicator,
                                        group.by,
                                        split.by,
-                                       filteredInputFeatures,
+                                       selectedFeatures,
                                        moduleScore){
   moduleServer( id, function(input, output, session){
       ns <- session$ns
 
       previous_plottingMode <- reactiveVal(NULL)
+      previous_selectedFeatures <- reactiveVal(NULL)
+
       plottingMode <- eventReactive(list(
-          filteredInputFeatures(),
+          selectedFeatures(),
           split.by()
       ), {
-          ##req(duckdbConnection())
-          if(isTruthy(filteredInputFeatures()) && split.by() == "None"){
+        ##req(duckdbConnection())
+          message("selectedFeatures(): ", selectedFeatures())
+          if(isTruthy(selectedFeatures()) &&
+             length(selectedFeatures()) == 1 &&
+             split.by() == "None"){
               mode <- "cluster+expr+noSplit"
-          }else if(isTruthy(filteredInputFeatures()) &&
+          }else if(isTruthy(selectedFeatures()) &&
+                   length(selectedFeatures()) == 1 &&
                    split.by() != "None"){
-            split.by.length <- queryDuckMeta(
-              con = duckdbConnection()
-            ) %>%
+              split.by.length <- queryDuckMeta(
+                  con = duckdbConnection()
+              ) %>%
               pull(split.by()) %>%
               unique() %>%
               length()
@@ -68,7 +74,7 @@ mod_mainClusterPlot_server <- function(id,
               }else{
                   mode <- "cluster+expr+multiSplit"
               }
-          }else if(!isTruthy(filteredInputFeatures()) &&
+          }else if(!isTruthy(selectedFeatures()) &&
                    split.by() != "None"){
               mode <- "cluster+multiSplit"
           }else{
@@ -79,18 +85,32 @@ mod_mainClusterPlot_server <- function(id,
           return(mode)
       })
 
-      observeEvent(plottingMode(), {
+      observeEvent(list(plottingMode(), selectedFeatures()), {
         ## here we only observe plottingMode() value change, not state change
         if (!identical(previous_plottingMode(), plottingMode())) {
-          message("Plotting mode changed and indicator increased")
-          scatterReductionIndicator(scatterReductionIndicator()+1)
-          scatterColorIndicator(scatterColorIndicator()+1)
+          ## Expression related plot will be triggered by "plotFeature" button
+          ## Here only automatically trigger plot event with no expression plottingMode()
+          ## selectedFeature > 1 will return clusterOnly mode, we will not automatically trigger plot then
+          if(plottingMode() %in% c("clusterOnly", "cluster+multiSplit") &&
+             length(selectedFeatures())==0){
+            message("Plotting mode changed and indicator increased")
+            scatterReductionIndicator(scatterReductionIndicator()+1)
+            scatterColorIndicator(scatterColorIndicator()+1)
+          }
         }
         previous_plottingMode(plottingMode())
-      },
-      priority = -10,
-      ignoreNULL = TRUE,
-      ignoreInit = TRUE)
+      }, priority = -10, ignoreNULL = TRUE, ignoreInit = TRUE)
+
+
+      ##observeEvent(selectedFeatures(), {
+      ##  ## here we only observe plottingMode() value change, not state change
+      ##  if (!identical(previous_selectedFeatures(), selectedFeatures())) {
+      ##    message("selectedFeatures changed and indicator increased")
+      ##    scatterReductionIndicator(scatterReductionIndicator()+1)
+      ##    scatterColorIndicator(scatterColorIndicator()+1)
+      ##  }
+      ##  previous_selectedFeatures(selectedFeatures())
+      ##}, priority = -10, ignoreNULL = TRUE, ignoreInit = TRUE)
 
       observeEvent(moduleScore(),{
           message("moduleScore switch changed scatterColorIndicator")
@@ -99,13 +119,6 @@ mod_mainClusterPlot_server <- function(id,
 
 
       observeEvent(list(
-          ## Include trigger events
-          ##selectedReduction(),
-          ##group.by(),
-          ##split.by(),
-          ##selectedFeature(),
-          ##filteredInputFeatures(),
-          ##moduleScore()
           scatterReductionIndicator(),
           scatterColorIndicator()
       ), {
@@ -120,13 +133,17 @@ mod_mainClusterPlot_server <- function(id,
                                    group.by = group.by(),
                                    mode = plottingMode(),
                                    split.by = split.by(),
-                                   inputFeatures = filteredInputFeatures(),
-                                   selectedFeature = NULL,
+                                   ##inputFeatures = filteredInputFeatures(),
+                                   ##selectedFeature = NULL,
                                    moduleScore = moduleScore())
 
           message("indicators changed, plotting clusters...")
-
-          reglScatter_plot(d, session)
+          ##if(length(selectedFeatures())>1){
+          ##  message("selectedFeatures more than 1, using featurePlot instead of regl")
+          ##}else{
+            message("invoking regl")
+            reglScatter_plot(d, session)
+          ##}
 
       }, priority = -1000, ignoreInit = TRUE)
 

@@ -25,14 +25,13 @@ export async function initFeaturePlotWebR() {
 
   //const shelter = new webR.Shelter();
   let shelter = await new webR.Shelter();
-  let result = await shelter.captureR('print(rnorm(10,5,1))');
 
-  console.log('Output obtained from running `rnorm` from webR:');
-  console.log(result.output);
+  //let result = await shelter.captureR('print(rnorm(10,5,1))');
+
+  //console.log('Output obtained from running `rnorm` from webR:');
+  //console.log(result.output);
 
   shelter.purge();
-  //let capture = await webR.Shelter.captureR('rnorm(10,5,1)');
-  //let output = await capture.result[0].toArray();
 
   await webR.evalR(`
 library(ggplot2)

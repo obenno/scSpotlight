@@ -23,6 +23,7 @@ mod_InputFeature_ui <- function(id){
         selectInput(
             ns("features"),
             "Input Gene Names",
+            selected = NULL,
             choices = NULL,
             multiple = FALSE,
             selectize = TRUE,
@@ -41,7 +42,7 @@ mod_InputFeature_ui <- function(id){
               selectInput(
                   ns("geneSet"),
                   "Choose Gene Set",
-                  choices = "",
+                  choices = NULL,
                   selected = NULL,
                   multiple = FALSE,
                   selectize = TRUE,
@@ -96,42 +97,26 @@ mod_InputFeature_ui <- function(id){
 #' @importFrom promises future_promise %...>% %...!%
 #' @importFrom cli hash_md5
 #' @noRd
-mod_InputFeature_server <- function(id, duckdbConnection, assay){
+mod_InputFeature_server <- function(id, duckdbConnection, assay, scatterColorIndicator){
   moduleServer( id, function(input, output, session){
       ns <- session$ns
 
       ## Two input mode: upload feature list or manually input
-      observeEvent(
-          list(
-              input$featureInputMode,
-              duckdbConnection(),
-              assay()
-          ), {
+      observeEvent(input$featureInputMode, {
           if(input$featureInputMode == "Manual Select"){
               shinyjs::show("features")
               shinyjs::hide("featureList")
               shinyjs::hide("geneSet")
-
-              req(duckdbConnection(), assay())
-              genes <- queryDuckFeatures(
-                  con = duckdbConnection(),
-                  assay = assay()
-              )
               updateSelectizeInput(
                   session = session,
                   inputId = 'features',
-                  selected = "",
-                  choices = c("", genes),
-                  server = TRUE
+                  selected = NULL
+                  ##server = TRUE
               )
           }else{
               shinyjs::hide("features")
               shinyjs::show("geneSet")
               shinyjs::show("featureList")
-
-              ##selectedGeneSet <- unique(uploadedFeatureList()$geneSet)[1]
-              ##geneSet <- unique(uploadedFeatureList()$geneSet)
-
           }
           updateSwitchInput(
               session = session,
@@ -140,6 +125,29 @@ mod_InputFeature_server <- function(id, duckdbConnection, assay){
           )
       }, priority = -10)
 
+      genes <- reactive({
+          req(duckdbConnection(), assay())
+          genes <- queryDuckFeatures(
+              con = duckdbConnection(),
+              assay = assay()
+          )
+      })
+
+      observeEvent(genes(), {
+          updateSelectizeInput(
+              session = session,
+              inputId = 'features',
+              selected = "",
+              choices = genes()
+              ##server = TRUE
+          )
+      })
+
+      storedFeatures <- reactive({
+          ## values set from javascript
+          ## indicates feature names already stored in javascript
+          input$storedFeatures
+      })
 
       uploadedFeatureList <- reactive({
           req(input$featureInputMode == "Upload Feature List")
@@ -173,24 +181,74 @@ mod_InputFeature_server <- function(id, duckdbConnection, assay){
           )
       })
 
-      observeEvent(input$clearFeature, {
-          req(duckdbConnection(), assay())
-          if(isTruthy(duckdbConnection()) &&
-             isTruthy(assay())){
-              genes <- queryDuckFeatures(
-                  con = duckdbConnection(),
-                  assay = assay()
+      ## Extracting gene expression or calculating module score
+      ## Init expression extraction as extendedTask class
+      extract_expression <- ExtendedTask$new(function(con, assay, features, layer = "data", filePath) {
+          future_promise({
+              expr <- queryDuckExpr(
+                  con = con,
+                  assay = assay,
+                  layer = layer,
+                  features = features,
+                  populateZero = TRUE, # populate zero
+                  cellNames = FALSE # remove cellnames to shrink object size
               )
-          }else{
-              genes <- NULL
+
+              if(file.exists(filePath)){
+                  file.remove(filePath)
+              }
+              write_expr_raw(expr, filePath)
+              return(basename(filePath))
+          })
+      })
+
+
+      observeEvent(input$geneSet, {
+          req(uploadedFeatureList(), input$geneSet,
+              duckdbConnection(), assay(), genes())
+          geneSetFeatures <- uploadedFeatureList() %>%
+              filter(`geneSet` == input$geneSet) %>%
+              pull(`geneName`)
+
+          featuresNotDetected <- setdiff(geneSetFeatures, genes())
+          if(length(featuresNotDetected)>0){
+              showNotification(
+                  ui = paste0("Features not detected: ", paste0(featuresNotDetected, collapse = ", ")),
+                  action = NULL,
+                  duration = 3,
+                  closeButton = TRUE,
+                  type = "default",
+                  session = session
+              )
           }
-          updateSelectizeInput(
-              session = session,
-              inputId = 'features',
-              selected = "",
-              choices = c("", genes),
-              server = TRUE
-          )
+
+          filteredFeatures <- intersect(geneSetFeatures, genes())
+
+          existFeatures <- intersect(filteredFeatures, storedFeatures())
+          if(length(existFeatures)>0){
+              showNotification(
+                  ui = paste0("Features already queried: ", paste0(existFeatures, collapse = ", ")),
+                  action = NULL,
+                  duration = 3,
+                  closeButton = TRUE,
+                  type = "default",
+                  session = session
+              )
+          }
+
+          selectedFeatures <- setdiff(filteredFeatures, storedFeatures())
+          for(feature in selectedFeatures){
+              extract_expression$invoke(con = duckdbConnection(),
+                                        assay = assay(),
+                                        features = feature,
+                                        filePath = file.path(session$userData$exprTempDir, hash_md5(feature)))
+              message("invoked extendedTask")
+              start_extract_expr(feature, session)
+          }
+      }, priority = -10, ignoreNULL = FALSE)
+
+      observeEvent(input$clearFeature, {
+
           updateSwitchInput(
               session = session,
               inputId = "moduleScore",
@@ -201,132 +259,68 @@ mod_InputFeature_server <- function(id, duckdbConnection, assay){
 
       }, priority = 10)
 
-      ## selectedFeatures return user input feature list or uploaded list
-      ## feature not included in the dataset will be discarded
-      userInputFeatures <- reactive({
-
-          if(input$featureInputMode == "Upload Feature List" &&
-             isTruthy(input$geneSet)){
-              userInputFeatures <- uploadedFeatureList() %>%
-                  filter(`geneSet` == input$geneSet) %>%
-                  pull(`geneName`)
-          }else if(input$featureInputMode == "Manual Select"){ ##&&
-              userInputFeatures <- input$features
-          }else{
-              userInputFeatures <- NULL
-          }
-
-          userInputFeatures
-
-      })
-
-      ## Check if featuers exist in the object
-      filteredInputFeatures <- eventReactive(userInputFeatures(), {
-          req(duckdbConnection(), assay())
-          if(isTruthy(userInputFeatures())){
-              genes <- queryDuckFeatures(
-                  con = duckdbConnection(),
-                  assay = assay()
-              )
-              featuresNotDetected <- setdiff(userInputFeatures(), genes)
-              if(length(featuresNotDetected)>0){
-                  showNotification(
-                      ui = paste0("Features not detected: ", paste0(featuresNotDetected, collapse = ", ")),
-                      action = NULL,
-                      duration = 3,
-                      closeButton = TRUE,
-                      type = "default",
-                      session = session
-                  )
-              }
-              filteredFeatures <- intersect(userInputFeatures(), genes)
-          }else{
-              filteredFeatures <- NULL
-          }
-
-          return(filteredFeatures)
-      }, ignoreNULL = FALSE)
 
       moduleScore <- reactive({
           input$moduleScore
       })
 
-      ## Extracting gene expression or calculating module score
-      ## Init expression extraction as extendedTask class
-      extract_expression <- ExtendedTask$new(function(con, assay, features, layer = "data", filePath) {
-        future_promise({
-          expr <- queryDuckExpr(
-            con = con,
-            assay = assay,
-            layer = layer,
-            features = features,
-            populateZero = TRUE, # populate zero
-            cellNames = FALSE # remove cellnames to shrink object size
-          )
 
-          if(file.exists(filePath)){
-            file.remove(filePath)
+      observeEvent(input$features, {
+
+          req(duckdbConnection(), assay(), input$features)
+
+          ##if(isTruthy(moduleScore())){
+          ##    tryCatch({
+          ##        moduleScore <- duckModuleScore(
+          ##            con = duckdbConnection(),
+          ##            assay = assay(),
+          ##            features = filteredInputFeatures()
+          ##        )
+          ##        ## transfer moduleScore data
+          ##        transfer_expression(moduleScore, session)
+          ##        rm(moduleScore)
+          ##        removeNotification(id = "extract_expr_notification", session)
+          ##    }, error = function(e) {
+          ##        removeNotification(id = "extract_expr_notification", session)
+          ##        showNotification("ModuleScore Calculation failed, please check your gene list")
+          ##        message("moduleScore failed:", "\n", e)
+          ##    })
+          ##}else{
+          if(input$features %in% storedFeatures()){
+              showNotification(
+                  ui = paste0("Features already queried: ", input$features),
+                  action = NULL,
+                  duration = 3,
+                  closeButton = TRUE,
+                  type = "default",
+                  session = session
+              )
+          }else{
+              extract_expression$invoke(con = duckdbConnection(),
+                                        assay = assay(),
+                                        features = input$features,
+                                        filePath = file.path(session$userData$exprTempDir, hash_md5(input$features[1])))
+              ##message("invoked extendedTask")
+              start_extract_expr(input$features, session)
           }
-          write_expr_raw(expr, filePath)
-          return(basename(filePath))
-        })
-      })
 
-      observeEvent(filteredInputFeatures(), {
-
-          req(duckdbConnection())
-          message("filteredInputFeatures() : ", paste(filteredInputFeatures(), collapse=","))
-
-          if(isTruthy(filteredInputFeatures())){
-              ##showNotification(
-              ##    ui = div(div(class = c("spinner-border", "spinner-border-sm", "text-primary"),
-              ##                 role = "status",
-              ##                 span(class = "sr-only", "Loading...")),
-              ##             "Extracting expression values..."),
-              ##    action = NULL,
-              ##    duration = NULL,
-              ##    closeButton = FALSE,
-              ##    type = "default",
-              ##    id = "extract_expr_notification",
-              ##    session = session
-              ##)
-
-              if(isTruthy(moduleScore())){
-                  tryCatch({
-                      moduleScore <- duckModuleScore(
-                          con = duckdbConnection(),
-                          assay = assay(),
-                          features = filteredInputFeatures()
-                      )
-                      ## transfer moduleScore data
-                      transfer_expression(moduleScore, session)
-                      rm(moduleScore)
-                      removeNotification(id = "extract_expr_notification", session)
-                  }, error = function(e) {
-                      removeNotification(id = "extract_expr_notification", session)
-                      showNotification("ModuleScore Calculation failed, please check your gene list")
-                      message("moduleScore failed:", "\n", e)
-                  })
-              }else{
-                con <- duckdbConnection()
-                selectedAssay <- assay()
-                inputFeatures <- filteredInputFeatures()
-
-                extract_expression$invoke(con = con,
-                                          assay = selectedAssay,
-                                          features = inputFeatures,
-                                          filePath = file.path(session$userData$exprTempDir, hash_md5(inputFeatures[1])))
-                message("invoked extendedTask")
-                start_extract_expr(inputFeatures, session)
-              }
-
-          }
           ##scatterColorIndicator(scatterColorIndicator()+1)
       }, priority = -10, ignoreNULL = FALSE) # lower priority than plottingMode()
 
+      observeEvent(input$plotFeature, {
+          message("Plotting featuerPlot...")
+          scatterColorIndicator(scatterColorIndicator()+1)
+          ##reglScatter_plot("", session)
+      })
+
+
       observe({
-        message("ExtendedTask finished...")
+        ##message("ExtendedTask finished...")
         session$sendCustomMessage(type = "expr_ready", extract_expression$result())
+      })
+
+      filteredInputFeatures <- reactive({
+          input$features
       })
 
       return(

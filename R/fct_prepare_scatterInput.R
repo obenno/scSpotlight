@@ -9,8 +9,6 @@ prepare_scatterMeta <- function(con,
                                 group.by = NULL,
                                 mode = "clusterOnly",
                                 split.by = NULL,
-                                inputFeatures = NULL,
-                                selectedFeature = NULL,
                                 moduleScore = FALSE){
   ## ensure mode is in the list
   mode_supported <- c("clusterOnly",
@@ -58,8 +56,6 @@ prepare_scatterMeta <- function(con,
     group_by = group.by,
     split_by = split.by,
     catColors = catColors,
-    inputFeatures = inputFeatures,
-    selectedFeature = selectedFeature,
     moduleScore = moduleScore
   )
 

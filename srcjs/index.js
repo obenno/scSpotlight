@@ -53,27 +53,27 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     // Adjust widget elements on scroll
-    document.getElementById(mainPlotElId).addEventListener('scroll', () => {
-        const containerEl = document.getElementById(mainPlotElId);
-
-        const noteEl = containerEl.querySelector("#scatterPlotNote");
-
-        noteEl.style.bottom = "2%";
-        noteEl.style.bottom = `calc(${noteEl.style.bottom} - ${containerEl.scrollTop}px)`;
-
-        const infoEl = containerEl.querySelector("#info");
-
-        infoEl.style.bottom = "1%";
-        infoEl.style.bottom = `calc(${infoEl.style.bottom} - ${containerEl.scrollTop}px)`;
-
-        const sliderEl = containerEl.querySelector(".label-slider");
-        sliderEl.style.bottom = "1%";
-        sliderEl.style.bottom = `calc(${sliderEl.style.bottom} - ${containerEl.scrollTop}px)`;
-
-        const downloadEl = containerEl.querySelector("#downloadIcon");
-        downloadEl.style.bottom = "1%";
-        downloadEl.style.bottom = `calc(${downloadEl.style.bottom} - ${containerEl.scrollTop}px)`;
-    });
+    //document.getElementById(mainPlotElId).addEventListener('scroll', () => {
+    //    const containerEl = document.getElementById(mainPlotElId);
+    //
+    //    const noteEl = containerEl.querySelector("#scatterPlotNote");
+    //
+    //    noteEl.style.bottom = "2%";
+    //    noteEl.style.bottom = `calc(${noteEl.style.bottom} - ${containerEl.scrollTop}px)`;
+    //
+    //    const infoEl = containerEl.querySelector("#info");
+    //
+    //    infoEl.style.bottom = "1%";
+    //    infoEl.style.bottom = `calc(${infoEl.style.bottom} - ${containerEl.scrollTop}px)`;
+    //
+    //    const sliderEl = containerEl.querySelector(".label-slider");
+    //    sliderEl.style.bottom = "1%";
+    //    sliderEl.style.bottom = `calc(${sliderEl.style.bottom} - ${containerEl.scrollTop}px)`;
+    //
+    //    const downloadEl = containerEl.querySelector("#downloadIcon");
+    //    downloadEl.style.bottom = "1%";
+    //    downloadEl.style.bottom = `calc(${downloadEl.style.bottom} - ${containerEl.scrollTop}px)`;
+    //});
 
 }, false);
 
@@ -87,34 +87,6 @@ var waiterSpinner = {
   color: '#ffffff',
   image: ''
 };
-
-const createGoBackWidget = (elID) => {
-
-    let parentEl = document.getElementById(elID);
-    let iconSVG = `<svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" class="bi bi-arrow-bar-left" viewBox="0 0 16 16" style="position:relative;">
-  <path fill-rule="evenodd" d="M12.5 15a.5.5 0 0 1-.5-.5v-13a.5.5 0 0 1 1 0v13a.5.5 0 0 1-.5.5ZM10 8a.5.5 0 0 1-.5.5H3.707l2.147 2.146a.5.5 0 0 1-.708.708l-3-3a.5.5 0 0 1 0-.708l3-3a.5.5 0 1 1 .708.708L3.707 7.5H9.5a.5.5 0 0 1 .5.5Z"/>
-</svg>`;
-    let iconEl = document.createElement("div");
-    iconEl.id = "goBack";
-    iconEl.innerHTML = iconSVG;
-    iconEl.onclick = tellShinyGoBack;
-    parentEl.appendChild(iconEl);
-};
-
-const tellShinyGoBack = () => {
-    // Tell shiny to go back;
-    console.log("Executing go back code");
-    Shiny.setInputValue("goBack", 1);
-};
-
-const clearMainPlotEl = () => {
-    // used to remove "parent-wrapper" div
-    let el = document.getElementById("canvas-wrapper");
-    if(el){
-        el.remove();
-    }
-};
-
 
 Shiny.addCustomMessageHandler('transfer_reduction', (msg) => {
     const reductionData = decodeAndDecompress(msg);
@@ -140,9 +112,20 @@ Shiny.addCustomMessageHandler('transfer_meta', (msg) => {
 //});
 
 Shiny.addCustomMessageHandler('createSparkLine', (feature) => {
+
     const sparkLineEl = createSparkLine(feature);
     const sparkLineContainer = document.getElementById("featureSparkLine");
     sparkLineContainer.appendChild(sparkLineEl);
+
+    const sparkLineArray = [...sparkLineContainer.querySelectorAll(".featureSparkLine")];
+    // notify server that gene expression stored has been changed
+    // set the value when start transferring data
+    const storedFeatures = sparkLineArray.map(e => {
+        // select the first span element
+        return e.querySelector("span").innerHTML;
+    });
+    // remember to add shiny module id as prefix
+    Shiny.setInputValue("inputFeatures-storedFeatures", storedFeatures);
 });
 
 async function fetchBinaryFile(url) {
@@ -156,7 +139,7 @@ async function fetchBinaryFile(url) {
   } catch (error) {
     console.error('There was a problem fetching the binary file:', error);
   }
-}
+};
 
 Shiny.addCustomMessageHandler('expr_ready', (msg) => {
     // msg is the expr binary file name on the server
@@ -167,16 +150,17 @@ Shiny.addCustomMessageHandler('expr_ready', (msg) => {
             const expressionData = decodeExprBinary(data);
 
             reglElementData.updateExpressionData(expressionData);
-            console.log("exprData", expressionData);
-
+            //console.log("exprData", expressionData);
+            console.log("exprData", reglElementData.origData.expressionData);
             const feature = Object.keys(expressionData)[0];
-            const sparkLine = document.getElementById("featureSparkLine").querySelectorAll(".featureSparkLine")
+            const sparkLine = document.getElementById("featureSparkLine").querySelectorAll(".featureSparkLine");
             const sparkLineArray = [...sparkLine];
             sparkLineArray.forEach(e => {
                 if(e.querySelector("span").innerHTML == feature){
                     updateSparkLine(e, reglElementData);
                 }
-            })
+            });
+
         }
 
     });
@@ -184,127 +168,116 @@ Shiny.addCustomMessageHandler('expr_ready', (msg) => {
 
 Shiny.addCustomMessageHandler('clear_expr', (msg) => {
     // purge exprssion data
-    reglElementData.updateExpressionData({});
+    reglElementData.origData.expressionData = {};
+    reglElementData.plotMetaData.selectedFeatures = [];
+    // remember to add shiny module id as prefix
+    Shiny.setInputValue("inputFeatures-storedFeatures", [], {priority: "event"});
+    Shiny.setInputValue("selectedFeatures", [], {priority: "event"});
+
     // remove all sparkline
     document.getElementById("featureSparkLine").innerHTML = "";
+
+    // hide featurePlot and show scatterplot
+    const featurePlotCanvas = document.getElementById("featurePlotCanvas");
+    featurePlotCanvas.style.display = "none";
+    reglElementData.plotEl.style.display = "flex";
 });
 
 
-//Shiny.addCustomMessageHandler('reglScatter_plot', (msg) => {
-//
-//    // Add spinners for the plot
-//    // waiter is from R waiter package
-//    //myWaiter.show(waiterSpinner);
-//
-//    // do necessary cleanups
-//    // ensure the featurePlot canvas is hidden
-//    const parentDiv = document.getElementById(mainPlotElId);
-//    const featurePlotCanvas = document.getElementById("featurePlotCanvas");
-//    featurePlotCanvas.style.display = "none";
-//    // remove canvas
-//    const previous_canvas = document.getElementById("reglScatter");
-//    if(previous_canvas){
-//        previous_canvas.remove();
-//    }
-//    const accordions = document.querySelectorAll(".accordion-item");
-//    const category_accordion = [...accordions].filter((e) => {
-//        if(e.dataset.value == "analysis_category"){
-//            return e;
-//        }
-//    });
-//    // remove legends
-//    const category_accordion_body = category_accordion[0].querySelector(".accordion-body");
-//    // firstly remove old ones if exists
-//    const previous_catLegend = category_accordion_body.querySelectorAll(".scatter-legend");
-//    if(previous_catLegend.length > 0){
-//        previous_catLegend.forEach((e) => e.remove());
-//    }
-//
-//    const previous_expLegend = category_accordion_body.querySelectorAll("svg");
-//    if(previous_expLegend.length > 0){
-//        previous_expLegend.forEach(e => e.remove());
-//    }
-//
-//    // Transfer plotting meta data and init scatterplot
-//    let mode = msg.mode;
-//    let nPanels = msg.nPanels;
-//    let group_by = msg.group_by;
-//    let split_by = msg.split_by;
-//    let moduleScore = msg.moduleScore;
-//    let catColors = msg.catColors;
-//    let selectedFeature = msg.selectedFeature;
-//
-//    // ensure catColors is an array
-//    if(typeof catColors === "string"){
-//        catColors = [catColors];
-//    }
-//
-//    // update reglScatterCanvas data
-//    reglElementData.clear();
-//    // have to invoke update method in order
-//    reglElementData.updatePlotMetaData({
-//        mode: mode,
-//        nPanels: nPanels,
-//        group_by: group_by,
-//        split_by: split_by,
-//        moduleScore: moduleScore,
-//        catColors: catColors,
-//        selectedFeature: selectedFeature
-//    });
-//
-//    reglElementData.generatePlotEl();
-//    console.log("Generated plotEl");
-//
-//    if(Object.keys(reglElementData.origData.expressionData).length > 1 &&
-//      !reglElementData.plotMetaData.moduleScore){
-//
-//        console.log("Drawing featurePlot...");
-//        updateFeaturePlot(featurePlotCanvas);
-//
-//        // show featurePlotCanvas
-//        featurePlotCanvas.style.display = "flex";
-//        //reglElementData.plotEl.style.display = "none";
-//
-//    }else{
-//        console.log("reglElementData :", reglElementData);
-//        // update legend elements
-//        parentDiv.appendChild(reglElementData.plotEl);
-//        category_accordion_body.appendChild(reglElementData.catLegendEl);
-//        category_accordion_body.appendChild(reglElementData.expLegendEl);
-//    }
-//
-//    // return selected points to server side
-//    //reglElementData.scatterplots.forEach((sp, idx) => {
-//    //    sp.subscribe('select', ({ points: selectedPoints }) => {
-//    //
-//    //        const hoveredElements = Array.from(document.querySelectorAll(':hover'));
-//    //
-//    //        const filteredElements = hoveredElements.filter(e => {
-//    //            return e.classList.contains('scatter-legend');
-//    //        });
-//    //        // ensure the legend was not hovered
-//    //        if(filteredElements.length == 0){
-//    //            let selectedCells = selectedPoints.map(i => reglElementData.plotData.cells[idx][i]);
-//    //            Shiny.setInputValue("selectedPoints", selectedCells);
-//    //        }
-//    //    });
-//    //});
-//    //reglElementData.scatterplots.forEach((sp, idx) => {
-//    //    sp.subscribe('deselect', () => {
-//    //        Shiny.setInputValue("selectedPoints", null);
-//    //    });
-//    //});
-//
-//
-//
-//
-//
-//     // hide spinner
-//    //waiter.hide('mainClusterPlot-clusterPlot');
-//
-//    //featurePlot().then({});
-//
-//});
+Shiny.addCustomMessageHandler('reglScatter_plot', (msg) => {
+
+    // Add spinners for the plot
+    // waiter is from R waiter package
+    //myWaiter.show(waiterSpinner);
+
+    // do necessary cleanups
+    // ensure the featurePlot canvas is hidden
+    const parentDiv = document.getElementById(mainPlotElId);
+    const featurePlotCanvas = document.getElementById("featurePlotCanvas");
+    featurePlotCanvas.style.display = "none";
+    reglElementData.plotEl.style.display = "none";
+
+    // ensure catColors is an array
+    if(typeof msg.catColors === "string"){
+        msg.catColors = [msg.catColors];
+    }
+
+    // create a shallow copy to store previous value
+    const previous_plotMetaData = {...reglElementData.plotMetaData};
+    console.log("previous_plotMetaData: ", previous_plotMetaData);
+    console.log("reglElementData: ", reglElementData);
+    // clear reglScatterCanvas data including plotMetaData
+    reglElementData.clear();
+    // update plotMetaData with previous one
+    reglElementData.updatePlotMetaData(previous_plotMetaData);
+    // then update with new msg, in case msg is empty
+    reglElementData.updatePlotMetaData(msg);
+    console.log("reglElementData.plotMetaData: ", reglElementData.plotMetaData);
+
+    console.log("Generating plotEl");
+        // regenerate plot elements
+    reglElementData.generatePlotEl();
+    console.log("reglElementData :", reglElementData);
+    // update legend elements
+    parentDiv.appendChild(reglElementData.plotEl);
+    const accordions = document.querySelectorAll(".accordion-item");
+    const category_accordion = [...accordions].filter((e) => {
+        if(e.dataset.value == "analysis_category"){
+            return e;
+        }
+    });
+    const category_accordion_body = category_accordion[0].querySelector(".accordion-body");
+    category_accordion_body.appendChild(reglElementData.catLegendEl);
+    category_accordion_body.appendChild(reglElementData.expLegendEl);
+
+
+    if(Object.keys(reglElementData.plotMetaData.selectedFeatures).length > 1 &&
+      !reglElementData.plotMetaData.moduleScore){
+
+        console.log("Drawing featurePlot...");
+        updateFeaturePlot(featurePlotCanvas);
+
+        // show featurePlotCanvas
+        featurePlotCanvas.style.display = "flex";
+        //reglElementData.plotEl.style.display = "none";
+
+    }else{
+        reglElementData.plotEl.style.display = "flex";
+
+    }
+
+    // return selected points to server side
+    //reglElementData.scatterplots.forEach((sp, idx) => {
+    //    sp.subscribe('select', ({ points: selectedPoints }) => {
+    //
+    //        const hoveredElements = Array.from(document.querySelectorAll(':hover'));
+    //
+    //        const filteredElements = hoveredElements.filter(e => {
+    //            return e.classList.contains('scatter-legend');
+    //        });
+    //        // ensure the legend was not hovered
+    //        if(filteredElements.length == 0){
+    //            let selectedCells = selectedPoints.map(i => reglElementData.plotData.cells[idx][i]);
+    //            Shiny.setInputValue("selectedPoints", selectedCells);
+    //        }
+    //    });
+    //});
+    //reglElementData.scatterplots.forEach((sp, idx) => {
+    //    sp.subscribe('deselect', () => {
+    //        Shiny.setInputValue("selectedPoints", null);
+    //    });
+    //});
+
+
+
+
+
+     // hide spinner
+    //waiter.hide('mainClusterPlot-clusterPlot');
+
+    //featurePlot().then({});
+
+});
 
 const updateFeaturePlot = (canvas) => {
     const container = canvas.parentElement;
@@ -316,9 +289,23 @@ const updateFeaturePlot = (canvas) => {
     canvas.height = canvasHeight*2;
     canvas.style.width = "100%";
     canvas.style.height = "100%";
+
+    // It seems that webR does not support typedArray
+    const expressionInput = {}
+    for(let f of reglElementData.plotMetaData.selectedFeatures){
+        expressionInput[f] = Array.from(reglElementData.origData.expressionData[f])
+    };
+    const drInput = {}
+    for(let i of Object.keys(reglElementData.origData.reductionData)){
+        drInput[i] = Array.from(reglElementData.origData.reductionData[i]);
+    }
+    console.log("reglElementData.origData.expressionData: ", reglElementData.origData.expressionData);
+    console.log(expressionInput)
     featurePlot(shelterInstance, canvasWidth, canvasHeight,
-                reglElementData.origData.reductionData,
-                reglElementData.origData.expressionData)
+                drInput,
+                //reglElementData.origData.reductionData,
+                //reglElementData.origData.expressionData)
+                expressionInput)
         .then(res => {
             const ctx = canvas.getContext("2d");
             ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -328,18 +315,6 @@ const updateFeaturePlot = (canvas) => {
     shelterInstance.purge();
 };
 
-
-
-//Shiny.addCustomMessageHandler('reglScatter_removeGrid', (msg) => {
-//    clearMainPlotEl();
-//});
-//
-//Shiny.addCustomMessageHandler('reglScatter_addGoBack', (msg) => {
-//    // Go Back widget will only be added when receiving shiny signals
-//    createGoBackWidget("reglScatter");
-//    // Reset goBack value when creating goBackWidget
-//    Shiny.setInputValue("goBack", null);
-//});
 
 Shiny.addCustomMessageHandler('reglScatter_deselect', (msg) => {
     console.log("Deselect points...");

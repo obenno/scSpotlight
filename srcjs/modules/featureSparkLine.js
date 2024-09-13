@@ -90,7 +90,7 @@ export const updateSparkLine = (containerEl, reglElementData) => {
   iconDiv.innerHTML = square;
 
   // update sparkline
-  const sparkLineEl = containerEl.querySelector(".sparkLine")
+  const sparkLineEl = containerEl.querySelector(".sparkLine");
   // firstly remove progress bar
   sparkLineEl.querySelector("span").remove();
   const sparkLineSpan = document.createElement("span");
@@ -119,20 +119,28 @@ export const updateSparkLine = (containerEl, reglElementData) => {
     switch(currentStatus) {
       case 'ready':
         newStatus = 'checked';
-        reglElementData.plotMetaData.selectedFeature.push(feature);
+        reglElementData.plotMetaData.selectedFeatures.push(feature);
         iconDiv.innerHTML = "";
         iconDiv.innerHTML = check2square;
-        //console.log("selectedFeature: ", reglElementData.plotMetaData.selectedFeature);
+        // send selected features to server
+        Shiny.setInputValue("selectedFeatures",
+                            reglElementData.plotMetaData.selectedFeatures,
+                            {priority: "event"});
+        console.log("selectedFeatures: ", reglElementData.plotMetaData.selectedFeatures);
         break;
       case 'checked':
         newStatus = 'ready';
-        let index = reglElementData.plotMetaData.selectedFeature.indexOf(feature);
+        let index = reglElementData.plotMetaData.selectedFeatures.indexOf(feature);
         if (index !== -1) {
-          reglElementData.plotMetaData.selectedFeature.splice(index, 1);
+          reglElementData.plotMetaData.selectedFeatures.splice(index, 1);
         }
         iconDiv.innerHTML = "";
         iconDiv.innerHTML = square;
-        //console.log("selectedFeature: ", reglElementData.plotMetaData.selectedFeature);
+        // send selected features to server
+        Shiny.setInputValue("selectedFeatures",
+                            reglElementData.plotMetaData.selectedFeatures,
+                            {priority: "event"});
+        console.log("selectedFeatures: ", reglElementData.plotMetaData.selectedFeatures);
         break;
       default:
         newStatus = 'initial';
@@ -148,11 +156,11 @@ const binArrCount = (arr, nBin) => {
   const binData = d3.bin()
                     .thresholds((data, min, max) =>
                       d3.range(nBin).map(t => min + (t / nBin) * (max - min))
-                    )
+                    );
   // count element numbers in each chunk/bin
   return binData(arr).map(e => e.length);
-}
+};
 
 const randomId = (length = 8) => {
   return Math.random().toString(36).substring(2, length + 2);
-}
+};

@@ -122,15 +122,15 @@ app_server <- function(input, output, session) {
                                               scatterColorIndicator)
 
     ## Input Features
-    ##selectedFeature <- reactiveVal(NULL)
     featureInfo <- mod_InputFeature_server("inputFeatures",
                                            duckdbConnection,
-                                           selectedAssay)
+                                           selectedAssay,
+                                           scatterColorIndicator)
 
-    goBackButton <- reactive({
-        ## goBack cannot be read directly in module
-        ## has to be parsed by reactive()
-        input$goBack
+    selectedFeatures <- reactive({
+      ## has to be parsed by reactive()
+      message("input$selectedFeatures: ", input$selectedFeatures)
+        input$selectedFeatures
     })
 
     ## Draw cluster plot
@@ -141,7 +141,7 @@ app_server <- function(input, output, session) {
                                scatterColorIndicator,
                                categoryInfo$group.by,
                                categoryInfo$split.by,
-                               featureInfo$filteredInputFeatures,
+                               selectedFeatures,
                                featureInfo$moduleScore)
 
     ## infoBox needs to be collapsed by default
@@ -173,21 +173,18 @@ app_server <- function(input, output, session) {
                        featureInfo$filteredInputFeatures)
 
     ## Rename Clusters
-    selectedPoints <- reactive({
-        if(isTruthy(goBackButton())){
-            NULL
-        }else{
-            message("Selected Points: ", ifelse(isTruthy(input$selectedPoints), paste(input$selectedPoints, collapse = " "), "None"))
-            input$selectedPoints
-        }
-    })
-    mod_AssignCellCluster_server("renameCluster",
-                                 seuratObj,
-                                 selectedPoints,
-                                 categoryInfo$group.by,
-                                 categoryInfo$split.by,
-                                 scatterReductionIndicator,
-                                 scatterColorIndicator)
+    ##selectedPoints <- reactive({
+    ##  message("Selected Points: ", ifelse(isTruthy(input$selectedPoints), paste(input$selectedPoints, collapse = " "), "None"))
+    ##  input$selectedPoints
+    ##
+    ##})
+    ##mod_AssignCellCluster_server("renameCluster",
+    ##                             seuratObj,
+    ##                             selectedPoints,
+    ##                             categoryInfo$group.by,
+    ##                             categoryInfo$split.by,
+    ##                             scatterReductionIndicator,
+    ##                             scatterColorIndicator)
 
     ## Download Object
     mod_Download_server("downloadObj",
