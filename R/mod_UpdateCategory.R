@@ -40,24 +40,16 @@ mod_UpdateCategory_ui <- function(id){
 #' @noRd
 mod_UpdateCategory_server <- function(id,
                                       duckdbConnection,
+                                      metaCols,
                                       scatterReductionIndicator,
                                       scatterColorIndicator){
   moduleServer( id, function(input, output, session){
 
       ns <- session$ns
-      obj_meta <- reactive({
-          req(duckdbConnection())
-          ##req(selectedAssay())
-          ## select only non-numeric columns
-          queryDuckMeta(duckdbConnection(), "metaData") %>%
-              select(-starts_with(c("nFeature_", "nCount_", "percent.mt"))) %>%
-              dplyr::select(!where(is.numeric)) %>%
-              colnames()
-      })
 
-      observeEvent(obj_meta(), {
-          req(obj_meta())
-          if("seurat_clusters" %in% obj_meta()){
+      observeEvent(metaCols(), {
+          req(metaCols())
+          if("seurat_clusters" %in% metaCols()){
               selected <- "seurat_clusters"
           }else{
               selected <- NULL
@@ -66,41 +58,17 @@ mod_UpdateCategory_server <- function(id,
               session = session,
               inputId = "group.by",
               label = "Choose group.by",
-              choices = obj_meta(),
+              choices = metaCols(),
               selected = selected
           )
-          ## Also transfer metaData when obj_meta() changes
-          showNotification(
-              ui = div(div(class = c("spinner-border", "spinner-border-sm", "text-primary"),
-                           role = "status",
-                           span(class = "sr-only", "Loading...")),
-                       "Updating meta data..."),
-              action = NULL,
-              duration = NULL,
-              closeButton = FALSE,
-              type = "default",
-              id = "update_meta_notification",
-              session = session
-          )
-          message("Transferring metaData...")
-          d <- queryDuckMeta(duckdbConnection(), "metaData")
-          d <- d %>% mutate(cells=1:nrow(d)) %>% as_tibble()
-          transfer_meta(d, session)
-          rm(d)
-          removeNotification(id = "update_meta_notification", session)
-      }, priority = -10)
-
-      observeEvent(obj_meta(), {
-          req(obj_meta())
-          ## use all non-numeric columns in meta data
           updateSelectInput(
               session = session,
               inputId = "split.by",
               label = "Choose split.by",
-              choices = c("None", obj_meta()),
+              choices = c("None", metaCols()),
               selected = NULL
           )
-      }, priority = 20)
+      }, priority = -10)
 
       observeEvent(input$group.by, {
           if(input$group.by!="None"){

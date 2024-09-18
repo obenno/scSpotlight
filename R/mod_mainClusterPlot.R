@@ -50,66 +50,55 @@ mod_mainClusterPlot_server <- function(id,
       previous_plottingMode <- reactiveVal(NULL)
       previous_selectedFeatures <- reactiveVal(NULL)
 
-      plottingMode <- eventReactive(list(
-          selectedFeatures(),
-          split.by()
-      ), {
-        ##req(duckdbConnection())
-          message("selectedFeatures(): ", selectedFeatures())
-          if(isTruthy(selectedFeatures()) &&
-             length(selectedFeatures()) == 1 &&
-             split.by() == "None"){
-              mode <- "cluster+expr+noSplit"
-          }else if(isTruthy(selectedFeatures()) &&
-                   length(selectedFeatures()) == 1 &&
-                   split.by() != "None"){
-              split.by.length <- queryDuckMeta(
-                  con = duckdbConnection()
-              ) %>%
-              pull(split.by()) %>%
-              unique() %>%
-              length()
-              if(split.by.length <= 2){
-                  mode <- "cluster+expr+twoSplit"
-              }else{
-                  mode <- "cluster+expr+multiSplit"
-              }
-          }else if(!isTruthy(selectedFeatures()) &&
-                   split.by() != "None"){
-              mode <- "cluster+multiSplit"
-          }else{
-              mode <- "clusterOnly"
-          }
-          message("Plotting mode => ", mode)
+      ##plottingMode <- eventReactive(list(
+      ##    selectedFeatures(),
+      ##    split.by()
+      ##), {
+      ##
+      ##    message("selectedFeatures(): ", selectedFeatures())
+      ##    if(isTruthy(selectedFeatures()) &&
+      ##       length(selectedFeatures()) == 1 &&
+      ##       split.by() == "None"){
+      ##        mode <- "cluster+expr+noSplit"
+      ##    }else if(isTruthy(selectedFeatures()) &&
+      ##             length(selectedFeatures()) == 1 &&
+      ##             split.by() != "None"){
+      ##        split.by.length <- queryDuckMeta(
+      ##            con = duckdbConnection()
+      ##        ) %>%
+      ##        pull(split.by()) %>%
+      ##        unique() %>%
+      ##        length()
+      ##        if(split.by.length <= 2){
+      ##            mode <- "cluster+expr+twoSplit"
+      ##        }else{
+      ##            mode <- "cluster+expr+multiSplit"
+      ##        }
+      ##    }else if(!isTruthy(selectedFeatures()) &&
+      ##             split.by() != "None"){
+      ##        mode <- "cluster+multiSplit"
+      ##    }else{
+      ##        mode <- "clusterOnly"
+      ##    }
+      ##    message("Plotting mode => ", mode)
+      ##
+      ##    return(mode)
+      ##})
 
-          return(mode)
-      })
-
-      observeEvent(list(plottingMode(), selectedFeatures()), {
-        ## here we only observe plottingMode() value change, not state change
-        if (!identical(previous_plottingMode(), plottingMode())) {
-          ## Expression related plot will be triggered by "plotFeature" button
-          ## Here only automatically trigger plot event with no expression plottingMode()
-          ## selectedFeature > 1 will return clusterOnly mode, we will not automatically trigger plot then
-          if(plottingMode() %in% c("clusterOnly", "cluster+multiSplit") &&
-             length(selectedFeatures())==0){
-            message("Plotting mode changed and indicator increased")
-            scatterReductionIndicator(scatterReductionIndicator()+1)
-            scatterColorIndicator(scatterColorIndicator()+1)
-          }
-        }
-        previous_plottingMode(plottingMode())
-      }, priority = -10, ignoreNULL = TRUE, ignoreInit = TRUE)
-
-
-      ##observeEvent(selectedFeatures(), {
+      ##observeEvent(list(plottingMode(), selectedFeatures()), {
       ##  ## here we only observe plottingMode() value change, not state change
-      ##  if (!identical(previous_selectedFeatures(), selectedFeatures())) {
-      ##    message("selectedFeatures changed and indicator increased")
-      ##    scatterReductionIndicator(scatterReductionIndicator()+1)
-      ##    scatterColorIndicator(scatterColorIndicator()+1)
+      ##  if (!identical(previous_plottingMode(), plottingMode())) {
+      ##    ## Expression related plot will be triggered by "plotFeature" button
+      ##    ## Here only automatically trigger plot event with no expression plottingMode()
+      ##    ## selectedFeature > 1 will return clusterOnly mode, we will not automatically trigger plot then
+      ##    if(plottingMode() %in% c("clusterOnly", "cluster+multiSplit") &&
+      ##       length(selectedFeatures())==0){
+      ##      message("Plotting mode changed and indicator increased")
+      ##      scatterReductionIndicator(scatterReductionIndicator()+1)
+      ##      scatterColorIndicator(scatterColorIndicator()+1)
+      ##    }
       ##  }
-      ##  previous_selectedFeatures(selectedFeatures())
+      ##  previous_plottingMode(plottingMode())
       ##}, priority = -10, ignoreNULL = TRUE, ignoreInit = TRUE)
 
       observeEvent(moduleScore(),{
@@ -122,28 +111,42 @@ mod_mainClusterPlot_server <- function(id,
           scatterReductionIndicator(),
           scatterColorIndicator()
       ), {
-          ## Update plots when group.by and split.by changes
-          req(group.by(), split.by())
+        ## Update plots when group.by and split.by changes
+          req(duckdbConnection())
+          req(group.by()!="None")
+
           message("Selected group.by is ", isolate(group.by()))
           message("Selected split.by is ", isolate(split.by()))
           message("scatterReductionIndicator() is ", isolate(scatterReductionIndicator()))
           message("scatterColorIndicator() is ", isolate(scatterColorIndicator()))
           message("Updating plotMetaData")
-          d <- prepare_scatterMeta(con = duckdbConnection(),
-                                   group.by = group.by(),
-                                   mode = plottingMode(),
-                                   split.by = split.by(),
-                                   ##inputFeatures = filteredInputFeatures(),
-                                   ##selectedFeature = NULL,
-                                   moduleScore = moduleScore())
-
-          message("indicators changed, plotting clusters...")
-          ##if(length(selectedFeatures())>1){
-          ##  message("selectedFeatures more than 1, using featurePlot instead of regl")
-          ##}else{
-            message("invoking regl")
-            reglScatter_plot(d, session)
-          ##}
+          message("-----")
+          message("group.by is ", group.by());
+          ##message("plottingMode() is ", plottingMode())
+          message("split.by is ", split.by())
+          message("moduleScore is ", moduleScore())
+          ##d <- prepare_scatterMeta(con = duckdbConnection(),
+          ##                         group.by = group.by(),
+          ##                         mode = plottingMode(),
+          ##                         split.by = split.by(),
+          ##                         moduleScore = moduleScore())
+          if(group.by()=="None"){
+            group_by = NULL
+          }else{
+            group_by = group.by()
+          }
+          if(split.by()=="None"){
+            split_by = NULL
+          }else{
+            split_by = split.by()
+          }
+          d <- list(
+            group_by = group_by,
+            split_by = split_by,
+            moduleScore = moduleScore()
+          )
+          message("invoking regl")
+          reglScatter_plot(d, session)
 
       }, priority = -1000, ignoreInit = TRUE)
 

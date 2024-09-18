@@ -310,7 +310,6 @@ mod_InputFeature_server <- function(id, duckdbConnection, assay, scatterColorInd
       observeEvent(input$plotFeature, {
           message("Plotting featuerPlot...")
           scatterColorIndicator(scatterColorIndicator()+1)
-          ##reglScatter_plot("", session)
       })
 
 

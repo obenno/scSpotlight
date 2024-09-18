@@ -74,8 +74,49 @@ export class reglScatterCanvas {
         }
     }
 
-    updatePlotMetaData(plotMetaData){
-        // plotMetaData may only have subset keys of the plotMetaData
+    updatePlotMetaData(group_by = null, split_by = null, moduleScore = false){
+        // update plotMetaData according to input group_by and split_by infromation
+        // supported mode:
+        // clusterOnly             => normal scatter only
+        // cluster+expr+noSplit    => when selected one feature and split_by == null
+        // cluster+expr+twoSplit   => when selected one feature, and split_by has two levels
+        // cluster+multiSplit      => no selected feature, split_by != null
+        // cluster+expr+multiSplit => when selected one feature, and split_by has more than two levels
+        const nGroupBy = (group_by) ? new Set(this.origData.cellMetaData[group_by]).size : 0;
+        const nSplitBy = (split_by) ? new Set(this.origData.cellMetaData[split_by]).size : 0;
+        // confirm plotting mode
+        let plottingMode = "clusterOnly";
+        let nPanels = 1;
+        if(this.plotMetaData.selectedFeatures.length === 1 &&
+           nSplitBy === 0){
+            plottingMode = "cluster+expr+noSplit";
+            nPanels = 2;
+        }else if(this.plotMetaData.selectedFeatures.length === 1 &&
+                 nSplitBy === 2){
+            plottingMode = "cluster+expr+twoSplit";
+            nPanels = 4;
+        }else if(this.plotMetaData.selectedFeatures.length === 1 &&
+                 nSplitBy> 2){
+            plottingMode = "cluster+expr+multiSplit";
+            nPanels = nSplitBy;
+        }else if(this.plotMetaData.selectedFeatures.length === 0 &&
+                 nSplitBy > 1){
+            plottingMode = "cluster+multiSplit";
+            nPanels = nSplitBy;
+        }else{
+            plottingMode = "clusterOnly";
+            nPanels = 1;
+        }
+        const catColors = hue_pal(nGroupBy);
+        const plotMetaData = {
+            nPanels: nPanels,
+            mode: plottingMode,
+            group_by: group_by,
+            split_by: split_by,
+            catColors: catColors,
+            moduleScore: moduleScore
+        };
+        console.log("plotMetaData: ", plotMetaData);
         for (let key in plotMetaData) {
             this.plotMetaData[key] = plotMetaData[key];
         }
@@ -117,8 +158,8 @@ export class reglScatterCanvas {
         this.plotMetaData.group_by = null;
         this.plotMetaData.split_by = null;
         this.plotMetaData.catColors = [];
-        this.plotMetaData.selectedFeatures = [];
-        this.plotMetaData.moduleScore = false;
+        //this.plotMetaData.selectedFeatures = [];
+        //this.plotMetaData.moduleScore = false;
 
         this.renderer.refresh();
 
@@ -1104,7 +1145,7 @@ export const splitArrByMeta = (Arr, meta) => {
             }else if(Arr instanceof Float32Array){
                 splitOut[element] = new Float32Array(splitOut[element]);
             }else if(Arr instanceof Int16Array){
-                splitOut[element] = new Float32Array(splitOut[element]);
+                splitOut[element] = new Int16Array(splitOut[element]);
             }
         }
 
@@ -1328,4 +1369,42 @@ const downloadCanvasAsPNG = (
             resolve();
         }, 'image/png');
     });
+};
+
+export function hue_pal(n = 15, h = [0, 360], c = 100, l = 65, h_start = 15, direction = 1, hex = true) {
+  // Ensure n is a positive integer
+  n = Math.max(1, Math.round(n));
+
+  // Normalize hue range
+  let h_range = h[1] - h[0];
+  if (h_range < 0) h_range += 360;
+
+  // Calculate hue step
+  let hue_step = h_range / n;
+
+  // Generate colors
+  let colors = [];
+  for (let i = 0; i < n; i++) {
+    let hue = (h_start + i * hue_step * direction) % 360;
+    if (hue < 0) hue += 360;
+      if(hex){
+          colors.push(hslToHex(hue, c, l));
+      }else{
+          colors.push(`hsl(${hue}, ${c}%, ${l}%)`);
+      }
+  }
+
+  return colors;
+}
+
+// Helper function to convert HSL to HEX
+const hslToHex = (h, s, l) => {
+  l /= 100;
+  const a = s * Math.min(l, 1 - l) / 100;
+  const f = n => {
+    const k = (n + h / 30) % 12;
+    const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+    return Math.round(255 * color).toString(16).padStart(2, '0');
+  };
+  return `#${f(0)}${f(8)}${f(4)}`;
 };

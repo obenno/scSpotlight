@@ -10,7 +10,33 @@
 mod_AssignCellCluster_ui <- function(id){
   ns <- NS(id)
   tagList(
-      uiOutput(ns("selectCellUI")),
+      div(
+          span(
+              textOutput(ns("selectedCellsText")),
+              class = "badge text-bg-primary mb-2",
+              style = "font-size: 1em;"
+          )
+      ),
+      p(id = ns("selectCellFromCat"),
+        tags$b("Select Cells from Category")),
+      selectInput(
+          inputId = ns("chosenGroup"),
+          label = "Identities from group.by",
+          choices = "None",
+          selected = "None",
+          multiple = TRUE,
+          selectize = TRUE,
+          width = NULL
+      ),
+      selectInput(
+          inputId = ns("chosenSplit"),
+          label = "Identities from split.by",
+          choices = "None",
+          selected = "None",
+          multiple = TRUE,
+          selectize = TRUE,
+          width = NULL
+      ),
       textInput(
           ns("newMeta"),
           "New Category Name",
@@ -44,95 +70,75 @@ mod_AssignCellCluster_ui <- function(id){
 #' AssignCellCluster Server Functions
 #'
 #' @importFrom scales label_comma
+#' @importFrom arrow arrow_table
+#' @importFrom dplyr pull filter mutate
+#' @importFrom tibble tibble column_to_rownames
 #'
 #' @noRd 
 mod_AssignCellCluster_server <- function(id,
-                                         seuratObj,
+                                         duckdbConnection,
                                          selectedPoints,
+                                         categorySelectedCells,
                                          group.by,
                                          split.by,
+                                         metaColLevels,
                                          scatterReductionIndicator,
                                          scatterColorIndicator){
   moduleServer( id, function(input, output, session){
     ns <- session$ns
 
+    newMetaData <- reactiveVal(NULL)
 
-    output$selectCellUI <- renderUI({
+    observe({
         if(isTruthy(manuallySelectedCells())){
-            tagList(
-                span(
-                    textOutput(ns("manuallySelectedCellsText")),
-                    class = "badge text-bg-primary mb-2",
-                    style = "font-size: 1em;"
-                )
+
+            shinyjs::hide("selectCellFromCat")
+            shinyjs::hide("chosenGroup")
+            shinyjs::hide("chosenSplit")
+
+        }else if(split.by() == "None" && group.by() == "None"){
+
+            shinyjs::show("selectCellFromCat")
+            shinyjs::show("chosenGroup")
+            shinyjs::hide("chosenSplit")
+
+        }else if(split.by() == "None" && group.by() != "None"){
+
+            updateSelectInput(
+                inputId = "chosenGroup",
+                label = "Identities from group.by",
+                choices = metaColLevels()[["groupBy"]],
+                selected = NULL
             )
-            ##verbatimTextOutput("manuallySelectedCellsText")
-        }else if(split.by() == "None"){
-            if(group.by() == "None"){
-                tagList(
-                    p(tags$b("Select Cells from Category")),
-                    selectInput(
-                        inputId = ns("chosenGroup"),
-                        label = "Identities from group.by",
-                        choices = "None",
-                        selected = "None",
-                        multiple = TRUE,
-                        selectize = TRUE,
-                        width = NULL
-                    )
-                )
-            }else{
-                group.by.levels <- seuratObj()[[group.by()]] %>%
-                    pull() %>%
-                    as.factor() %>% levels()
-                tagList(
-                    p(
-                        tags$b("Select Cells from Category")##,
-                        ##class = "mb-2"
-                    ),
-                    selectInput(
-                        inputId = ns("chosenGroup"),
-                        label = "Identities from group.by",
-                        choices = group.by.levels,
-                        selected = NULL,
-                        multiple = TRUE,
-                        selectize = TRUE,
-                        width = NULL
-                    )
-                )
-            }
-        }else{
-            tagList(
-                p(
-                    tags$b("Select Cells from Category")##,
-                    ##class = "mb-2"
-                ),
-                selectInput(
-                    inputId = ns("chosenGroup"),
-                    label = "Identities from group.by",
-                    choices = "None",
-                    selected = "None",
-                    multiple = TRUE,
-                    selectize = TRUE,
-                    width = NULL
-                ),
-                selectInput(
-                    inputId = ns("chosenSplit"),
-                    label = "Identities from split.by",
-                    choices = "None",
-                    selected = "None",
-                    multiple = TRUE,
-                    selectize = TRUE,
-                    width = NULL
-                )
+
+            shinyjs::show("selectCellFromCat")
+            shinyjs::show("chosenGroup")
+            shinyjs::hide("chosenSplit")
+
+        }else if(split.by() != "None" && group.by() != "None"){
+            updateSelectInput(
+                inputId = "chosenGroup",
+                label = "Identities from group.by",
+                choices = metaColLevels()[["groupBy"]],
+                selected = NULL
             )
+            updateSelectInput(
+                inputId = "chosenSplit",
+                label = "Identities from split.by",
+                choices = metaColLevels()[["splitBy"]],
+                selected = NULL
+            )
+
+            shinyjs::show("selectCellFromCat")
+            shinyjs::show("chosenGroup")
+            shinyjs::show("chosenSplit")
         }
     })
 
     input_group.by <- reactive({
 
         if(group.by() == "None"){
-            "orig.ident"
+            NULL
         }else{
             group.by()
         }
@@ -147,57 +153,59 @@ mod_AssignCellCluster_server <- function(id,
         }
     })
 
-    categorySelectedCells <- reactive({
-        req(seuratObj())
-        req(input$chosenGroup)
-        req(isTruthy(group.by()))
-        req(group.by()!="None")
-        req(split.by())
-        req(!isTruthy(manuallySelectedCells()))
+    observeEvent(list(
+        input$chosenGroup,
+        input$chosenSplit
+    ), {
+        req(duckdbConnection())
+        req(input_group.by())
+        req(!isTruthy(selectedPoints()))
 
-        if(isTruthy(input_split.by()) &&
-           isTruthy(input$chosenSplit)){
-            selectedCells <- seuratObj()[[c(input_group.by(), input_split.by())]] %>%
-                filter(
-                    !!as.symbol(input_group.by()) %in% input$chosenGroup,
-                    !!as.symbol(input_split.by()) %in% input$chosenSplit
-                ) %>%
-                rownames()
-        }else{
-            selectedCells <- seuratObj()[[input_group.by()]] %>%
-                filter(!!as.symbol(input_group.by()) %in% input$chosenGroup) %>%
-                rownames()
+        if(isTruthy(input_split.by())){
+           req(input$chosenSplit)
         }
+        message("processing selectPointsByCategory")
+        message("input$chosenGroup: ", isolate(input$chosenGroup))
+        message("input$chosenSplit: ", isolate(input$chosenSplit))
+        session$sendCustomMessage(
+                    type = "selectPointsByCategory",
+                    list(groupBy = input_group.by(),
+                         splitBy = input_split.by(),
+                         selectedGroupBy = input$chosenGroup,
+                         selectedSplitBy = input$chosenSplit)
+                )
     })
 
     manuallySelectedCells <- reactive({
-        selectedPoints()
+        req(duckdbConnection())
+        if(isTruthy(selectedPoints())){
+            d <- queryDuckMeta(duckdbConnection())
+            cells <- d %>%
+                mutate(idx = row_number()) %>%
+                filter(idx %in% selectedPoints()) %>%
+                rownames()
+        }else{
+            cells <- NULL
+        }
+        cells
     })
 
-    ##observe({
-    ##    ##req(event_data("plotly_selected"))
-    ##    selectedData <- event_data("plotly_selected")
-    ##    if(isTruthy(selectedData) && length(selectedData)>0){
-    ##        cells <- event_data("plotly_selected") %>%
-    ##            pull(customdata)
-    ##        manuallySelectedCells(cells)
-    ##    }else{
-    ##        manuallySelectedCells(NULL)
-    ##    }
-    ##})
-
-    selectedCells <- reactive({
-        req(seuratObj())
+    selectedCells <- eventReactive(list(
+        manuallySelectedCells(),
+        categorySelectedCells()
+    ),{
+        req(duckdbConnection())
         req(group.by())
         req(split.by())
         if(isTruthy(manuallySelectedCells())){
-            manuallySelectedCells()
+            cells <- manuallySelectedCells()
         }else if(isTruthy(categorySelectedCells())){
-            categorySelectedCells()
+            cells <- categorySelectedCells()
         }else{
-            NULL
+            cells <- NULL
         }
-
+        ##message("selectedCells: ", cells)
+        cells
     })
 
     ## Always shoot a notification for number of selected cells
@@ -214,53 +222,13 @@ mod_AssignCellCluster_server <- function(id,
         )
     })
 
-    ## update group.by and split.by widget when manuallySelectedCells() changes
-    ##observe({
-    ##
-    ##    req(seuratObj())
-    ##    req(input_group.by())
-    ##    req(!(seuratObj()[[input_group.by()]] %>% pull() %>% is.numeric))
-    ##
-    ##    manuallySelectedCells()
-    ##
-    ##    group.by.levels <- seuratObj()[[input_group.by()]] %>%
-    ##        pull() %>%
-    ##        as.factor() %>% levels()
-    ##    updateSelectInput(
-    ##        session = session,
-    ##        inputId = "chosenGroup",
-    ##        label = "Identities from group.by",
-    ##        choices = group.by.levels,
-    ##        selected = NULL
-    ##    )
-    ##
-    ##    req(input_split.by())
-    ##    req(!(seuratObj()[[input_split.by()]] %>% pull() %>% is.numeric))
-    ##    split.by.levels <- seuratObj()[[input_split.by()]] %>%
-    ##        pull() %>%
-    ##        as.factor() %>% levels()
-    ##    updateSelectInput(
-    ##        session = session,
-    ##        inputId = "chosenSplit",
-    ##        label = "Identities from split.by",
-    ##        choices = split.by.levels,
-    ##        selected = NULL
-    ##    )
-    ##})
-
-    output$manuallySelectedCellsText <- renderText({
-        req(manuallySelectedCells())
-        nCells <- length(manuallySelectedCells()) %>%
-            label_comma()()
-        ##message("nCells: ", nCells)
+    output$selectedCellsText <- renderText({
+        nCells <- 0
+        if(isTruthy(selectedCells())){
+            nCells <- length(selectedCells()) %>%
+                label_comma()()
+        }
         paste0(nCells, " Cells Selected")
-    })
-
-    metaCols <- reactive({
-        req(seuratObj())
-        seuratObj()[[]] %>%
-            ##select(-starts_with(c("nFeature_", "nCount_", "percent.mt"))) %>%
-            colnames()
     })
 
     observeEvent(input$assign, {
@@ -294,24 +262,17 @@ mod_AssignCellCluster_server <- function(id,
             )
         }else{
             req(selectedCells())
-            message("input$chosenGroup is ", paste(input$chosenGroup, collapse = ","))
             ## check if category name already exists
             message("Initializing new meta column...")
-            if(!(input$newMeta %in% metaCols())){
-                cell_ids <- Cells(seuratObj())
-                obj <- AddMetaData(seuratObj(), rep("unknown", length(cell_ids)), col.name = input$newMeta)
-            }else{
-                obj <- seuratObj()
-            }
+            ## ask client to update metaData
+            session$sendCustomMessage(
+                      type = "addNewMeta",
+                      list(
+                        colName = input$newMeta,
+                        colValue = input$assignAs
+                      )
+                    )
 
-
-            ##message("selected Cells: ", paste(selectedCells(), collapse = ", "))
-            obj[[input$newMeta]][selectedCells(), ] <- input$assignAs
-
-            ## Reset manuallySelectedCells
-            ##manuallySelectedCells(NULL)
-            ## assign seuratObj_final()
-            seuratObj(obj)
             ## show finishing notification
             showNotification(
                 ui = "Successfully assigned...",
@@ -323,19 +284,23 @@ mod_AssignCellCluster_server <- function(id,
             )
 
             ## Ask regl-scatter to deselect
-            message("Deselect points...")
-            reglScatter_deselect(session)
+            ##message("Deselect points...")
+            ##reglScatter_deselect(session)
         }
 
     })
 
-    seuratObj_orig <- reactiveVal(NULL)
-    subset_obj <- mod_SubsetCells_server("subsetCells",
-                                         seuratObj,
-                                         seuratObj_orig,
-                                         selectedCells,
-                                         scatterReductionIndicator,
-                                         scatterColorIndicator)
+    ##seuratObj_orig <- reactiveVal(NULL)
+    ##subset_obj <- mod_SubsetCells_server(
+    ##    "subsetCells",
+    ##    seuratObj,
+    ##    seuratObj_orig,
+    ##    selectedCells,
+    ##    scatterReductionIndicator,
+    ##    scatterColorIndicator
+    ##)
+
+    ##return(newMetaData)
   })
 }
 

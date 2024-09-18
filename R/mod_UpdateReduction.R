@@ -27,8 +27,7 @@ mod_UpdateReduction_ui <- function(id){
 #' @noRd 
 mod_UpdateReduction_server <- function(id,
                                        duckdbConnection,
-                                       scatterReductionIndicator,
-                                       scatterColorIndicator){
+                                       scatterReductionIndicator){
 
   moduleServer( id, function(input, output, session){
       ns <- session$ns
@@ -59,7 +58,7 @@ mod_UpdateReduction_server <- function(id,
           req(input$reduction!="None")
           message("UpdateReduction module increased scatter indicator")
           scatterReductionIndicator(scatterReductionIndicator()+1)
-          scatterColorIndicator(scatterColorIndicator()+1)
+
           d <- queryDuckReduction(duckdbConnection(), reduction = input$reduction)
           colnames(d) <- c("X", "Y")
           showNotification(

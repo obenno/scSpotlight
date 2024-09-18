@@ -41,7 +41,7 @@ prepare_scatterMeta <- function(con,
         mode,
         "clusterOnly" = 1,
         "cluster+expr+noSplit" = 2,
-        "cluster+expr+twoSplit" = 4,
+      "cluster+expr+twoSplit" = 4,
         "cluster+multiSplit" = n_split.by %||% 1,
         "cluster+expr+multiSplit" = n_split.by %||% 1
     )

@@ -12,9 +12,6 @@ import * as pako from 'pako';
 // id of the mainClusterPlot parent div
 const mainPlotElId = "mainClusterPlot-clusterPlot";
 
-// legend hover event indicator
-// to distinguish legend hover and manualy selecting events
-var legendHover = 0;
 
 // init webR instances
 var shelterInstance = null;
@@ -53,27 +50,27 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     // Adjust widget elements on scroll
-    //document.getElementById(mainPlotElId).addEventListener('scroll', () => {
-    //    const containerEl = document.getElementById(mainPlotElId);
-    //
-    //    const noteEl = containerEl.querySelector("#scatterPlotNote");
-    //
-    //    noteEl.style.bottom = "2%";
-    //    noteEl.style.bottom = `calc(${noteEl.style.bottom} - ${containerEl.scrollTop}px)`;
-    //
-    //    const infoEl = containerEl.querySelector("#info");
-    //
-    //    infoEl.style.bottom = "1%";
-    //    infoEl.style.bottom = `calc(${infoEl.style.bottom} - ${containerEl.scrollTop}px)`;
-    //
-    //    const sliderEl = containerEl.querySelector(".label-slider");
-    //    sliderEl.style.bottom = "1%";
-    //    sliderEl.style.bottom = `calc(${sliderEl.style.bottom} - ${containerEl.scrollTop}px)`;
-    //
-    //    const downloadEl = containerEl.querySelector("#downloadIcon");
-    //    downloadEl.style.bottom = "1%";
-    //    downloadEl.style.bottom = `calc(${downloadEl.style.bottom} - ${containerEl.scrollTop}px)`;
-    //});
+    document.getElementById(mainPlotElId).addEventListener('scroll', () => {
+        const containerEl = document.getElementById(mainPlotElId);
+
+        const noteEl = containerEl.querySelector("#scatterPlotNote");
+
+        noteEl.style.bottom = "2%";
+        noteEl.style.bottom = `calc(${noteEl.style.bottom} - ${containerEl.scrollTop}px)`;
+
+        const infoEl = containerEl.querySelector("#info");
+
+        infoEl.style.bottom = "1%";
+        infoEl.style.bottom = `calc(${infoEl.style.bottom} - ${containerEl.scrollTop}px)`;
+
+        const sliderEl = containerEl.querySelector(".label-slider");
+        sliderEl.style.bottom = "1%";
+        sliderEl.style.bottom = `calc(${sliderEl.style.bottom} - ${containerEl.scrollTop}px)`;
+
+        const downloadEl = containerEl.querySelector("#downloadIcon");
+        downloadEl.style.bottom = "1%";
+        downloadEl.style.bottom = `calc(${downloadEl.style.bottom} - ${containerEl.scrollTop}px)`;
+    });
 
 }, false);
 
@@ -96,8 +93,20 @@ Shiny.addCustomMessageHandler('transfer_reduction', (msg) => {
 Shiny.addCustomMessageHandler('transfer_meta', (msg) => {
     const metaData = decodeAndDecompress(msg);
     reglElementData.updateCellMetaData(metaData);
+    const nonNumericCols = extractNonNumericCol(reglElementData);
+    Shiny.setInputValue("metaCols", nonNumericCols);
 });
 
+const extractNonNumericCol = (reglElementData) => {
+    // select non-numeric columns, and transfer to server side
+    const nonNumericCols = [];
+    for(let k of Object.keys(reglElementData.origData.cellMetaData)){
+        if(!reglElementData.origData.cellMetaData[k].every(item => typeof item === 'number')){
+            nonNumericCols.push(k);
+        }
+    }
+    return nonNumericCols;
+};
 
 
 //Shiny.addCustomMessageHandler('transfer_expression', (msg) => {
@@ -184,6 +193,72 @@ Shiny.addCustomMessageHandler('clear_expr', (msg) => {
 });
 
 
+Shiny.addCustomMessageHandler('selectPointsByCategory', (msg) => {
+   // handler for selecting cells by category
+    const groupBy = msg.groupBy;
+    const splitBy = msg.splitBy;
+    const selectedGroupBy = msg.selectedGroupBy;
+    const selectedSplitBy = msg.selectedSplitBy;
+    const selectedCells = [];
+    if(groupBy && selectedGroupBy){
+        if(!splitBy){
+            reglElementData.origData.cellMetaData[groupBy].forEach((e,i) => {
+                const currentCell = reglElementData.origData.cellMetaData["cells"][i];
+                if(selectedGroupBy.includes(e)){
+                    selectedCells.push(currentCell);
+                }
+            });
+        }else{
+            reglElementData.origData.cellMetaData[groupBy].forEach((e,i) => {
+                const currentSplitBy = reglElementData.origData.cellMetaData[splitBy][i];
+                const currentCell = reglElementData.origData.cellMetaData["cells"][i];
+                if(selectedGroupBy.includes(e) &&
+                   selectedSplitBy.includes(currentSplitBy)){
+                    selectedCells.push(currentCell);
+                }
+            });
+        };
+    }
+    if(selectedCells.length > 0){
+        // update selectedCells in reglElementData
+        reglElementData.plotData.selectedCells = selectedCells;
+        Shiny.setInputValue("categorySelectedCells", selectedCells, {priority: "event"});
+    }
+});
+
+Shiny.addCustomMessageHandler("addNewMeta", (msg) => {
+    const newMetaCol = msg.colName;
+    const assignAs = msg.colValue;
+    console.log("newMetaCol:", newMetaCol);
+    console.log("assignAs:" ,assignAs);
+    const metaData = reglElementData.origData.cellMetaData;
+    // selectedCells records manually selected points by lasso
+    const selectedCells = reglElementData.plotData.selectedCells;
+
+    if(Object.keys(metaData).length > 0 &&
+      selectedCells.length > 0){
+        const nCells = metaData[Object.keys(metaData)[0]].length;
+        //console.log(Object.keys(metaData).includes(newMetaCol));
+        //console.log(!Object.keys(metaData).includes(newMetaCol));
+        if(!Object.keys(metaData).includes(newMetaCol)){
+            reglElementData.origData.cellMetaData[newMetaCol] = Array(nCells).fill("unknown");
+            //console.log(reglElementData.origData.cellMetaData);
+        }
+        const idx = selectedCells.map(e => metaData["cells"].indexOf(e));
+        idx.forEach(e => {
+            reglElementData.origData.cellMetaData[newMetaCol][e] = assignAs;
+        });
+
+    }
+    console.log("reglElementData.origData.cellMetaData:", reglElementData.origData.cellMetaData);
+    const nonNumericCols = extractNonNumericCol(reglElementData);
+    Shiny.setInputValue("metaCols", nonNumericCols);
+    // deselct points
+    reglElementData.scatterplots.forEach(e => e.deselect());
+    // reset selectedCells
+    Shiny.setInputValue("categorySelectedCells", null, {priority: "event"});
+});
+
 Shiny.addCustomMessageHandler('reglScatter_plot', (msg) => {
 
     // Add spinners for the plot
@@ -197,21 +272,32 @@ Shiny.addCustomMessageHandler('reglScatter_plot', (msg) => {
     featurePlotCanvas.style.display = "none";
     reglElementData.plotEl.style.display = "none";
 
-    // ensure catColors is an array
-    if(typeof msg.catColors === "string"){
-        msg.catColors = [msg.catColors];
-    }
-
     // create a shallow copy to store previous value
-    const previous_plotMetaData = {...reglElementData.plotMetaData};
-    console.log("previous_plotMetaData: ", previous_plotMetaData);
-    console.log("reglElementData: ", reglElementData);
+    //const previous_plotMetaData = {...reglElementData.plotMetaData};
+    //console.log("previous_plotMetaData: ", previous_plotMetaData);
+    //console.log("reglElementData: ", reglElementData);
     // clear reglScatterCanvas data including plotMetaData
+    console.log("msg: ", msg);
+    const group_by = msg.group_by;
+    const split_by = msg.split_by;
+    const moduleScore = msg.moduleScore;
+
+    // update group_by levels to server side
+    let groupByLevels = new Set(reglElementData.origData.cellMetaData[group_by]);
+    groupByLevels = [...groupByLevels].sort();
+    // when split_by == null, this will return a set with size 0
+    //     // update split_by levels to server side
+    let splitByLevels = new Set(reglElementData.origData.cellMetaData[split_by]);
+    splitByLevels = [...splitByLevels].sort();
+    Shiny.setInputValue("metaColLevels",
+                        {groupBy: groupByLevels,
+                         splitBy: splitByLevels});
+
     reglElementData.clear();
     // update plotMetaData with previous one
-    reglElementData.updatePlotMetaData(previous_plotMetaData);
+    reglElementData.updatePlotMetaData(group_by, split_by, moduleScore);
     // then update with new msg, in case msg is empty
-    reglElementData.updatePlotMetaData(msg);
+    //reglElementData.updatePlotMetaData(msg);
     console.log("reglElementData.plotMetaData: ", reglElementData.plotMetaData);
 
     console.log("Generating plotEl");
@@ -230,6 +316,26 @@ Shiny.addCustomMessageHandler('reglScatter_plot', (msg) => {
     category_accordion_body.appendChild(reglElementData.catLegendEl);
     category_accordion_body.appendChild(reglElementData.expLegendEl);
 
+    // return selected points to server side
+    reglElementData.scatterplots.forEach((sp, idx) => {
+        sp.subscribe('select', ({ points: selectedPoints }) => {
+
+            const hoveredLegends = Array.from(document.querySelectorAll('#reglScatter-catLegend :hover'));
+
+            // ensure the legend was not hovered
+            if(hoveredLegends.length == 0){
+                let selectedCells = selectedPoints.map(i => reglElementData.plotData.cells[idx][i]);
+                reglElementData.plotData.selectedCells = selectedCells;
+                Shiny.setInputValue("selectedPoints", selectedCells);
+            }
+        });
+    });
+    reglElementData.scatterplots.forEach((sp, idx) => {
+        sp.subscribe('deselect', () => {
+            reglElementData.plotData.selectedCells = [];
+            Shiny.setInputValue("selectedPoints", null);
+        });
+    });
 
     if(Object.keys(reglElementData.plotMetaData.selectedFeatures).length > 1 &&
       !reglElementData.plotMetaData.moduleScore){
@@ -245,31 +351,6 @@ Shiny.addCustomMessageHandler('reglScatter_plot', (msg) => {
         reglElementData.plotEl.style.display = "flex";
 
     }
-
-    // return selected points to server side
-    //reglElementData.scatterplots.forEach((sp, idx) => {
-    //    sp.subscribe('select', ({ points: selectedPoints }) => {
-    //
-    //        const hoveredElements = Array.from(document.querySelectorAll(':hover'));
-    //
-    //        const filteredElements = hoveredElements.filter(e => {
-    //            return e.classList.contains('scatter-legend');
-    //        });
-    //        // ensure the legend was not hovered
-    //        if(filteredElements.length == 0){
-    //            let selectedCells = selectedPoints.map(i => reglElementData.plotData.cells[idx][i]);
-    //            Shiny.setInputValue("selectedPoints", selectedCells);
-    //        }
-    //    });
-    //});
-    //reglElementData.scatterplots.forEach((sp, idx) => {
-    //    sp.subscribe('deselect', () => {
-    //        Shiny.setInputValue("selectedPoints", null);
-    //    });
-    //});
-
-
-
 
 
      // hide spinner
@@ -291,16 +372,16 @@ const updateFeaturePlot = (canvas) => {
     canvas.style.height = "100%";
 
     // It seems that webR does not support typedArray
-    const expressionInput = {}
+    const expressionInput = {};
     for(let f of reglElementData.plotMetaData.selectedFeatures){
-        expressionInput[f] = Array.from(reglElementData.origData.expressionData[f])
+        expressionInput[f] = Array.from(reglElementData.origData.expressionData[f]);
     };
-    const drInput = {}
+    const drInput = {};
     for(let i of Object.keys(reglElementData.origData.reductionData)){
         drInput[i] = Array.from(reglElementData.origData.reductionData[i]);
     }
-    console.log("reglElementData.origData.expressionData: ", reglElementData.origData.expressionData);
-    console.log(expressionInput)
+    //console.log("reglElementData.origData.expressionData: ", reglElementData.origData.expressionData);
+    //console.log(expressionInput);
     featurePlot(shelterInstance, canvasWidth, canvasHeight,
                 drInput,
                 //reglElementData.origData.reductionData,

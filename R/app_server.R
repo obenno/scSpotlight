@@ -32,26 +32,26 @@ app_server <- function(input, output, session) {
     duckdbFile <- session$userData$duckdb
     message("Init duckdbConnection...")
     duckdbConnection <- reactiveVal(NULL)
-    objIndicator <- reactiveVal(0)
-    metaIndicator <- reactiveVal(0)
     scatterReductionIndicator <- reactiveVal(0)
     scatterColorIndicator <- reactiveVal(0)
-    scatterReductionInput <- reactiveVal(NULL)
 
     ## Reads input data and save to a seuratObj
     ##seuratObj <- mod_dataInput_server("dataInput", objIndicator, metaIndicator, scatterReductionIndicator, scatterColorIndicator)
 
     ## seuratObj changes, plottingMode will change, and indicators will increase
     ## Thus filterCells and ClusterSetting do not need to alter indicators
-    selectedAssay <- mod_dataInput_server("dataInput",
-                                          seuratObj,
-                                          duckdbConnection,
-                                          clusterSettings$hvgSelectMethod,
-                                          clusterSettings$clusterDims,
-                                          clusterSettings$clusterResolution,
-                                          scatterReductionIndicator,
-                                          scatterColorIndicator,
-                                          objIndicator)
+    selectedAssay <- mod_dataInput_server(
+        "dataInput",
+        seuratObj,
+        duckdbConnection,
+        clusterSettings$hvgSelectMethod,
+        clusterSettings$clusterDims,
+        clusterSettings$clusterResolution,
+        scatterReductionIndicator,
+        scatterColorIndicator,
+        objIndicator
+    )
+
     observeEvent(selectedAssay(), {
         req(seuratObj())
         obj <- seuratObj()
@@ -60,10 +60,13 @@ app_server <- function(input, output, session) {
     })
 
     ## Update Clusters
-    clusterSettings <- mod_ClusterSetting_server("clusterSettings",
-                                                 seuratObj,
-                                                 scatterReductionIndicator,
-                                                 scatterColorIndicator)
+    clusterSettings <- mod_ClusterSetting_server(
+        "clusterSettings",
+        seuratObj,
+        scatterReductionIndicator,
+        scatterColorIndicator
+    )
+
     ## Filter Clusters
     mod_FilterCell_server("filterCells",
                           seuratObj,
@@ -85,64 +88,63 @@ app_server <- function(input, output, session) {
     mod_ElbowPlot_server("elbowPlot",
                          seuratObj)
 
-    observeEvent(seuratObj(), {
-        req(seuratObj())
-        ## convert seuratObj to duckdb
-        ## Get the layers
-        selectedLayers <- intersect(c("counts", "data"), Layers(seuratObj()))
-        stopifnot(length(selectedLayers)>0)
-        ## first stope connection if already exists
-        if(isTruthy(duckdbConnection())){
-            dbDisconnect(duckdbConnection())
-        }
-        message("Coverting duckdb")
-        seurat2duckdb(
-            object = seuratObj(),
-            dbFile = duckdbFile,
-            assay = DefaultAssay(seuratObj()),
-            layers = selectedLayers,
-            reductions = Reductions(seuratObj())
-        )
-        message("Finished Coverting...")
-        ## open new connection
-        con <- dbConnect(duckdb::duckdb(), duckdbFile)
-        duckdbConnection(con)
-    }, priority = -100)
+    ## convert seuratObj to duckdb
+    mod_PrepareDuckdb_server("duckdb",
+                             seuratObj,
+                             duckdbConnection)
 
     ## Update reductions
-    selectedReduction <- mod_UpdateReduction_server("reductionUpdate",
-                                                    duckdbConnection,
-                                                    scatterReductionIndicator,
-                                                    scatterColorIndicator)
+    selectedReduction <- mod_UpdateReduction_server(
+        "reductionUpdate",
+        duckdbConnection,
+        scatterReductionIndicator
+    )
 
     ## Update category
-    categoryInfo <- mod_UpdateCategory_server("categoryUpdate",
-                                              duckdbConnection,
-                                              scatterReductionIndicator,
-                                              scatterColorIndicator)
+    metaCols <- reactive({
+        ## client side metaData column names
+        ## only contains non-numeric columns
+        input$metaCols
+    })
+
+    metaColLevels <- reactive({
+        d <- input$metaColLevels
+    })
+
+    categoryInfo <- mod_UpdateCategory_server(
+        "categoryUpdate",
+        duckdbConnection,
+        metaCols,
+        scatterReductionIndicator,
+        scatterColorIndicator
+    )
 
     ## Input Features
-    featureInfo <- mod_InputFeature_server("inputFeatures",
-                                           duckdbConnection,
-                                           selectedAssay,
-                                           scatterColorIndicator)
+    featureInfo <- mod_InputFeature_server(
+        "inputFeatures",
+        duckdbConnection,
+        selectedAssay,
+        scatterColorIndicator
+    )
 
     selectedFeatures <- reactive({
-      ## has to be parsed by reactive()
-      message("input$selectedFeatures: ", input$selectedFeatures)
+        ## has to be parsed by reactive()
+        message("input$selectedFeatures: ", input$selectedFeatures)
         input$selectedFeatures
     })
 
     ## Draw cluster plot
-    mod_mainClusterPlot_server("mainClusterPlot",
-                               duckdbConnection,
-                               selectedAssay,
-                               scatterReductionIndicator,
-                               scatterColorIndicator,
-                               categoryInfo$group.by,
-                               categoryInfo$split.by,
-                               selectedFeatures,
-                               featureInfo$moduleScore)
+    mod_mainClusterPlot_server(
+        "mainClusterPlot",
+        duckdbConnection,
+        selectedAssay,
+        scatterReductionIndicator,
+        scatterColorIndicator,
+        categoryInfo$group.by,
+        categoryInfo$split.by,
+        selectedFeatures,
+        featureInfo$moduleScore
+    )
 
     ## infoBox needs to be collapsed by default
     observeEvent(input$infoBox_show, {
@@ -166,29 +168,39 @@ app_server <- function(input, output, session) {
     ##                   featureInfo$moduleScore)
 
     ## Draw DotPlot
-    mod_DotPlot_server("dotPlot",
-                       seuratObj,
-                       categoryInfo$group.by,
-                       categoryInfo$split.by,
-                       featureInfo$filteredInputFeatures)
+    ##mod_DotPlot_server("dotPlot",
+    ##                   seuratObj,
+    ##                   categoryInfo$group.by,
+    ##                   categoryInfo$split.by,
+    ##                   featureInfo$filteredInputFeatures)
 
     ## Rename Clusters
-    ##selectedPoints <- reactive({
-    ##  message("Selected Points: ", ifelse(isTruthy(input$selectedPoints), paste(input$selectedPoints, collapse = " "), "None"))
-    ##  input$selectedPoints
-    ##
-    ##})
-    ##mod_AssignCellCluster_server("renameCluster",
-    ##                             seuratObj,
-    ##                             selectedPoints,
-    ##                             categoryInfo$group.by,
-    ##                             categoryInfo$split.by,
-    ##                             scatterReductionIndicator,
-    ##                             scatterColorIndicator)
+    selectedPoints <- reactive({
+        message("Selected Points: ", ifelse(isTruthy(input$selectedPoints), paste(input$selectedPoints, collapse = " "), "None"))
+        input$selectedPoints
+    })
+
+    categorySelectedCells <- reactive({
+        input$categorySelectedCells
+    })
+
+    mod_AssignCellCluster_server(
+        "renameCluster",
+        duckdbConnection,
+        selectedPoints,
+        categorySelectedCells,
+        categoryInfo$group.by,
+        categoryInfo$split.by,
+        metaColLevels,
+        scatterReductionIndicator,
+        scatterColorIndicator
+    )
 
     ## Download Object
-    mod_Download_server("downloadObj",
-                        seuratObj)
+    mod_Download_server(
+        "downloadObj",
+        seuratObj
+    )
 
     ## close duckdb when session ends
     session$onSessionEnded(function(){
