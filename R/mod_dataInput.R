@@ -186,8 +186,12 @@ mod_dataInput_server <- function(id,
             }
         })
 
-        observeEvent(list(inputFilePath(), inputFileName()), {
-            req(isTruthy(input$dataInput) || isTruthy(input$dataDirFile))
+        observeEvent(list(
+            inputFilePath(),
+            inputFileName()
+        ), {
+            req(inputFilePath(), inputFileName())
+            ##req(isTruthy(input$dataInput) || isTruthy(input$dataDirFile))
             waiter_show(html = waiting_screen(), color = "var(--bs-primary)")
             ## Init seuratObj
             seuratObj <- NULL
@@ -321,14 +325,15 @@ mod_dataInput_server <- function(id,
                                                          ndims = clusterDims(), res = clusterResolution())
                 }
             }else if(str_detect(inputFileName(), ".duckdb$")){
-              newCon <- dbConnect(duckdb::duckdb(),
-                                  dbdir = inputFilePath(),
-                                  read_only = TRUE,
-                                  config = list(
-                                    memory_limit = "500MB",
-                                    temp_directory = getwd()##,
-                                    ##threads = golem::get_golem_options("nCores")
-                                  ))
+                newCon <- dbConnect(duckdb::duckdb(),
+                                    dbdir = inputFilePath(),
+                                    read_only = TRUE,
+                                    config = list(
+                                        memory_limit = "500MB",
+                                        temp_directory = session$userData$tempDir##,
+                                        ##threads = golem::get_golem_options("nCores")
+                                    ))
+                file.symlink(from = inputFilePath(), to = session$userData$duckdb)
                 duckdbConnection(newCon)
             }else{
                 waiter_update(html = waiting_screen("Input format not supported, please reload the page..."))

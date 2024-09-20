@@ -150,13 +150,45 @@ async function fetchBinaryFile(url) {
   }
 };
 
-Shiny.addCustomMessageHandler('expr_ready', (msg) => {
+Shiny.addCustomMessageHandler('reduction_ready', (msg) => {
     // msg is the expr binary file name on the server
-    fetchBinaryFile("expr/" + msg).then(data => {
+    fetchBinaryFile("data/" + msg).then(data => {
         if (data) {
             //console.log('Binary data fetched successfully:', data);
             // Process the binary data as needed
-            const expressionData = decodeExprBinary(data);
+            const reductionData = decodeDataBinary(data);
+
+            reglElementData.updateReductionData(reductionData);
+            //console.log("reductionData", reglElementData.origData.reductionData);
+        }
+
+    });
+});
+
+Shiny.addCustomMessageHandler('meta_ready', (msg) => {
+    // msg is the expr binary file name on the server
+    fetchBinaryFile("data/" + msg).then(data => {
+        if (data) {
+            //console.log('Binary data fetched successfully:', data);
+            // Process the binary data as needed
+            const metaData = decodeDataBinary(data);
+            reglElementData.updateCellMetaData(metaData);
+            const nonNumericCols = extractNonNumericCol(reglElementData);
+            Shiny.setInputValue("metaCols", nonNumericCols);
+            //console.log("metaData", reglElementData.origData.cellMetaData);
+        }
+
+    });
+});
+
+
+Shiny.addCustomMessageHandler('expr_ready', (msg) => {
+    // msg is the expr binary file name on the server
+    fetchBinaryFile("data/" + msg).then(data => {
+        if (data) {
+            //console.log('Binary data fetched successfully:', data);
+            // Process the binary data as needed
+            const expressionData = decodeDataBinary(data);
 
             reglElementData.updateExpressionData(expressionData);
             //console.log("exprData", expressionData);
@@ -426,7 +458,7 @@ const decodeAndDecompress = (encodedCompressedStr) => {
     return JSON.parse(decompressedStr);
 }
 
-const decodeExprBinary = (buffer) => {
+const decodeDataBinary = (buffer) => {
     const decodedData = new Uint8Array(buffer);
     let decompressedStr = pako.ungzip(decodedData, { to: 'string' });
     return JSON.parse(decompressedStr);

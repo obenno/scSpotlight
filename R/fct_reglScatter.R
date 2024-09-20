@@ -89,12 +89,12 @@ compress_message <- function(message){
   return(data)
 }
 
-#' write_compress_data
+#' write_raw_data
 #'
-#' compress data as base64 and write a binary file
+#' compress data and write a binary file
 #'
 #' @noRd
-write_expr_raw <- function(data, filePath){
+write_raw_data <- function(data, filePath){
   ## use memCompress to shrink the data
   ## https://github.com/rstudio/shiny/issues/3633
   d <- data %>%

@@ -46,6 +46,23 @@ mod_PrepareDuckdb_server <- function(id,
             duckdbConnection(con)
         }, priority = -100)
 
+        extract_meta <- ExtendedTask$new(function(dbFile, filePath){
+            future_promise({
+
+                con <- DBI::dbConnect(duckdb::duckdb(),
+                                      dbdir = dbFile,
+                                      read_only = TRUE)
+                on.exit(DBI::dbDisconnect(con))
+                d <- queryDuckMeta(con, "metaData")
+                d <- d %>% mutate(cells=1:nrow(d)) %>% as_tibble()
+
+                if(file.exists(filePath)){
+                    file.remove(filePath)
+                }
+                write_raw_data(d, filePath)
+                return(basename(filePath))
+            })
+        })
 
         observeEvent(duckdbConnection(), {
             ## transfer metaData when duckdbConnection is ready
@@ -62,12 +79,22 @@ mod_PrepareDuckdb_server <- function(id,
                 session = session
             )
             message("Transferring metaData...")
-            d <- queryDuckMeta(duckdbConnection(), "metaData")
-            d <- d %>% mutate(cells=1:nrow(d)) %>% as_tibble()
-            transfer_meta(d, session)
-            rm(d)
-            removeNotification(id = "update_meta_notification", session)
+            promise_dbFile <- session$userData$duckdb
+            promise_filePath <- file.path(session$userData$tempDir, hash_md5("metaData"))
+            extract_meta$invoke(dbFile = promise_dbFile,
+                                filePath = promise_filePath)
+
         }, ignoreNULL = TRUE)
+
+        observeEvent(extract_meta$status(), {
+            if(extract_meta$status() == "success"){
+                removeNotification(id = "update_meta_notification", session)
+                session$sendCustomMessage(type = "meta_ready", extract_meta$result())
+            }else{
+                message("extract_reduction error: ", extract_meta$result())
+            }
+        })
+
     })
 }
 

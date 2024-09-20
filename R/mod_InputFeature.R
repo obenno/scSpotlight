@@ -183,8 +183,18 @@ mod_InputFeature_server <- function(id, duckdbConnection, assay, scatterColorInd
 
       ## Extracting gene expression or calculating module score
       ## Init expression extraction as extendedTask class
-      extract_expression <- ExtendedTask$new(function(con, assay, features, layer = "data", filePath) {
+      ## Note DBI connection cannot be shared accross R threads
+      ## https://github.com/rstudio/pool/issues/83
+      ## https://cran.r-project.org/web/packages/future/vignettes/future-4-non-exportable-objects.html
+      ## future codes needs to be installed before testing:
+      ## https://github.com/HenrikBengtsson/future/issues/206
+      extract_expression <- ExtendedTask$new(function(dbFile, assay, features, layer = "data", filePath) {
           future_promise({
+
+              con <- DBI::dbConnect(duckdb::duckdb(),
+                                    dbdir = dbFile,
+                                    read_only = TRUE)
+              on.exit(DBI::dbDisconnect(con))
               expr <- queryDuckExpr(
                   con = con,
                   assay = assay,
@@ -197,11 +207,10 @@ mod_InputFeature_server <- function(id, duckdbConnection, assay, scatterColorInd
               if(file.exists(filePath)){
                   file.remove(filePath)
               }
-              write_expr_raw(expr, filePath)
+              write_raw_data(expr, filePath)
               return(basename(filePath))
           })
       })
-
 
       observeEvent(input$geneSet, {
           req(uploadedFeatureList(), input$geneSet,
@@ -237,13 +246,18 @@ mod_InputFeature_server <- function(id, duckdbConnection, assay, scatterColorInd
           }
 
           selectedFeatures <- setdiff(filteredFeatures, storedFeatures())
+          promise_dbFile <- session$userData$duckdb
+          promise_assay <- assay()
+
           for(feature in selectedFeatures){
-              extract_expression$invoke(con = duckdbConnection(),
-                                        assay = assay(),
-                                        features = feature,
-                                        filePath = file.path(session$userData$exprTempDir, hash_md5(feature)))
-              message("invoked extendedTask")
               start_extract_expr(feature, session)
+              promise_feature <- feature
+              promise_filePath <- file.path(session$userData$tempDir, hash_md5(promise_feature))
+              extract_expression$invoke(dbFile = promise_dbFile,
+                                        assay = promise_assay,
+                                        features = promise_feature,
+                                        filePath = promise_filePath)
+              message("invoked extendedTask")
           }
       }, priority = -10, ignoreNULL = FALSE)
 
@@ -264,7 +278,7 @@ mod_InputFeature_server <- function(id, duckdbConnection, assay, scatterColorInd
           input$moduleScore
       })
 
-
+     extracted_expr <- reactiveVal(NULL)
       observeEvent(input$features, {
 
           req(duckdbConnection(), assay(), input$features)
@@ -296,12 +310,16 @@ mod_InputFeature_server <- function(id, duckdbConnection, assay, scatterColorInd
                   session = session
               )
           }else{
-              extract_expression$invoke(con = duckdbConnection(),
-                                        assay = assay(),
-                                        features = input$features,
-                                        filePath = file.path(session$userData$exprTempDir, hash_md5(input$features[1])))
-              ##message("invoked extendedTask")
+
               start_extract_expr(input$features, session)
+              promise_dbFile <- session$userData$duckdb
+              promise_assay <- assay()
+              promise_features <- input$features[1]
+              promise_filePath <- file.path(session$userData$tempDir, hash_md5(promise_features))
+              extract_expression$invoke(dbFile = promise_dbFile,
+                                        assay = promise_assay,
+                                        features = promise_features,
+                                        filePath = promise_filePath)
           }
 
           ##scatterColorIndicator(scatterColorIndicator()+1)
@@ -313,10 +331,14 @@ mod_InputFeature_server <- function(id, duckdbConnection, assay, scatterColorInd
       })
 
 
-      observe({
-        ##message("ExtendedTask finished...")
-        session$sendCustomMessage(type = "expr_ready", extract_expression$result())
-      })
+      observeEvent(extract_expression$status(), {
+
+          if(extract_expression$status() == "success"){
+              session$sendCustomMessage(type = "expr_ready", extract_expression$result())
+          }else{
+              message("extract_expression error: ", extract_expression$result())
+          }
+      }, ignoreNULL = FALSE)
 
       filteredInputFeatures <- reactive({
           input$features

@@ -6,25 +6,23 @@
 #' @import DBI
 #' @noRd
 app_server <- function(input, output, session) {
-    ## Your application server logic
-    ## create mainClusterPlot via R, javascript instance init will fail, don't know why
-    ##session$sendCustomMessage(type = "reglScatter_mainClusterPlot", "")
+
+    ## create temp dir to store expression binary files, reduction, metaData and
+    ## newly created duckdb file
+    tempDir <- file.path(getwd(), paste0("tmp_", session$token))
+    if(dir.create(tempDir)){
+        addResourcePath("data", tempDir)
+        session$userData$tempDir <- tempDir
+    }else{
+        stop("Failed to create temp dir")
+    }
 
     ## store duckdb file in userData space
     session$userData$duckdb <- tempfile(
-        pattern = paste0("session", session$token, "_"),
+        pattern = paste0("session_", session$token),
         fileext = ".duckdb",
-        tmpdir = getwd()
+        tmpdir = session$userData$tempDir
     )
-
-    ## create temp dir to store expression binary files
-    exprTempDir <- file.path(getwd(), paste0("expr_", session$token))
-    if(dir.create(exprTempDir)){
-        addResourcePath("expr", exprTempDir)
-        session$userData$exprTempDir <- exprTempDir
-    }else{
-        stop("Failed to create expression temp dir")
-    }
 
 
     ## setup universal status indicator
@@ -209,16 +207,13 @@ app_server <- function(input, output, session) {
         }
         tryCatch(
         {
-          if(file.exists(duckdbFile)){
-            message("removing duckdbFile: ", duckdbFile)
-            unlink(duckdbFile)
-          }
-          if(file.exists(session$userData$exprTempDir)){
-              unlink(session$userData$exprTempDir,
-                     recursive = TRUE, force = TRUE)
-          }
+            if(file.exists(session$userData$tempDir)){
+                unlink(session$userData$tempDir,
+                       recursive = TRUE, force = TRUE)
+            }
         },
         error = {
+            message("Remove tempDir failed...")
         }
         )
     })

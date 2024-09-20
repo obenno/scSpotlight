@@ -53,14 +53,34 @@ mod_UpdateReduction_server <- function(id,
 
       })
 
+      extract_reduction <- ExtendedTask$new(function(dbFile, reduction, filePath){
+          future_promise({
+
+              con <- DBI::dbConnect(duckdb::duckdb(),
+                                    dbdir = dbFile,
+                                    read_only = TRUE)
+              on.exit(DBI::dbDisconnect(con))
+
+              d <- queryDuckReduction(
+                  con = con,
+                  reduction = reduction
+              )
+              colnames(d) <- c("X", "Y")
+              if(file.exists(filePath)){
+                  file.remove(filePath)
+              }
+              write_raw_data(d, filePath)
+              return(basename(filePath))
+          })
+
+      })
+
       observeEvent(input$reduction, {
           req(duckdbConnection())
           req(input$reduction!="None")
           message("UpdateReduction module increased scatter indicator")
           scatterReductionIndicator(scatterReductionIndicator()+1)
 
-          d <- queryDuckReduction(duckdbConnection(), reduction = input$reduction)
-          colnames(d) <- c("X", "Y")
           showNotification(
               ui = div(div(class = c("spinner-border", "spinner-border-sm", "text-primary"),
                            role = "status",
@@ -74,10 +94,23 @@ mod_UpdateReduction_server <- function(id,
               session = session
           )
           message("Transferring reductionData...")
-          transfer_reduction(d, session)
-          rm(d)
-          removeNotification(id = "update_reduction_notification", session)
+          promise_dbFile <- session$userData$duckdb
+          promise_reduction <- input$reduction
+          promise_filePath <- file.path(session$userData$tempDir, hash_md5(input$reduction))
+          extract_reduction$invoke(dbFile = promise_dbFile,
+                                   reduction = promise_reduction,
+                                   filePath = promise_filePath)
+
       }, priority = -500)
+
+      observeEvent(extract_reduction$status(), {
+          if(extract_reduction$status() == "success"){
+              removeNotification(id = "update_reduction_notification", session)
+              session$sendCustomMessage(type = "reduction_ready", extract_reduction$result())
+          }else{
+              message("extract_reduction error: ", extract_reduction$result())
+          }
+      }, ignoreNULL = FALSE)
 
       selectedReduction <- reactive({
         input$reduction
