@@ -9,7 +9,9 @@ seurat2duckdb(
   dbFile = "output.duckdb",
   assay = "RNA",
   layers = c("counts", "data"),
-  reductions = c("pca", "umap", "tsne"),
+  reductions = Reductions(object),
+  memory_limit = "4GB",
+  threads = "8",
   overwrite = TRUE
 )
 }
@@ -24,6 +26,10 @@ seurat2duckdb(
 
 \item{reductions}{object reductions to be included, default: c("pca", "umap", "tsne")}
 
+\item{memory_limit}{memory limit for duckdb (SET memory_limit = '4GB';),}
+
+\item{threads}{threads used by duckdb driver, note: need to parse string here}
+
 \item{overwrite}{whether to overwrite existing tables, only could be TRUE for now}
 }
 \description{
@@ -31,8 +37,8 @@ Convert seurat object to onDisk duckdb file
 }
 \examples{
 \dontrun{
- pbmc <- LoadSeurat("pbmc3k.Rds")
- seurat2duckdb(object = pbmc, db = "pbmc3k.duckdb")
+pbmc <- LoadSeurat("pbmc3k.Rds")
+seurat2duckdb(object = pbmc, dbFile = "pbmc3k.duckdb")
 }
 
 }
