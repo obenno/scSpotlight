@@ -78,8 +78,6 @@ mod_UpdateReduction_server <- function(id,
       observeEvent(input$reduction, {
           req(duckdbConnection())
           req(input$reduction!="None")
-          message("UpdateReduction module increased scatter indicator")
-          scatterReductionIndicator(scatterReductionIndicator()+1)
 
           showNotification(
               ui = div(div(class = c("spinner-border", "spinner-border-sm", "text-primary"),
@@ -107,14 +105,19 @@ mod_UpdateReduction_server <- function(id,
           if(extract_reduction$status() == "success"){
               removeNotification(id = "update_reduction_notification", session)
               session$sendCustomMessage(type = "reduction_ready", extract_reduction$result())
+              message("UpdateReduction module increased scatter indicator")
+              scatterReductionIndicator(scatterReductionIndicator()+1)
+
           }else{
               message("extract_reduction error: ", extract_reduction$result())
           }
       }, ignoreNULL = FALSE)
 
-      selectedReduction <- reactive({
-        input$reduction
-      })
+      ##selectedReduction <- reactive({
+      ##  input$reduction
+      ##})
+
+      return(extract_reduction)
 
   })
 }

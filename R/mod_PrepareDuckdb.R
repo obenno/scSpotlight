@@ -19,11 +19,12 @@ mod_PrepareDuckdb_ui <- function(id){
 #' @noRd 
 mod_PrepareDuckdb_server <- function(id,
                                      seuratObj,
+                                     assay,
                                      duckdbConnection){
     moduleServer( id, function(input, output, session){
         ns <- session$ns
-        observeEvent(seuratObj(), {
-            req(seuratObj())
+        observeEvent(list(seuratObj(), assay()), {
+            req(seuratObj(), assay())
             ## convert seuratObj to duckdb
             ## Get the layers
             selectedLayers <- intersect(c("counts", "data"), Layers(seuratObj()))
@@ -32,17 +33,23 @@ mod_PrepareDuckdb_server <- function(id,
             if(isTruthy(duckdbConnection())){
                 dbDisconnect(duckdbConnection())
             }
-            message("Coverting duckdb")
+            message("Converting duckdb")
+            if(file.exists(session$userData$duckdb)){
+              unlink(session$userData$duckdb)
+            }
             seurat2duckdb(
                 object = seuratObj(),
-                dbFile = duckdbFile,
-                assay = DefaultAssay(seuratObj()),
-                layers = selectedLayers,
-                reductions = Reductions(seuratObj())
+                dbFile = session$userData$duckdb,
+                assay = assay(),
+                layers = selectedLayers
             )
-            message("Finished Coverting...")
+            message("Finished Convertion...")
             ## open new connection
-            con <- dbConnect(duckdb::duckdb(), duckdbFile)
+            if(isTruthy(duckdbConnection())){
+              message("Found previous connection, disconnecting...")
+              dbDisconnect(duckdbConnection())
+            }
+            con <- dbConnect(duckdb::duckdb(), session$userData$duckdb, read_only = TRUE)
             duckdbConnection(con)
         }, priority = -100)
 
@@ -66,6 +73,7 @@ mod_PrepareDuckdb_server <- function(id,
 
         observeEvent(duckdbConnection(), {
             ## transfer metaData when duckdbConnection is ready
+            req(duckdbConnection())
             showNotification(
                 ui = div(div(class = c("spinner-border", "spinner-border-sm", "text-primary"),
                              role = "status",
@@ -91,9 +99,11 @@ mod_PrepareDuckdb_server <- function(id,
                 removeNotification(id = "update_meta_notification", session)
                 session$sendCustomMessage(type = "meta_ready", extract_meta$result())
             }else{
-                message("extract_reduction error: ", extract_meta$result())
+                message("extract_meta error: ", extract_meta$result())
             }
         })
+
+        return(extract_meta)
 
     })
 }

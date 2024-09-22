@@ -13,6 +13,7 @@ app_server <- function(input, output, session) {
     if(dir.create(tempDir)){
         addResourcePath("data", tempDir)
         session$userData$tempDir <- tempDir
+        message("temp dir created: ", session$userData$tempDir)
     }else{
         stop("Failed to create temp dir")
     }
@@ -38,7 +39,7 @@ app_server <- function(input, output, session) {
 
     ## seuratObj changes, plottingMode will change, and indicators will increase
     ## Thus filterCells and ClusterSetting do not need to alter indicators
-    selectedAssay <- mod_dataInput_server(
+    inputData <- mod_dataInput_server(
         "dataInput",
         seuratObj,
         duckdbConnection,
@@ -50,10 +51,10 @@ app_server <- function(input, output, session) {
         objIndicator
     )
 
-    observeEvent(selectedAssay(), {
+    observeEvent(inputData$selectedAssay(), {
         req(seuratObj())
         obj <- seuratObj()
-        DefaultAssay(obj) <- selectedAssay()
+        DefaultAssay(obj) <- inputData$selectedAssay()
         seuratObj(obj)
     })
 
@@ -78,7 +79,7 @@ app_server <- function(input, output, session) {
                            seuratObj)
 
     DEG_markers <- mod_FindMarkers_server("findMarkers",
-                                          seuratObj,
+                                          inputData$seuratObj,
                                           categoryInfo$group.by)
     mod_DEG_Table_server("DEGList",
                          DEG_markers)
@@ -87,12 +88,15 @@ app_server <- function(input, output, session) {
                          seuratObj)
 
     ## convert seuratObj to duckdb
-    mod_PrepareDuckdb_server("duckdb",
-                             seuratObj,
-                             duckdbConnection)
+    extract_meta <- mod_PrepareDuckdb_server(
+        "duckdb",
+        seuratObj,
+        inputData$selectedAssay,
+        duckdbConnection
+    )
 
     ## Update reductions
-    selectedReduction <- mod_UpdateReduction_server(
+    extract_reduction <- mod_UpdateReduction_server(
         "reductionUpdate",
         duckdbConnection,
         scatterReductionIndicator
@@ -121,7 +125,7 @@ app_server <- function(input, output, session) {
     featureInfo <- mod_InputFeature_server(
         "inputFeatures",
         duckdbConnection,
-        selectedAssay,
+        inputData$selectedAssay,
         scatterColorIndicator
     )
 
@@ -135,7 +139,9 @@ app_server <- function(input, output, session) {
     mod_mainClusterPlot_server(
         "mainClusterPlot",
         duckdbConnection,
-        selectedAssay,
+        inputData$selectedAssay,
+        extract_reduction,
+        extract_meta,
         scatterReductionIndicator,
         scatterColorIndicator,
         categoryInfo$group.by,
@@ -197,7 +203,9 @@ app_server <- function(input, output, session) {
     ## Download Object
     mod_Download_server(
         "downloadObj",
-        seuratObj
+        duckdbConnection,
+        seuratObj,
+        inputData$selectedAssay
     )
 
     ## close duckdb when session ends
@@ -207,13 +215,14 @@ app_server <- function(input, output, session) {
         }
         tryCatch(
         {
-            if(file.exists(session$userData$tempDir)){
-                unlink(session$userData$tempDir,
-                       recursive = TRUE, force = TRUE)
-            }
+          if(file.exists(session$userData$tempDir)){
+            ##message("session$userData$tempDir :", session$userData$tempDir)
+            unlink(session$userData$tempDir,
+                   recursive = TRUE, force = TRUE)
+          }
         },
-        error = {
-            message("Remove tempDir failed...")
+        error = function(e){
+          message("Remove tempDir failed: ", e)
         }
         )
     })

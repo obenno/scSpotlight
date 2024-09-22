@@ -38,6 +38,8 @@ mod_mainClusterPlot_ui <- function(id){
 mod_mainClusterPlot_server <- function(id,
                                        duckdbConnection,
                                        assay,
+                                       extract_reduction,
+                                       extract_meta,
                                        scatterReductionIndicator,
                                        scatterColorIndicator,
                                        group.by,
@@ -50,57 +52,6 @@ mod_mainClusterPlot_server <- function(id,
       previous_plottingMode <- reactiveVal(NULL)
       previous_selectedFeatures <- reactiveVal(NULL)
 
-      ##plottingMode <- eventReactive(list(
-      ##    selectedFeatures(),
-      ##    split.by()
-      ##), {
-      ##
-      ##    message("selectedFeatures(): ", selectedFeatures())
-      ##    if(isTruthy(selectedFeatures()) &&
-      ##       length(selectedFeatures()) == 1 &&
-      ##       split.by() == "None"){
-      ##        mode <- "cluster+expr+noSplit"
-      ##    }else if(isTruthy(selectedFeatures()) &&
-      ##             length(selectedFeatures()) == 1 &&
-      ##             split.by() != "None"){
-      ##        split.by.length <- queryDuckMeta(
-      ##            con = duckdbConnection()
-      ##        ) %>%
-      ##        pull(split.by()) %>%
-      ##        unique() %>%
-      ##        length()
-      ##        if(split.by.length <= 2){
-      ##            mode <- "cluster+expr+twoSplit"
-      ##        }else{
-      ##            mode <- "cluster+expr+multiSplit"
-      ##        }
-      ##    }else if(!isTruthy(selectedFeatures()) &&
-      ##             split.by() != "None"){
-      ##        mode <- "cluster+multiSplit"
-      ##    }else{
-      ##        mode <- "clusterOnly"
-      ##    }
-      ##    message("Plotting mode => ", mode)
-      ##
-      ##    return(mode)
-      ##})
-
-      ##observeEvent(list(plottingMode(), selectedFeatures()), {
-      ##  ## here we only observe plottingMode() value change, not state change
-      ##  if (!identical(previous_plottingMode(), plottingMode())) {
-      ##    ## Expression related plot will be triggered by "plotFeature" button
-      ##    ## Here only automatically trigger plot event with no expression plottingMode()
-      ##    ## selectedFeature > 1 will return clusterOnly mode, we will not automatically trigger plot then
-      ##    if(plottingMode() %in% c("clusterOnly", "cluster+multiSplit") &&
-      ##       length(selectedFeatures())==0){
-      ##      message("Plotting mode changed and indicator increased")
-      ##      scatterReductionIndicator(scatterReductionIndicator()+1)
-      ##      scatterColorIndicator(scatterColorIndicator()+1)
-      ##    }
-      ##  }
-      ##  previous_plottingMode(plottingMode())
-      ##}, priority = -10, ignoreNULL = TRUE, ignoreInit = TRUE)
-
       observeEvent(moduleScore(),{
           message("moduleScore switch changed scatterColorIndicator")
           scatterColorIndicator(scatterColorIndicator()+1)
@@ -109,10 +60,14 @@ mod_mainClusterPlot_server <- function(id,
 
       observeEvent(list(
           scatterReductionIndicator(),
-          scatterColorIndicator()
+          scatterColorIndicator(),
+          extract_meta$status(),
+          extract_reduction$status()
       ), {
-        ## Update plots when group.by and split.by changes
+          ## Update plots when group.by and split.by changes
           req(duckdbConnection())
+          req(extract_meta$status() == "success")
+          req(extract_reduction$status() == "success")
           req(group.by()!="None")
 
           message("Selected group.by is ", isolate(group.by()))
@@ -125,11 +80,7 @@ mod_mainClusterPlot_server <- function(id,
           ##message("plottingMode() is ", plottingMode())
           message("split.by is ", split.by())
           message("moduleScore is ", moduleScore())
-          ##d <- prepare_scatterMeta(con = duckdbConnection(),
-          ##                         group.by = group.by(),
-          ##                         mode = plottingMode(),
-          ##                         split.by = split.by(),
-          ##                         moduleScore = moduleScore())
+
           if(group.by()=="None"){
             group_by = NULL
           }else{
