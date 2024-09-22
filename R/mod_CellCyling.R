@@ -22,6 +22,8 @@ mod_CellCycling_ui <- function(id){
 
 #' CellCyling Server Functions
 #'
+#' @importFrom Seurat CellCycleScoring
+#'
 #' @noRd
 mod_CellCycling_server <- function(id,
                                   seuratObj){
@@ -68,14 +70,13 @@ mod_CellCycling_server <- function(id,
                     message = "Calculating Cell Cycling Score...",
                     tryCatch(
                     {
-                        obj <- Seurat::CellCycleScoring(
-                                           obj,
-                                           s.features = s.genes,
-                                           g2m.features = g2m.genes,
-                                           ctrl = NULL,
-                                           set.ident = FALSE
-                                           ##pool = pool2
-                                       )
+                        obj <- CellCycleScoring(
+                          obj,
+                          s.features = s.genes,
+                          g2m.features = g2m.genes,
+                          ctrl = NULL,
+                          set.ident = FALSE
+                        )
                         seuratObj(obj)
                         showNotification(
                             ui = "Successfully Added!",

@@ -9,16 +9,22 @@
 #' @importFrom shiny NS tagList 
 mod_Download_ui <- function(id){
   ns <- NS(id)
+
   tagList(
       selectInput(
-          inputId = ns("savingAssayVersion"),
-          label = "Seurat Assay Version",
-          choices = c("Assay3", "Assay5"),
-          selected = "Assay3",
+          inputId = ns("downloadFormat"),
+          label = "Result Format",
+          choices = "",
+          selected = "",
           selectize = TRUE,
           width = NULL
       ),
-      downloadButton(ns("downloadData"), "Download RDS File", style = "width:200px", class = "border border-1 border-primary shadow")
+      downloadButton(
+          ns("downloadData"),
+          "Download",
+          style = "width:200px",
+          class = "border border-1 border-primary shadow"
+      )
   )
 }
 
@@ -30,16 +36,40 @@ mod_Download_ui <- function(id){
 #'
 #' @noRd
 mod_Download_server <- function(id,
-                                seuratObj){
+                                duckdbConnection,
+                                seuratObj,
+                                BPCells){
     moduleServer( id, function(input, output, session){
         ns <- session$ns
         ## Download code
+
+        observeEvent(BPCells(),{
+            req(duckdbConnection())
+            runningMode <- golem::get_golem_options("runningMode")
+            message("download, runningMode: ", runningMode)
+            if(runningMode == "processing" && isTruthy(BPCells())){
+                downloadFormat <- c("Rds", "duckdb", "BPCells")
+            }else if(runningMode == "processing"){
+                downloadFormat <- c("Rds", "duckdb")
+            }else{
+                downloadFormat <- c("metaData")
+            }
+            updateSelectInput(
+                "downloadFormat",
+                session = session,
+                label = "Result Format",
+                selected="",
+                choices = downloadFormat
+            )
+        })
+
         output$downloadData <- downloadHandler(
             filename = function(){
                 obj <- seuratObj()
                 prefix <- "scSpotlight."
                 outFile <- case_when(
-                    input$savingAssayVersion == "Assay3" ~ paste0(prefix, Sys.Date(), ".Rds"),
+                    input$downloadResult == "metaData" ~ paste0(prefix, "metaData", Sys.Date(), ".tsv.gz"),
+                    input$downloadResult == "duckdb" ~ paste0(prefix, Sys.Date(), ".duckdb"),
                     "counts" %in% Layers(obj) && class(GetAssayData(obj, layer="counts")) != "dgCMatrix" ~ paste0(prefix, Sys.Date(), ".tar.gz"),
                     "data" %in% Layers(obj) && class(GetAssayData(obj, layer="data")) != "dgCMatrix" ~ paste0(prefix, Sys.Date(), ".tar.gz"),
                     TRUE ~ paste0(prefix, Sys.Date(), ".Rds")
@@ -49,10 +79,6 @@ mod_Download_server <- function(id,
                 obj <- seuratObj()
                 assay <- DefaultAssay(obj)
                 message(str(obj))
-                if(input$savingAssayVersion == "Assay3" && class(obj[[assay]]) != "Assay"){
-                    message("Coverting obj assay to version 3...")
-                    obj[[assay]] <- as(object = obj[[assay]], Class = "Assay")
-                }
                 showSpinnerNotification(
                     message = "Saving Object...",
                     id = "savingNotification",
@@ -61,7 +87,13 @@ mod_Download_server <- function(id,
                 if(str_detect(file, "\\.Rds$")){
                     message("Saving Rds...")
                     SaveSeuratRds(obj, file)
+                }else if(str_detect(file, "\\.duckdb$")){
+                    ## code chunk for duckdb
+                    file.copy(session$userData$duckdb, file)
+                }else if(str_detect(file, "\\.tsv.gz$")){
+
                 }else{
+                    ## code chunk for BPCells
                     subPath <- tempfile(pattern = "scSpotlight_out_") %>%
                         basename()
                     dir.create(subPath)
@@ -73,7 +105,7 @@ mod_Download_server <- function(id,
                         move = TRUE,
                         relative = TRUE
                     )
-                    system2("tar", c("cvzf", file, subPath))
+                    tar(tarfile = file, files = subPath, compression = c("gzip"))
                 }
                 removeNotification(id = "savingNotification", session)
             },
