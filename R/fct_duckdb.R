@@ -7,28 +7,41 @@
 #' @param assay searat assay used
 #' @param layers layers to be converted, please ensure at least one of c("counts", "data") exists, scale.data is not supported yet
 #' @param reductions object reductions to be included, default: c("pca", "umap", "tsne")
+#' @param memory_limit memory limit for duckdb (SET memory_limit = '4GB';),
+#' @param threads threads used by duckdb driver, note: need to parse string here
 #' @param overwrite whether to overwrite existing tables, only could be TRUE for now
 #'
 #' @examples
 #' \dontrun{
-#'  pbmc <- LoadSeurat("pbmc3k.Rds")
-#'  seurat2duckdb(object = pbmc, db = "pbmc3k.duckdb")
+#' pbmc <- LoadSeurat("pbmc3k.Rds")
+#' seurat2duckdb(object = pbmc, dbFile = "pbmc3k.duckdb")
 #' }
 #'
 #' @export
-#' @importFrom SeuratObject Layers Embeddings
+#' @importFrom SeuratObject Layers LayerData Embeddings Reductions
 #' @importFrom tibble tibble
-#' @importFrom DBI dbWriteTable dbListTables
+#' @importFrom DBI dbConnect dbDisconnect dbWriteTable dbListTables
 seurat2duckdb <- function(object,
                           dbFile = "output.duckdb",
                           assay = "RNA",
                           layers = c("counts", "data"),
-                          reductions = c("pca", "umap", "tsne"),
+                          reductions = Reductions(object),
+                          memory_limit = "4GB",
+                          threads = "8", # needs to parse string here
                           overwrite = TRUE){
 
   stopifnot(!file.exists(dbFile))
-  con <- dbConnect(duckdb::duckdb(), dbdir = dbFile, read_only = FALSE)
-
+  con <- dbConnect(
+    drv = duckdb::duckdb(),
+    dbdir = dbFile,
+    read_only = FALSE,
+    config = list(
+      memory_limit = memory_limit,
+      threads = threads
+    )
+  )
+  ## close connection
+  on.exit(dbDisconnect(con))
   existLayers <- SeuratObject::Layers(object, assay = assay)
   selectedLayers <- intersect(layers, existLayers)
 
@@ -66,7 +79,6 @@ seurat2duckdb <- function(object,
 
   ## Add all of the reductions
   selectedReductions <- intersect(reductions, Reductions(object))
-
   if(length(selectedReductions) > 0){
     for(i in seq_along(selectedReductions)){
       d <- Embeddings(object[[selectedReductions[i]]]) %>%
@@ -77,6 +89,8 @@ seurat2duckdb <- function(object,
       tableName <- paste0("Reductions__", selectedReductions[i])
       dbWriteTable(con, tableName, d, overwrite= overwrite)
     }
+  }else{
+    warning("Please note all of the input reductions were not found in the seurat object...\nReductions in object: ", paste0(Reductions(obj), collapse=","))
   }
   ## Add meta data
   if(!("metaData" %in% dbListTables(con)) || overwrite) {
@@ -86,8 +100,6 @@ seurat2duckdb <- function(object,
     dbWriteTable(con, "metaData", metaData, overwrite= overwrite)
   }
 
-  ## close connection
-  dbDisconnect(con)
 }
 
 #' queryDuckExpr
