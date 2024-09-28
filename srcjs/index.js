@@ -160,6 +160,7 @@ Shiny.addCustomMessageHandler('reduction_ready', (msg) => {
 
             reglElementData.updateReductionData(reductionData);
             //console.log("reductionData", reglElementData.origData.reductionData);
+            Shiny.setInputValue("reductionProcessed", true, {priority: "event"});
         }
 
     });
@@ -176,6 +177,7 @@ Shiny.addCustomMessageHandler('meta_ready', (msg) => {
             const nonNumericCols = extractNonNumericCol(reglElementData);
             Shiny.setInputValue("metaCols", nonNumericCols);
             //console.log("metaData", reglElementData.origData.cellMetaData);
+            Shiny.setInputValue("metaProcessed", true, {priority: "event"});
         }
 
     });

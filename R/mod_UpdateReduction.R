@@ -27,6 +27,7 @@ mod_UpdateReduction_ui <- function(id){
 #' @noRd 
 mod_UpdateReduction_server <- function(id,
                                        duckdbConnection,
+                                       reductionProcessed,
                                        scatterReductionIndicator){
 
   moduleServer( id, function(input, output, session){
@@ -92,6 +93,7 @@ mod_UpdateReduction_server <- function(id,
               session = session
           )
           message("Transferring reductionData...")
+          reductionProcessed(FALSE)
           promise_dbFile <- session$userData$duckdb
           promise_reduction <- input$reduction
           promise_filePath <- file.path(session$userData$tempDir, hash_md5(input$reduction))
@@ -116,8 +118,6 @@ mod_UpdateReduction_server <- function(id,
       ##selectedReduction <- reactive({
       ##  input$reduction
       ##})
-
-      return(extract_reduction)
 
   })
 }

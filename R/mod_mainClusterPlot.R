@@ -38,8 +38,8 @@ mod_mainClusterPlot_ui <- function(id){
 mod_mainClusterPlot_server <- function(id,
                                        duckdbConnection,
                                        assay,
-                                       extract_reduction,
-                                       extract_meta,
+                                       reductionProcessed,
+                                       metaProcessed,
                                        scatterReductionIndicator,
                                        scatterColorIndicator,
                                        group.by,
@@ -52,22 +52,21 @@ mod_mainClusterPlot_server <- function(id,
       previous_plottingMode <- reactiveVal(NULL)
       previous_selectedFeatures <- reactiveVal(NULL)
 
-      observeEvent(moduleScore(),{
-          message("moduleScore switch changed scatterColorIndicator")
-          scatterColorIndicator(scatterColorIndicator()+1)
-      }, ignoreInit = TRUE)
-
+      ##observeEvent(moduleScore(),{
+      ##    message("moduleScore switch changed scatterColorIndicator")
+      ##    scatterColorIndicator(scatterColorIndicator()+1)
+      ##}, ignoreInit = TRUE)
 
       observeEvent(list(
           scatterReductionIndicator(),
           scatterColorIndicator(),
-          extract_meta$status(),
-          extract_reduction$status()
+          metaProcessed(),
+          reductionProcessed()
       ), {
           ## Update plots when group.by and split.by changes
           req(duckdbConnection())
-          req(extract_meta$status() == "success")
-          req(extract_reduction$status() == "success")
+          req(metaProcessed())
+          req(reductionProcessed())
           req(group.by()!="None")
 
           message("Selected group.by is ", isolate(group.by()))

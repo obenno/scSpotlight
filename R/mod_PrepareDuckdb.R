@@ -20,7 +20,8 @@ mod_PrepareDuckdb_ui <- function(id){
 mod_PrepareDuckdb_server <- function(id,
                                      seuratObj,
                                      assay,
-                                     duckdbConnection){
+                                     duckdbConnection,
+                                     metaProcessed){
     moduleServer( id, function(input, output, session){
         ns <- session$ns
         observeEvent(list(seuratObj(), assay()), {
@@ -87,6 +88,7 @@ mod_PrepareDuckdb_server <- function(id,
                 session = session
             )
             message("Transferring metaData...")
+            metaProcessed(FALSE)
             promise_dbFile <- session$userData$duckdb
             promise_filePath <- file.path(session$userData$tempDir, hash_md5("metaData"))
             extract_meta$invoke(dbFile = promise_dbFile,
@@ -102,8 +104,6 @@ mod_PrepareDuckdb_server <- function(id,
                 message("extract_meta error: ", extract_meta$result())
             }
         })
-
-        return(extract_meta)
 
     })
 }

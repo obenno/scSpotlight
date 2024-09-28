@@ -31,6 +31,10 @@ app_server <- function(input, output, session) {
     duckdbFile <- session$userData$duckdb
     message("Init duckdbConnection...")
     duckdbConnection <- reactiveVal(NULL)
+
+    metaProcessed <- reactiveVal(FALSE)
+    reductionProcessed <- reactiveVal(FALSE)
+
     scatterReductionIndicator <- reactiveVal(0)
     scatterColorIndicator <- reactiveVal(0)
 
@@ -88,19 +92,29 @@ app_server <- function(input, output, session) {
                          seuratObj)
 
     ## convert seuratObj to duckdb
-    extract_meta <- mod_PrepareDuckdb_server(
+    mod_PrepareDuckdb_server(
         "duckdb",
         seuratObj,
         inputData$selectedAssay,
-        duckdbConnection
+        duckdbConnection,
+        metaProcessed
     )
 
+    observeEvent(input$metaProcessed, {
+        metaProcessed(input$metaProcessed)
+    })
+
     ## Update reductions
-    extract_reduction <- mod_UpdateReduction_server(
+    mod_UpdateReduction_server(
         "reductionUpdate",
         duckdbConnection,
+        reductionProcessed,
         scatterReductionIndicator
     )
+
+    observeEvent(input$reductionProcessed, {
+        reductionProcessed(input$reductionProcessed)
+    })
 
     ## Update category
     metaCols <- reactive({
@@ -140,8 +154,8 @@ app_server <- function(input, output, session) {
         "mainClusterPlot",
         duckdbConnection,
         inputData$selectedAssay,
-        extract_reduction,
-        extract_meta,
+        reductionProcessed,
+        metaProcessed,
         scatterReductionIndicator,
         scatterColorIndicator,
         categoryInfo$group.by,
