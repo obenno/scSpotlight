@@ -36,13 +36,13 @@ document.addEventListener('DOMContentLoaded', function () {
     infoBoxEl.querySelector(".bslib-full-screen-enter").style.display = "none";
     // Add event listener to infoBox collapsing icon
     const collapsing_icon = document.getElementById("infoBox_show");
-    collapsing_icon.addEventListener("click", function() {
+    collapsing_icon.addEventListener("click", function () {
         update_collapse_icon(this.id);
-        if(collapsing_icon.classList.contains("collapsed")){
+        if (collapsing_icon.classList.contains("collapsed")) {
             resize_infoBox(mainPlotEl, infoBoxEl, 56);
             // hide full screen button
             infoBoxEl.querySelector(".bslib-full-screen-enter").style.display = "none";
-        }else{
+        } else {
             resize_infoBox(mainPlotEl, infoBoxEl, 250);
             // show full screen button
             infoBoxEl.querySelector(".bslib-full-screen-enter").style.display = "";
@@ -79,10 +79,10 @@ var reglElementData = new reglScatterCanvas("reglScatter");
 // R waiter package spinners
 // keep the style exactly the same with R function
 var waiterSpinner = {
-  id: "mainClusterPlot-clusterPlot",
-  html: '<div class="loaderz-05" style = "color:var(--bs-primary);"></div>',
-  color: '#ffffff',
-  image: ''
+    id: "mainClusterPlot-clusterPlot",
+    html: '<div class="loaderz-05" style = "color:var(--bs-primary);"></div>',
+    color: '#ffffff',
+    image: ''
 };
 
 Shiny.addCustomMessageHandler('transfer_reduction', (msg) => {
@@ -100,8 +100,8 @@ Shiny.addCustomMessageHandler('transfer_meta', (msg) => {
 const extractNonNumericCol = (reglElementData) => {
     // select non-numeric columns, and transfer to server side
     const nonNumericCols = [];
-    for(let k of Object.keys(reglElementData.origData.cellMetaData)){
-        if(!reglElementData.origData.cellMetaData[k].every(item => typeof item === 'number')){
+    for (let k of Object.keys(reglElementData.origData.cellMetaData)) {
+        if (!reglElementData.origData.cellMetaData[k].every(item => typeof item === 'number')) {
             nonNumericCols.push(k);
         }
     }
@@ -138,16 +138,16 @@ Shiny.addCustomMessageHandler('createSparkLine', (feature) => {
 });
 
 async function fetchBinaryFile(url) {
-  try {
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+    try {
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const arrayBuffer = await response.arrayBuffer();
+        return arrayBuffer;
+    } catch (error) {
+        console.error('There was a problem fetching the binary file:', error);
     }
-    const arrayBuffer = await response.arrayBuffer();
-    return arrayBuffer;
-  } catch (error) {
-    console.error('There was a problem fetching the binary file:', error);
-  }
 };
 
 Shiny.addCustomMessageHandler('reduction_ready', (msg) => {
@@ -160,7 +160,7 @@ Shiny.addCustomMessageHandler('reduction_ready', (msg) => {
 
             reglElementData.updateReductionData(reductionData);
             //console.log("reductionData", reglElementData.origData.reductionData);
-            Shiny.setInputValue("reductionProcessed", true, {priority: "event"});
+            Shiny.setInputValue("reductionProcessed", true, { priority: "event" });
         }
 
     });
@@ -177,7 +177,7 @@ Shiny.addCustomMessageHandler('meta_ready', (msg) => {
             const nonNumericCols = extractNonNumericCol(reglElementData);
             Shiny.setInputValue("metaCols", nonNumericCols);
             //console.log("metaData", reglElementData.origData.cellMetaData);
-            Shiny.setInputValue("metaProcessed", true, {priority: "event"});
+            Shiny.setInputValue("metaProcessed", true, { priority: "event" });
         }
 
     });
@@ -199,7 +199,7 @@ Shiny.addCustomMessageHandler('expr_ready', (msg) => {
             const sparkLine = document.getElementById("featureSparkLine").querySelectorAll(".featureSparkLine");
             const sparkLineArray = [...sparkLine];
             sparkLineArray.forEach(e => {
-                if(e.querySelector("span").innerHTML == feature){
+                if (e.querySelector("span").innerHTML == feature) {
                     updateSparkLine(e, reglElementData);
                 }
             });
@@ -214,8 +214,8 @@ Shiny.addCustomMessageHandler('clear_expr', (msg) => {
     reglElementData.origData.expressionData = {};
     reglElementData.plotMetaData.selectedFeatures = [];
     // remember to add shiny module id as prefix
-    Shiny.setInputValue("inputFeatures-storedFeatures", [], {priority: "event"});
-    Shiny.setInputValue("selectedFeatures", [], {priority: "event"});
+    Shiny.setInputValue("inputFeatures-storedFeatures", [], { priority: "event" });
+    Shiny.setInputValue("selectedFeatures", [], { priority: "event" });
 
     // remove all sparkline
     document.getElementById("featureSparkLine").innerHTML = "";
@@ -228,35 +228,35 @@ Shiny.addCustomMessageHandler('clear_expr', (msg) => {
 
 
 Shiny.addCustomMessageHandler('selectPointsByCategory', (msg) => {
-   // handler for selecting cells by category
+    // handler for selecting cells by category
     const groupBy = msg.groupBy;
     const splitBy = msg.splitBy;
     const selectedGroupBy = msg.selectedGroupBy;
     const selectedSplitBy = msg.selectedSplitBy;
     const selectedCells = [];
-    if(groupBy && selectedGroupBy){
-        if(!splitBy){
-            reglElementData.origData.cellMetaData[groupBy].forEach((e,i) => {
+    if (groupBy && selectedGroupBy) {
+        if (!splitBy) {
+            reglElementData.origData.cellMetaData[groupBy].forEach((e, i) => {
                 const currentCell = reglElementData.origData.cellMetaData["cells"][i];
-                if(selectedGroupBy.includes(e)){
+                if (selectedGroupBy.includes(e)) {
                     selectedCells.push(currentCell);
                 }
             });
-        }else{
-            reglElementData.origData.cellMetaData[groupBy].forEach((e,i) => {
+        } else {
+            reglElementData.origData.cellMetaData[groupBy].forEach((e, i) => {
                 const currentSplitBy = reglElementData.origData.cellMetaData[splitBy][i];
                 const currentCell = reglElementData.origData.cellMetaData["cells"][i];
-                if(selectedGroupBy.includes(e) &&
-                   selectedSplitBy.includes(currentSplitBy)){
+                if (selectedGroupBy.includes(e) &&
+                    selectedSplitBy.includes(currentSplitBy)) {
                     selectedCells.push(currentCell);
                 }
             });
         };
     }
-    if(selectedCells.length > 0){
+    if (selectedCells.length > 0) {
         // update selectedCells in reglElementData
         reglElementData.plotData.selectedCells = selectedCells;
-        Shiny.setInputValue("categorySelectedCells", selectedCells, {priority: "event"});
+        Shiny.setInputValue("categorySelectedCells", selectedCells, { priority: "event" });
     }
 });
 
@@ -264,17 +264,17 @@ Shiny.addCustomMessageHandler("addNewMeta", (msg) => {
     const newMetaCol = msg.colName;
     const assignAs = msg.colValue;
     console.log("newMetaCol:", newMetaCol);
-    console.log("assignAs:" ,assignAs);
+    console.log("assignAs:", assignAs);
     const metaData = reglElementData.origData.cellMetaData;
     // selectedCells records manually selected points by lasso
     const selectedCells = reglElementData.plotData.selectedCells;
 
-    if(Object.keys(metaData).length > 0 &&
-      selectedCells.length > 0){
+    if (Object.keys(metaData).length > 0 &&
+        selectedCells.length > 0) {
         const nCells = metaData[Object.keys(metaData)[0]].length;
         //console.log(Object.keys(metaData).includes(newMetaCol));
         //console.log(!Object.keys(metaData).includes(newMetaCol));
-        if(!Object.keys(metaData).includes(newMetaCol)){
+        if (!Object.keys(metaData).includes(newMetaCol)) {
             reglElementData.origData.cellMetaData[newMetaCol] = Array(nCells).fill("unknown");
             //console.log(reglElementData.origData.cellMetaData);
         }
@@ -290,7 +290,7 @@ Shiny.addCustomMessageHandler("addNewMeta", (msg) => {
     // deselct points
     reglElementData.scatterplots.forEach(e => e.deselect());
     // reset selectedCells
-    Shiny.setInputValue("categorySelectedCells", null, {priority: "event"});
+    Shiny.setInputValue("categorySelectedCells", null, { priority: "event" });
 });
 
 Shiny.addCustomMessageHandler('reglScatter_plot', (msg) => {
@@ -324,8 +324,10 @@ Shiny.addCustomMessageHandler('reglScatter_plot', (msg) => {
     let splitByLevels = new Set(reglElementData.origData.cellMetaData[split_by]);
     splitByLevels = [...splitByLevels].sort();
     Shiny.setInputValue("metaColLevels",
-                        {groupBy: groupByLevels,
-                         splitBy: splitByLevels});
+        {
+            groupBy: groupByLevels,
+            splitBy: splitByLevels
+        });
 
     reglElementData.clear();
     // update plotMetaData with previous one
@@ -335,14 +337,14 @@ Shiny.addCustomMessageHandler('reglScatter_plot', (msg) => {
     console.log("reglElementData.plotMetaData: ", reglElementData.plotMetaData);
 
     console.log("Generating plotEl");
-        // regenerate plot elements
+    // regenerate plot elements
     reglElementData.generatePlotEl();
     console.log("reglElementData :", reglElementData);
     // update legend elements
     parentDiv.appendChild(reglElementData.plotEl);
     const accordions = document.querySelectorAll(".accordion-item");
     const category_accordion = [...accordions].filter((e) => {
-        if(e.dataset.value == "analysis_category"){
+        if (e.dataset.value == "analysis_category") {
             return e;
         }
     });
@@ -357,7 +359,7 @@ Shiny.addCustomMessageHandler('reglScatter_plot', (msg) => {
             const hoveredLegends = Array.from(document.querySelectorAll('#reglScatter-catLegend :hover'));
 
             // ensure the legend was not hovered
-            if(hoveredLegends.length == 0){
+            if (hoveredLegends.length == 0) {
                 let selectedCells = selectedPoints.map(i => reglElementData.plotData.cells[idx][i]);
                 reglElementData.plotData.selectedCells = selectedCells;
                 Shiny.setInputValue("selectedPoints", selectedCells);
@@ -371,8 +373,8 @@ Shiny.addCustomMessageHandler('reglScatter_plot', (msg) => {
         });
     });
 
-    if(Object.keys(reglElementData.plotMetaData.selectedFeatures).length > 1 &&
-      !reglElementData.plotMetaData.moduleScore){
+    if (Object.keys(reglElementData.plotMetaData.selectedFeatures).length > 1 &&
+        !reglElementData.plotMetaData.moduleScore) {
 
         console.log("Drawing featurePlot...");
         updateFeaturePlot(featurePlotCanvas);
@@ -381,13 +383,13 @@ Shiny.addCustomMessageHandler('reglScatter_plot', (msg) => {
         featurePlotCanvas.style.display = "flex";
         //reglElementData.plotEl.style.display = "none";
 
-    }else{
+    } else {
         reglElementData.plotEl.style.display = "flex";
 
     }
 
 
-     // hide spinner
+    // hide spinner
     //waiter.hide('mainClusterPlot-clusterPlot');
 
     //featurePlot().then({});
@@ -400,27 +402,27 @@ const updateFeaturePlot = (canvas) => {
     const containerPadding = getPadding(container);
     const canvasWidth = rect.width - containerPadding.left - containerPadding.right;
     const canvasHeight = rect.height - containerPadding.top - containerPadding.bottom;
-    canvas.width = canvasWidth*2;
-    canvas.height = canvasHeight*2;
+    canvas.width = canvasWidth * 2;
+    canvas.height = canvasHeight * 2;
     canvas.style.width = "100%";
     canvas.style.height = "100%";
 
     // It seems that webR does not support typedArray
     const expressionInput = {};
-    for(let f of reglElementData.plotMetaData.selectedFeatures){
+    for (let f of reglElementData.plotMetaData.selectedFeatures) {
         expressionInput[f] = Array.from(reglElementData.origData.expressionData[f]);
     };
     const drInput = {};
-    for(let i of Object.keys(reglElementData.origData.reductionData)){
+    for (let i of Object.keys(reglElementData.origData.reductionData)) {
         drInput[i] = Array.from(reglElementData.origData.reductionData[i]);
     }
     //console.log("reglElementData.origData.expressionData: ", reglElementData.origData.expressionData);
     //console.log(expressionInput);
     featurePlot(shelterInstance, canvasWidth, canvasHeight,
-                drInput,
-                //reglElementData.origData.reductionData,
-                //reglElementData.origData.expressionData)
-                expressionInput)
+        drInput,
+        //reglElementData.origData.reductionData,
+        //reglElementData.origData.expressionData)
+        expressionInput)
         .then(res => {
             const ctx = canvas.getContext("2d");
             ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -439,13 +441,13 @@ Shiny.addCustomMessageHandler('reglScatter_deselect', (msg) => {
 });
 
 function getPadding(element) {
-  const style = element.currentStyle || window.getComputedStyle(element);
-  return {
-    top: parseInt(style.paddingTop, 10),
-    right: parseInt(style.paddingRight, 10),
-    bottom: parseInt(style.paddingBottom, 10),
-    left: parseInt(style.paddingLeft, 10)
-  };
+    const style = element.currentStyle || window.getComputedStyle(element);
+    return {
+        top: parseInt(style.paddingTop, 10),
+        right: parseInt(style.paddingRight, 10),
+        bottom: parseInt(style.paddingBottom, 10),
+        left: parseInt(style.paddingLeft, 10)
+    };
 }
 
 // Function to decompress gzipped data
@@ -453,7 +455,7 @@ const decodeAndDecompress = (encodedCompressedStr) => {
     const binaryStr = atob(encodedCompressedStr);
     const decodedData = new Uint8Array(binaryStr.length);
     for (let i = 0; i < binaryStr.length; i++) {
-            decodedData[i] = binaryStr.charCodeAt(i);
+        decodedData[i] = binaryStr.charCodeAt(i);
     }
     let decompressedStr = pako.ungzip(decodedData, { to: 'string' });
 
