@@ -96,6 +96,7 @@ mod_InputFeature_ui <- function(id){
 #' @import shiny
 #' @importFrom promises future_promise %...>% %...!%
 #' @importFrom cli hash_md5
+#' @importFrom qs qsave
 #' @noRd
 mod_InputFeature_server <- function(id, duckdbConnection, assay, scatterColorIndicator){
   moduleServer( id, function(input, output, session){
@@ -207,7 +208,7 @@ mod_InputFeature_server <- function(id, duckdbConnection, assay, scatterColorInd
               if(file.exists(filePath)){
                   file.remove(filePath)
               }
-              write_raw_data(expr, filePath)
+              qsave(expr, filePath, preset = "high")
               return(basename(filePath))
           })
       })

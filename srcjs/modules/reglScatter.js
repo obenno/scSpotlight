@@ -1129,9 +1129,7 @@ export class reglScatterCanvas {
           event.target.style.borderColor = "black";
           event.target.style.borderWidth = "2px";
           //console.log("enter event triggered");
-          let pointsIndex = this.highlight_index(
-            catTitles[i],
-          );
+          let pointsIndex = this.highlight_index(catTitles[i]);
 
           this.scatterplots.forEach((sp, index) => {
             sp.select(pointsIndex[index]);
@@ -1175,6 +1173,9 @@ export class reglScatterCanvas {
   }
 
   static createLegendEl(title, color, number) {
+    if (typeof title === "number") {
+      title = title.toString();
+    }
     // legend style modified from broad single cell portal viewer
     const scatterLegend = document.createElement("div");
     scatterLegend.classList.add("scatter-legend");
@@ -1216,10 +1217,7 @@ export class reglScatterCanvas {
     return indexes;
   }
 
-  highlight_index(
-    selectedGroupBy,
-  ) {
-
+  highlight_index(selectedGroupBy) {
     let mode = this.plotMetaData.mode;
     let group_by = this.plotMetaData.group_by;
     let metaData = this.origData.cellMetaData;

@@ -16,6 +16,7 @@ mod_PrepareDuckdb_ui <- function(id){
     
 #' PrepareDuckdb Server Functions
 #'
+#' @importFrom qs qsave
 #' @noRd 
 mod_PrepareDuckdb_server <- function(id,
                                      seuratObj,
@@ -67,7 +68,7 @@ mod_PrepareDuckdb_server <- function(id,
                 if(file.exists(filePath)){
                     file.remove(filePath)
                 }
-                write_raw_data(d, filePath)
+                qsave(d, filePath, preset = "high")
                 return(basename(filePath))
             })
         })

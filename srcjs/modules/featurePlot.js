@@ -1,37 +1,28 @@
-import { WebR } from 'webr';
+import { WebR } from "webr";
 
-export async function initFeaturePlotWebR() {
-
+export async function initWebR() {
   const webR = new WebR();
   await webR.init();
 
   // Create mountpoint
-  await webR.FS.mkdir('/library');
+  await webR.FS.mkdir("/library");
 
   // Download image data
-  const data = await fetch('www/webr/vfs/library.data');
-  const metadata = await fetch('www/webr/vfs/library.js.metadata');
+  const data = await fetch("www/webr/vfs/library.data");
+  const metadata = await fetch("www/webr/vfs/library.js.metadata");
 
   // Mount image data
   const options = {
-    packages: [{
-      blob: await data.blob(),
-      metadata: await metadata.json(),
-    }],
+    packages: [
+      {
+        blob: await data.blob(),
+        metadata: await metadata.json(),
+      },
+    ],
   };
 
-  await webR.FS.mount("WORKERFS", options, '/library');
+  await webR.FS.mount("WORKERFS", options, "/library");
   await webR.evalR('.libPaths(c(.libPaths(), "/library"))');
-
-  //const shelter = new webR.Shelter();
-  let shelter = await new webR.Shelter();
-
-  //let result = await shelter.captureR('print(rnorm(10,5,1))');
-
-  //console.log('Output obtained from running `rnorm` from webR:');
-  //console.log(result.output);
-
-  shelter.purge();
 
   await webR.evalR(`
 library(ggplot2)
@@ -43,13 +34,20 @@ library(cowplot)
 options(device=webr::canvas)
 `);
 
-  return(shelter)
+  await webR.evalR(`webr::install("qs")`);
+
+  return webR;
 }
 
-export async function featurePlot(shelter, figWidth, figHeight, dr, expr){
+export async function initShelter(webR) {
+  let shelter = await new webR.Shelter();
+  shelter.purge();
+  return shelter;
+}
 
-
-  let result = await shelter.captureR(`
+export async function featurePlot(shelter, figWidth, figHeight, dr, expr) {
+  let result = await shelter.captureR(
+    `
 mapColor <- function(x, low = "#E5E4E2", high = "#800080"){
   ## default colors:
   ## low: #E5E4E -> Platinum
@@ -130,21 +128,74 @@ if(length(pList) >=3){
     ncol <- length(pList)
 }
 wrap_plots(pList, ncol=ncol)
-`, {
-  env: {
-    exprList: expr,
-    reduction: dr
-  },
-  captureGraphics: {
-    width: figWidth,
-    height: figHeight,
-    bg: "cornsilk"
-  },
-  withAutoprint: true,
-  captureStreams: true,
-  captureConditions: true
-});
+`,
+    {
+      env: {
+        exprList: expr,
+        reduction: dr,
+      },
+      captureGraphics: {
+        width: figWidth,
+        height: figHeight,
+        bg: "cornsilk",
+      },
+      withAutoprint: true,
+      captureStreams: true,
+      captureConditions: true,
+    },
+  );
 
-  return(result);
+  return result;
   //console.log("new library: ", res);
+}
+
+export async function readQS(webR, buffer) {
+  const randomString = Math.random().toString(36).substring(2, 10);
+  const vfsPath = randomString + ".qs";
+  const uint8Array = new Uint8Array(buffer);
+  await webR.FS.writeFile(vfsPath, uint8Array);
+  let res = await webR.evalR(
+    `
+d <- qs::qread(qsFile, use_alt_rep=TRUE) %>%
+    as.data.frame()
+## convert factor column to character ones
+for(i in 1:ncol(d)){
+    if(is.factor(d[, i])){
+        d[, i] <- as.character(d[, i])
+    }
+}
+d
+`,
+    {
+      env: {
+        qsFile: vfsPath,
+      },
+      withAutoprint: false,
+      captureStreams: true,
+      captureConditions: true,
+    },
+  );
+  // delete the file
+  await webR.FS.unlink(vfsPath);
+  // RDataFrame.toObject() will convert df to json array
+  // rownames will be omitted
+  const df = await res.toObject();
+  // destroy res to release memory
+  await webR.destroy(res);
+  for (const key in df) {
+    if (Array.isArray(df[key]) && df[key].length > 0) {
+      const firstElement = df[key][0];
+      if (typeof firstElement === "number") {
+        // Check if all elements are integers
+        const isIntArray = df[key].every((num) => Number.isInteger(num));
+
+        if (isIntArray) {
+          df[key] = new Int32Array(df[key]);
+        } else {
+          df[key] = new Float32Array(df[key]);
+        }
+      }
+    }
+  }
+  return df;
 }

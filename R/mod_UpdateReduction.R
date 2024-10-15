@@ -24,7 +24,9 @@ mod_UpdateReduction_ui <- function(id){
     
 #' UpdateReduction Server Functions
 #'
-#' @noRd 
+#' @noRd
+#'
+#' @importFrom qs qsave
 mod_UpdateReduction_server <- function(id,
                                        duckdbConnection,
                                        reductionProcessed,
@@ -70,7 +72,7 @@ mod_UpdateReduction_server <- function(id,
               if(file.exists(filePath)){
                   file.remove(filePath)
               }
-              write_raw_data(d, filePath)
+              qsave(d, filePath, preset = "high")
               return(basename(filePath))
           })
 
