@@ -33,7 +33,6 @@ export class reglScatterCanvas {
     this.plotData = {
       pointsData: [],
       colorData: [],
-      labelData: [],
       zType: [],
       cells: [],
       panelTitles: [],
@@ -132,13 +131,13 @@ export class reglScatterCanvas {
   clear() {
     // clear elements and plotData
     while (this.plotEl.firstChild) {
-      this.plotEl.firstChild.remove();
+      this.constructor.removeAllChildNodes(this.plotEl);
     }
     while (this.catLegendEl.firstChild) {
-      this.catLegendEl.firstChild.remove();
+      this.constructor.removeAllChildNodes(this.catLegendEl);
     }
     while (this.expLegendEl.firstChild) {
-      this.expLegendEl.firstChild.remove();
+      this.constructor.removeAllChildNodes(this.expLegendEl);
     }
     // clear previous scatterplot instances, important!
     this.scatterplots.forEach((e) => {
@@ -151,7 +150,6 @@ export class reglScatterCanvas {
     this.plotData = {
       pointsData: [],
       colorData: [],
-      labelData: [],
       zType: [],
       cells: [],
       panelTitles: [],
@@ -189,6 +187,28 @@ export class reglScatterCanvas {
     //});
     //
     //adjustObserver.observe(this.plotEl, { attributes: true, childList: true, subtree: true });
+  }
+
+  static removeAllChildNodes(parent) {
+    while (parent.firstChild) {
+      this.constructor.removeNodeAndListeners(parent.firstChild);
+    }
+  }
+
+  static removeNodeAndListeners(node) {
+    // Remove event listeners
+    const clone = node.cloneNode(false); // Shallow clone
+    node.parentNode.replaceChild(clone, node);
+
+    // Recursively remove child nodes
+    while (clone.firstChild) {
+      this.constructor.removeNodeAndListeners(clone.firstChild);
+    }
+
+    // Remove the node from its parent
+    if (clone.parentNode) {
+      clone.parentNode.removeChild(clone);
+    }
   }
 
   generatePlotEl() {
@@ -231,11 +251,13 @@ export class reglScatterCanvas {
     let plotData = {
       pointsData: [],
       colorData: [],
-      labelData: [],
       zType: [],
       cells: [],
       panelTitles: [],
+      plotFeature: null,
     };
+
+    plotData["plotFeature"] = this.plotMetaData.selectedFeatures[0];
 
     let point_XY_data = this.constructor.prepare_XY_data(
       this.origData.reductionData,
@@ -250,13 +272,13 @@ export class reglScatterCanvas {
     //this.updatePlotMetaData({ "selectedFeature" : [selectedFeature] });
     let zData = this.constructor.prepare_Z_data(
       this.origData.cellMetaData,
-      this.origData.expressionData[this.plotMetaData.selectedFeatures],
+      this.origData.expressionData[plotData["plotFeature"]],
       this.plotMetaData.mode,
       this.plotMetaData.nPanels,
       this.plotMetaData.group_by,
       this.plotMetaData.split_by,
       this.plotMetaData.catColors,
-      this.plotMetaData.selectedFeatures,
+      plotData["plotFeature"],
       this.plotMetaData.moduleScore,
     );
     console.log("zData: ", zData);
@@ -270,7 +292,6 @@ export class reglScatterCanvas {
     }
 
     // labelData stores note/tooltip data
-    plotData["labelData"] = zData["labelData"];
     plotData["panelTitles"] = zData["panelTitles"];
     plotData["colorData"] = zData["colorData"];
     plotData["zType"] = zData["zType"];
@@ -286,24 +307,26 @@ export class reglScatterCanvas {
     let labelCoordinates = [];
     for (let k = 0; k < plotData.pointsData.length; ++k) {
       labelCoordinates[k] = [];
-      let labelData = plotData.pointsData[k].z;
-      catTitles.forEach((e, i) => {
-        let x_data = [];
-        let y_data = [];
-        labelData.forEach((el, idx) => {
-          let label = catTitles[el];
-          if (label == e) {
-            x_data.push(plotData.pointsData[k].x[idx]);
-            y_data.push(plotData.pointsData[k].y[idx]);
-          }
-        });
+      if (plotData["zType"][k] === "category") {
+        let labelData = plotData.pointsData[k].z;
+        catTitles.forEach((e, i) => {
+          let x_data = [];
+          let y_data = [];
+          labelData.forEach((el, idx) => {
+            let label = catTitles[el];
+            if (label == e) {
+              x_data.push(plotData.pointsData[k].x[idx]);
+              y_data.push(plotData.pointsData[k].y[idx]);
+            }
+          });
 
-        labelCoordinates[k].push({
-          x: d3.mean(x_data),
-          y: d3.mean(y_data),
-          label: e,
+          labelCoordinates[k].push({
+            x: d3.mean(x_data),
+            y: d3.mean(y_data),
+            label: e,
+          });
         });
-      });
+      }
     }
 
     // catLabelData stores cat label coordinates for each panel
@@ -518,7 +541,7 @@ export class reglScatterCanvas {
     let split_by = this.plotMetaData.split_by;
     let metaData = this.origData.cellMetaData;
     let expressionData = this.origData.expressionData;
-    let selectedFeature = this.plotMetaData.selectedFeatures[0];
+    let plotFeature = this.plotData.plotFeature;
     let text = null;
     let prefix = null;
     let split_category = {};
@@ -535,14 +558,14 @@ export class reglScatterCanvas {
         } else {
           prefix = "Expr: ";
           text = prefix.concat(
-            d3.format(".3f")(expressionData[selectedFeature][pointId]),
+            d3.format(".3f")(expressionData[plotFeature][pointId]),
           );
         }
         break;
       case "cluster+expr+twoSplit":
         split_category = splitArrByMeta(metaData[group_by], metaData[split_by]);
         split_expr = splitArrByMeta(
-          expressionData[selectedFeature],
+          expressionData[plotFeature],
           metaData[split_by],
         );
 
@@ -574,9 +597,10 @@ export class reglScatterCanvas {
         text = prefix.concat(
           split_category[Object.keys(split_category)[spIndex]][pointId],
         );
+        break;
       case "cluster+expr+multiSplit":
         split_expr = splitArrByMeta(
-          expressionData[selectedFeature],
+          expressionData[plotFeature],
           metaData[split_by],
         );
         prefix = "Expr: ";
@@ -859,7 +883,6 @@ export class reglScatterCanvas {
     let zData = {
       point_Z_data: [],
       colorData: [],
-      //labelData: [],
       zType: [],
       cells: [],
       panelTitles: [],
@@ -868,16 +891,9 @@ export class reglScatterCanvas {
     let split_category = null;
     let split_expr = null;
     let split_cells = null;
-    let exprTitle = null;
-    let exprTag = null;
+    let exprTitle = moduleScore ? "ModuleScore" : selectedFeature;
+    let exprTag = moduleScore ? "ModuleScore" : "Expr: ";
 
-    if (moduleScore) {
-      exprTag = "ModuleScore: ";
-      exprTitle = "ModuleScore";
-    } else {
-      exprTag = "Expr: ";
-      exprTitle = selectedFeature;
-    }
     // d3.interpolate will generate rgb value by default
     let exprColorMap = Array(51)
       .fill()
@@ -1100,7 +1116,7 @@ export class reglScatterCanvas {
   }
 
   updateCatLegend() {
-    const pointData_z = this.plotData["pointsData"].map((e) => e.z);
+    //const pointData_z = this.plotData["pointsData"].map((e) => e.z);
 
     // Add cluster legends, no legend for "cluster+expr+multiSplit" mode
     if (this.plotMetaData.mode != "cluster+expr+multiSplit") {
