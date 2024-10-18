@@ -9,11 +9,11 @@ export * as myWaiter from "./modules/myWaiter.js";
 
 import { reglScatterCanvas } from "./modules/reglScatter.js";
 import {
-  initWebR,
   initShelter,
   readQS,
   featurePlot,
-} from "./modules/featurePlot.js";
+  initWebRInstance,
+} from "./modules/webr.js";
 import {
   createSparkLine,
   updateSparkLine,
@@ -23,11 +23,20 @@ import {
 // id of the mainClusterPlot parent div
 const mainPlotElId = "mainClusterPlot-clusterPlot";
 
-// init webR instances
-const webR = await initWebR();
-// init normal shelter for webR to gain better control of the r objects
-const shelterInstance = await initShelter(webR);
+// init webR instance for reading reduction and expr data
+let webR;
+let shelter;
+//let metaDataWebR;
+//let plotWebR;
 
+(async () => {
+  webR = await initWebRInstance();
+  shelter = await initShelter(webR);
+})();
+
+// init normal shelter for webR to gain better control of the r objects
+//const shelterInstance = await initShelter(plotWebR);
+console.log("running here");
 // code below will ensure the functions were invoked after all the shiny content loaded
 // thus here init scatterplot instance
 document.addEventListener(
@@ -110,17 +119,6 @@ const extractNonNumericCol = (reglElementData) => {
   return nonNumericCols;
 };
 
-//Shiny.addCustomMessageHandler('transfer_expression', (msg) => {
-//    const expressionData = decodeAndDecompress(msg);
-//    console.log(expressionData);
-//    if(expressionData){
-//        reglElementData.updateExpressionData(expressionData);
-//    }else{
-//        // purge exprssion data
-//        reglElementData.updateExpressionData({});
-//    }
-//});
-
 Shiny.addCustomMessageHandler("createSparkLine", (feature) => {
   const sparkLineEl = createSparkLine(feature);
   const sparkLineContainer = document.getElementById("featureSparkLine");
@@ -142,9 +140,15 @@ Shiny.addCustomMessageHandler("createSparkLine", (feature) => {
 Shiny.addCustomMessageHandler("reduction_ready", (msg) => {
   try {
     fetch("data/" + msg)
-      .then((file) => file.arrayBuffer())
+      .then((file) => {
+        const now = new Date();
+        console.log(`start time: ${now.toLocaleTimeString()}`);
+        return file.arrayBuffer();
+      })
       .then(async (buffer) => await readQS(webR, buffer))
       .then((df) => {
+        const now = new Date();
+        console.log(`end time: ${now.toLocaleTimeString()}`);
         console.log("qs df: ", df);
         reglElementData.updateReductionData(df);
         Shiny.setInputValue("reductionProcessed", true, { priority: "event" });
@@ -152,19 +156,6 @@ Shiny.addCustomMessageHandler("reduction_ready", (msg) => {
   } catch (error) {
     console.error("There was a problem:", error);
   }
-  // msg is the expr binary file name on the server
-  //fetchBinaryFile("data/" + msg).then(data => {
-  //    if (data) {
-  //        //console.log('Binary data fetched successfully:', data);
-  //        // Process the binary data as needed
-  //        const reductionData = decodeDataBinary(data);
-  //
-  //        reglElementData.updateReductionData(reductionData);
-  //        //console.log("reductionData", reglElementData.origData.reductionData);
-  //        Shiny.setInputValue("reductionProcessed", true, { priority: "event" });
-  //    }
-  //
-  //});
 });
 
 Shiny.addCustomMessageHandler("meta_ready", (msg) => {
@@ -208,28 +199,6 @@ Shiny.addCustomMessageHandler("expr_ready", (msg) => {
   } catch (error) {
     console.error("There was a problem:", error);
   }
-  // msg is the expr binary file name on the server
-  //fetchBinaryFile("data/" + msg).then((data) => {
-  //  if (data) {
-  //    //console.log('Binary data fetched successfully:', data);
-  //    // Process the binary data as needed
-  //    const expressionData = decodeDataBinary(data);
-  //
-  //    reglElementData.updateExpressionData(expressionData);
-  //    //console.log("exprData", expressionData);
-  //    console.log("exprData", reglElementData.origData.expressionData);
-  //    const feature = Object.keys(expressionData)[0];
-  //    const sparkLine = document
-  //      .getElementById("featureSparkLine")
-  //      .querySelectorAll(".featureSparkLine");
-  //    const sparkLineArray = [...sparkLine];
-  //    sparkLineArray.forEach((e) => {
-  //      if (e.querySelector("span").innerHTML == feature) {
-  //        updateSparkLine(e, reglElementData);
-  //      }
-  //    });
-  //  }
-  //});
 });
 
 Shiny.addCustomMessageHandler("clear_expr", (msg) => {
@@ -451,7 +420,7 @@ const updateFeaturePlot = (canvas) => {
   //console.log("reglElementData.origData.expressionData: ", reglElementData.origData.expressionData);
   //console.log(expressionInput);
   featurePlot(
-    shelterInstance,
+    shelter,
     canvasWidth,
     canvasHeight,
     drInput,
@@ -464,7 +433,7 @@ const updateFeaturePlot = (canvas) => {
     let img = res.images[0];
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
   });
-  shelterInstance.purge();
+  shelter.purge();
 };
 
 Shiny.addCustomMessageHandler("reglScatter_deselect", (msg) => {
