@@ -107,10 +107,11 @@ const extractNonNumericCol = (reglElementData) => {
   const nonNumericCols = [];
   for (let k of Object.keys(reglElementData.origData.cellMetaData)) {
     if (
+      k != "cells" &&
       !reglElementData.origData.cellMetaData[k].every(
         // retain string and integer number
         // Modulo method is faster then .isInteger()
-        (item) => typeof item === "number" && item % 1 != 0,
+        (item) => typeof item === "number",
       )
     ) {
       nonNumericCols.push(k);

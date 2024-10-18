@@ -191,7 +191,7 @@ export class reglScatterCanvas {
 
   static removeAllChildNodes(parent) {
     while (parent.firstChild) {
-      this.constructor.removeNodeAndListeners(parent.firstChild);
+      reglScatterCanvas.removeNodeAndListeners(parent.firstChild);
     }
   }
 
@@ -202,7 +202,7 @@ export class reglScatterCanvas {
 
     // Recursively remove child nodes
     while (clone.firstChild) {
-      this.constructor.removeNodeAndListeners(clone.firstChild);
+      reglScatterCanvas.removeNodeAndListeners(clone.firstChild);
     }
 
     // Remove the node from its parent
