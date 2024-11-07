@@ -111,8 +111,8 @@ mod_InputFeature_server <- function(id, duckdbConnection, assay, scatterColorInd
               updateSelectizeInput(
                   session = session,
                   inputId = 'features',
-                  selected = NULL
-                  ##server = TRUE
+                  selected = NULL,
+                  server = TRUE
               )
           }else{
               shinyjs::hide("features")
@@ -139,8 +139,8 @@ mod_InputFeature_server <- function(id, duckdbConnection, assay, scatterColorInd
               session = session,
               inputId = 'features',
               selected = "",
-              choices = genes()
-              ##server = TRUE
+              choices = genes(),
+              server = TRUE
           )
       })
 
@@ -178,7 +178,8 @@ mod_InputFeature_server <- function(id, duckdbConnection, assay, scatterColorInd
               session = session,
               inputId = "geneSet",
               choices = geneSet,
-              selected = ""
+              selected = "",
+              server = TRUE
           )
       })
 
