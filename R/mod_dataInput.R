@@ -130,7 +130,8 @@ mod_dataInput_server <- function(id,
                   choices = list.files(
                     path = dataDir,
                     pattern = supportedFileInputPattern,
-                    recursive = TRUE),
+                    recursive = TRUE
+                  ),
                   selected = ""
                 )
             }
@@ -180,6 +181,7 @@ mod_dataInput_server <- function(id,
             inputFileName()
         ), {
             req(inputFilePath(), inputFileName())
+            message("inputFilePath() is ", isolate(inputFilePath()))
             ##req(isTruthy(input$dataInput) || isTruthy(input$dataDirFile))
             waiter_show(html = waiting_screen(), color = "var(--bs-primary)")
             ## Init seuratObj
@@ -192,7 +194,8 @@ mod_dataInput_server <- function(id,
                 if(class(seuratObj[[assay]]) == "Assay"){
                     seuratObj[[assay]] <- as(seuratObj[[assay]], Class = "Assay5")
                 }
-                if(input$enableBPCells){
+                message("conversion finished...")
+                if(isTruthy(input$enableBPCells)){
                     ## converting counts and data layer to BPCells matrix
                     if("counts" %in% Layers(seuratObj) &&
                        class(seuratObj[[assay]]$counts) == "dgCMatrix"){
