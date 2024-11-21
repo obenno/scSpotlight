@@ -214,7 +214,7 @@ export async function readQS(webR, buffer) {
   let res = await webR.evalR(
     `
 d <- qs::qread(qsFile, use_alt_rep=TRUE) %>%
-    as.data.frame()
+    as.data.frame(check.names = FALSE)
 ## convert factor column to character ones
 for(i in 1:ncol(d)){
     if(is.factor(d[, i])){

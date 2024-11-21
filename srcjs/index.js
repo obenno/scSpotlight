@@ -266,6 +266,7 @@ Shiny.addCustomMessageHandler("addNewMeta", (msg) => {
   console.log("assignAs:", assignAs);
   const metaData = reglElementData.origData.cellMetaData;
   // selectedCells records manually selected points by lasso
+  // or category selected cells updated by selectPointsByCategory
   const selectedCells = reglElementData.plotData.selectedCells;
 
   if (Object.keys(metaData).length > 0 && selectedCells.length > 0) {
@@ -288,6 +289,15 @@ Shiny.addCustomMessageHandler("addNewMeta", (msg) => {
   );
   const nonNumericCols = extractNonNumericCol(reglElementData);
   Shiny.setInputValue("metaCols", nonNumericCols);
+  // send the newMetaCol data to R
+  console.log({
+    [newMetaCol]: reglElementData.origData.cellMetaData[newMetaCol],
+  });
+  Shiny.setInputValue(
+    "newMetaColData",
+    { [newMetaCol]: reglElementData.origData.cellMetaData[newMetaCol] },
+    { priority: "event" },
+  );
   // deselct points
   reglElementData.scatterplots.forEach((e) => e.deselect());
   // reset selectedCells
@@ -306,10 +316,6 @@ Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
   featurePlotCanvas.style.display = "none";
   reglElementData.plotEl.style.display = "none";
 
-  // create a shallow copy to store previous value
-  //const previous_plotMetaData = {...reglElementData.plotMetaData};
-  //console.log("previous_plotMetaData: ", previous_plotMetaData);
-  //console.log("reglElementData: ", reglElementData);
   // clear reglScatterCanvas data including plotMetaData
   console.log("msg: ", msg);
   const group_by = msg.group_by;
@@ -364,15 +370,18 @@ Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
         let selectedCells = selectedPoints.map(
           (i) => reglElementData.plotData.cells[idx][i],
         );
+        console.log("selectedCells: ", selectedCells);
         reglElementData.plotData.selectedCells = selectedCells;
-        Shiny.setInputValue("selectedPoints", selectedCells);
+        Shiny.setInputValue("selectedPoints", selectedCells, {
+          priority: "event",
+        });
       }
     });
   });
   reglElementData.scatterplots.forEach((sp, idx) => {
     sp.subscribe("deselect", () => {
       reglElementData.plotData.selectedCells = [];
-      Shiny.setInputValue("selectedPoints", null);
+      Shiny.setInputValue("selectedPoints", null, { priority: "event" });
     });
   });
 

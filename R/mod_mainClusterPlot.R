@@ -36,21 +36,14 @@ mod_mainClusterPlot_ui <- function(id){
 #'
 #' @importFrom promises future_promise %...>% %...!%
 mod_mainClusterPlot_server <- function(id,
-                                       duckdbConnection,
-                                       assay,
                                        reductionProcessed,
                                        metaProcessed,
-                                       scatterReductionIndicator,
-                                       scatterColorIndicator,
+                                       scatterUpdateIndicator,
                                        group.by,
                                        split.by,
-                                       selectedFeatures,
                                        moduleScore){
   moduleServer( id, function(input, output, session){
       ns <- session$ns
-
-      previous_plottingMode <- reactiveVal(NULL)
-      previous_selectedFeatures <- reactiveVal(NULL)
 
       ##observeEvent(moduleScore(),{
       ##    message("moduleScore switch changed scatterColorIndicator")
@@ -58,27 +51,21 @@ mod_mainClusterPlot_server <- function(id,
       ##}, ignoreInit = TRUE)
 
       observeEvent(list(
-          scatterReductionIndicator(),
-          scatterColorIndicator(),
+          scatterUpdateIndicator(),
           metaProcessed(),
           reductionProcessed()
       ), {
           ## Update plots when group.by and split.by changes
-          req(duckdbConnection())
           req(metaProcessed())
           req(reductionProcessed())
           req(group.by()!="None")
 
+          message("-----")
           message("Selected group.by is ", isolate(group.by()))
           message("Selected split.by is ", isolate(split.by()))
-          message("scatterReductionIndicator() is ", isolate(scatterReductionIndicator()))
-          message("scatterColorIndicator() is ", isolate(scatterColorIndicator()))
           message("Updating plotMetaData")
-          message("-----")
-          message("group.by is ", group.by());
-          ##message("plottingMode() is ", plottingMode())
-          message("split.by is ", split.by())
           message("moduleScore is ", moduleScore())
+          message("-----")
 
           if(group.by()=="None"){
             group_by = NULL

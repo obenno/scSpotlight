@@ -24,7 +24,7 @@ mod_InputFeature_ui <- function(id){
             ns("features"),
             "Input Gene Names",
             selected = NULL,
-            choices = NULL,
+            choices = "",
             multiple = FALSE,
             selectize = TRUE,
             width = NULL
@@ -42,7 +42,7 @@ mod_InputFeature_ui <- function(id){
               selectInput(
                   ns("geneSet"),
                   "Choose Gene Set",
-                  choices = NULL,
+                  choices = "",
                   selected = NULL,
                   multiple = FALSE,
                   selectize = TRUE,
@@ -98,7 +98,10 @@ mod_InputFeature_ui <- function(id){
 #' @importFrom cli hash_md5
 #' @importFrom qs qsave
 #' @noRd
-mod_InputFeature_server <- function(id, duckdbConnection, assay, scatterColorIndicator){
+mod_InputFeature_server <- function(id,
+                                    assay,
+                                    geneUpdateIndicator,
+                                    scatterUpdateIndicator){
   moduleServer( id, function(input, output, session){
       ns <- session$ns
 
@@ -108,12 +111,12 @@ mod_InputFeature_server <- function(id, duckdbConnection, assay, scatterColorInd
               shinyjs::show("features")
               shinyjs::hide("featureList")
               shinyjs::hide("geneSet")
-              updateSelectizeInput(
-                  session = session,
-                  inputId = 'features',
-                  selected = NULL,
-                  server = TRUE
-              )
+              ##updateSelectizeInput(
+              ##    session = session,
+              ##    inputId = 'features',
+              ##    selected = NULL,
+              ##    server = TRUE
+              ##)
           }else{
               shinyjs::hide("features")
               shinyjs::show("geneSet")
@@ -126,10 +129,12 @@ mod_InputFeature_server <- function(id, duckdbConnection, assay, scatterColorInd
           )
       }, priority = -10)
 
-      genes <- reactive({
-          req(duckdbConnection(), assay())
+      genes <- eventReactive(geneUpdateIndicator(), {
+          req(file.exists(session$userData$duckdb), assay())
+          con <- duckConnect(session)
+          on.exit(dbDisconnect(con))
           genes <- queryDuckFeatures(
-              con = duckdbConnection(),
+              con = con,
               assay = assay()
           )
       })
@@ -190,12 +195,10 @@ mod_InputFeature_server <- function(id, duckdbConnection, assay, scatterColorInd
       ## https://cran.r-project.org/web/packages/future/vignettes/future-4-non-exportable-objects.html
       ## future codes needs to be installed before testing:
       ## https://github.com/HenrikBengtsson/future/issues/206
-      extract_expression <- ExtendedTask$new(function(dbFile, assay, features, layer = "data", filePath) {
+      extract_expression <- ExtendedTask$new(function(assay, features, layer = "data", filePath) {
           future_promise({
 
-              con <- DBI::dbConnect(duckdb::duckdb(),
-                                    dbdir = dbFile,
-                                    read_only = TRUE)
+              con <- duckConnect(session)
               on.exit(DBI::dbDisconnect(con))
               expr <- queryDuckExpr(
                   con = con,
@@ -216,7 +219,7 @@ mod_InputFeature_server <- function(id, duckdbConnection, assay, scatterColorInd
 
       observeEvent(input$geneSet, {
           req(uploadedFeatureList(), input$geneSet,
-              duckdbConnection(), assay(), genes())
+              file.exists(session$userData$duckdb), assay(), genes())
           geneSetFeatures <- uploadedFeatureList() %>%
               filter(`geneSet` == input$geneSet) %>%
               pull(`geneName`)
@@ -252,11 +255,10 @@ mod_InputFeature_server <- function(id, duckdbConnection, assay, scatterColorInd
           promise_assay <- assay()
 
           for(feature in selectedFeatures){
-              start_extract_expr(feature, session)
+              start_extract_expr(feature, session) # create sparkline elements
               promise_feature <- feature
               promise_filePath <- file.path(session$userData$tempDir, hash_md5(promise_feature))
-              extract_expression$invoke(dbFile = promise_dbFile,
-                                        assay = promise_assay,
+              extract_expression$invoke(assay = promise_assay,
                                         features = promise_feature,
                                         filePath = promise_filePath)
               message("invoked extendedTask")
@@ -280,10 +282,10 @@ mod_InputFeature_server <- function(id, duckdbConnection, assay, scatterColorInd
           input$moduleScore
       })
 
-     extracted_expr <- reactiveVal(NULL)
+      extracted_expr <- reactiveVal(NULL)
       observeEvent(input$features, {
 
-          req(duckdbConnection(), assay(), input$features)
+          req(file.exists(session$userData$duckdb), assay(), input$features)
 
           ##if(isTruthy(moduleScore())){
           ##    tryCatch({
@@ -314,22 +316,19 @@ mod_InputFeature_server <- function(id, duckdbConnection, assay, scatterColorInd
           }else{
 
               start_extract_expr(input$features, session)
-              promise_dbFile <- session$userData$duckdb
               promise_assay <- assay()
               promise_features <- input$features[1]
               promise_filePath <- file.path(session$userData$tempDir, hash_md5(promise_features))
-              extract_expression$invoke(dbFile = promise_dbFile,
-                                        assay = promise_assay,
+              extract_expression$invoke(assay = promise_assay,
                                         features = promise_features,
                                         filePath = promise_filePath)
           }
 
-          ##scatterColorIndicator(scatterColorIndicator()+1)
       }, priority = -10, ignoreNULL = FALSE) # lower priority than plottingMode()
 
       observeEvent(input$plotFeature, {
           message("Plotting featuerPlot...")
-          scatterColorIndicator(scatterColorIndicator()+1)
+          scatterUpdateIndicator(scatterUpdateIndicator()+1)
       })
 
 

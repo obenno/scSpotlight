@@ -23,83 +23,230 @@
 #' @importFrom DBI dbConnect dbDisconnect dbWriteTable dbListTables
 seurat2duckdb <- function(object,
                           dbFile = "output.duckdb",
-                          assay = "RNA",
+                          assays = "RNA",
                           layers = c("counts", "data"),
                           reductions = Reductions(object),
                           memory_limit = "4GB",
                           threads = "8", # needs to parse string here
                           overwrite = TRUE){
 
-  stopifnot(!file.exists(dbFile))
-  con <- dbConnect(
-    drv = duckdb::duckdb(),
-    dbdir = dbFile,
-    read_only = FALSE,
-    config = list(
-      memory_limit = memory_limit,
-      threads = threads
+    stopifnot(!file.exists(dbFile))
+    con <- dbConnect(
+        drv = duckdb::duckdb(),
+        dbdir = dbFile,
+        read_only = FALSE,
+        config = list(
+            memory_limit = memory_limit,
+            threads = threads
+        )
     )
-  )
-  ## close connection
-  on.exit(dbDisconnect(con))
-  existLayers <- SeuratObject::Layers(object, assay = assay)
-  selectedLayers <- intersect(layers, existLayers)
+    ## close connection
+    on.exit(dbDisconnect(con))
 
-  dbTables <- dbListTables(con)
+    dbTables <- dbListTables(con)
 
-  stopifnot(length(dbTables)==0, overwrite)
+    stopifnot(length(dbTables)==0, overwrite)
 
-  for(l in selectedLayers){
-  ## Add counts layer
+    for(assay in assays){
+        existLayers <- SeuratObject::Layers(object, assay = assay)
+        selectedLayers <- intersect(layers, existLayers)
 
-    m <- LayerData(object, assay = "RNA", layer = l)
-    stopifnot(class(m) == "dgCMatrix")
+        for(l in selectedLayers){
+            ## Add counts layer
 
-    d <- Matrix::summary(m) %>% as.data.frame
+            m <- LayerData(object, assay = "RNA", layer = l)
+            stopifnot(class(m) == "dgCMatrix")
 
-    tableName <- paste0(assay, "__", l)
+            d <- Matrix::summary(m) %>% as.data.frame
 
-    dbWriteTable(con, tableName, d, overwrite = overwrite)
-    tableName <- paste0(assay, "__", "featureTbl")
-    if(!(tableName %in% dbListTables(con)) || overwrite) {
+            tableName <- paste0(assay, "__", l)
 
-      features <- rownames(m)
-      dbWriteTable(con, tableName, tibble(features = features), overwrite= overwrite)
+            dbWriteTable(con, tableName, d, overwrite = overwrite)
+            tableName <- paste0(assay, "__", "featureTbl")
+            if(!(tableName %in% dbListTables(con)) || overwrite) {
 
+                features <- rownames(m)
+                dbWriteTable(con, tableName, tibble(features = features), overwrite= overwrite)
+
+            }
+
+            tableName <- paste0(assay, "__", "cellTbl")
+            if(!(tableName %in% dbListTables(con)) || overwrite) {
+
+                cells <- colnames(m)
+                dbWriteTable(con, tableName, tibble(cells = cells), overwrite= overwrite)
+
+            }
+        }
     }
-    
-    tableName <- paste0(assay, "__", "cellTbl")
-    if(!(tableName %in% dbListTables(con)) || overwrite) {
+    ## Add all of the reductions
+    selectedReductions <- intersect(reductions, Reductions(object))
+    if(length(selectedReductions) > 0){
+        for(i in seq_along(selectedReductions)){
+            d <- Embeddings(object[[selectedReductions[i]]]) %>%
+                as.data.frame %>%
+                tibble::rownames_to_column("cell") %>%
+                tibble::as_tibble()
 
-      cells <- colnames(m)
-      dbWriteTable(con, tableName, tibble(cells = cells), overwrite= overwrite)
-
+            tableName <- paste0("Reductions__", selectedReductions[i])
+            dbWriteTable(con, tableName, d, overwrite= overwrite)
+        }
+    }else{
+        warning("Please note all of the input reductions were not found in the seurat object...\nReductions in object: ", paste0(Reductions(obj), collapse=","))
     }
-  }
-
-  ## Add all of the reductions
-  selectedReductions <- intersect(reductions, Reductions(object))
-  if(length(selectedReductions) > 0){
-    for(i in seq_along(selectedReductions)){
-      d <- Embeddings(object[[selectedReductions[i]]]) %>%
-        as.data.frame %>%
-        tibble::rownames_to_column("cell") %>%
-        tibble::as_tibble()
-
-      tableName <- paste0("Reductions__", selectedReductions[i])
-      dbWriteTable(con, tableName, d, overwrite= overwrite)
+    ## Add meta data
+    if(!("metaData" %in% dbListTables(con)) || overwrite) {
+        metaData <- object[[]] %>%
+            tibble::rownames_to_column("cell") %>%
+            tibble::as_tibble()
+        dbWriteTable(con, "metaData", metaData, overwrite= overwrite)
     }
-  }else{
-    warning("Please note all of the input reductions were not found in the seurat object...\nReductions in object: ", paste0(Reductions(obj), collapse=","))
-  }
-  ## Add meta data
-  if(!("metaData" %in% dbListTables(con)) || overwrite) {
-    metaData <- object[[]] %>%
-      tibble::rownames_to_column("cell") %>%
-      tibble::as_tibble()
-    dbWriteTable(con, "metaData", metaData, overwrite= overwrite)
-  }
 
+}
+
+#' duckConnect
+#'
+#' Thin wrapper to create duckdb connection using session data,
+#' used in shiny app.
+#'
+#' @importFrom DBI dbConnect
+#' @importFrom rlang %||%
+#' @noRd
+duckConnect <- function(session,
+                        read_only = TRUE){
+    stopifnot(file.exists(session$userData$duckdb),
+              dir.exists(session$userData$tempDir))
+
+    nCores <- session$userData$nCores %||% "2"
+    newCon <- dbConnect(
+        duckdb::duckdb(),
+        dbdir = session$userData$duckdb,
+        read_only = read_only,
+        config = list(
+            memory_limit = "500MB",
+            temp_directory = session$userData$tempDir,
+            threads = nCores
+        )
+    )
+
+    return(newCon)
+}
+
+#' subsetDuckMatrix
+#'
+#' Update duckdb matrix (counts/data layer) to retain specific cells and features
+#'
+#' @param con duckdb connection
+#' @param assay assay name
+#' @param layers layers to be subset, by default, both of the counts and data layer will be subset
+#' @param cells selected cells
+#' @param features selected features
+#'
+#' @importFrom DBI dbListTables dbWriteTable
+#' @importFrom Matrix sparseMatrix
+#' @importFrom dplyr pull
+#' @export
+subsetDuckMatrix <- function(con,
+                             assay = "RNA",
+                             layers = c("counts", "data"),
+                             features,
+                             cells){
+    ## generate table name
+    cellTableName <- paste0(assay, "__", "cellTbl")
+    featureTableName <- paste0(assay, "__", "featureTbl")
+
+    stopifnot(
+        cellTableName %in% dbListTables(con),
+        featureTableName %in% dbListTables(con)
+    )
+
+    origFeatures <- pull(tbl(con, featureTableName))
+    idx1 <- match(features, origFeatures)
+    origCells <- pull(tbl(con, cellTableName))
+    idx2 <- match(cells, origCells)
+
+    for(l in layers){
+        matrixTableName <- paste0(assay, "__", l)
+        stopifnot(
+            matrixTableName %in% dbListTables(con)
+        )
+
+        m <- sparseMatrix(
+            i = tbl(con, matrixTableName) %>% pull(i),
+            j = tbl(con, matrixTableName) %>% pull(j),
+            x = tbl(con, matrixTableName) %>% pull(x),
+            dims = c(length(origFeatures), length(origCells))
+        )
+
+        m <- m[idx1, idx2]
+
+        dbWriteTable(
+            con,
+            matrixTableName,
+            as.data.frame(Matrix::summary(m)),
+            overwrite = TRUE
+        )
+    }
+    dbWriteTable(
+        con,
+        cellTableName,
+        tibble(cells = cells),
+        overwrite = TRUE
+    )
+    dbWriteTable(
+        con,
+        featureTableName,
+        tibble(features = features),
+        overwrite = TRUE
+    )
+}
+
+
+#' updateDuckReduction
+#'
+#' Udpate the reducions data of a duckdb database
+#'
+#' @param con duckdb connection
+#' @param data list of data frames corresponding to the reductions to be updated
+#' @param reductions a vector of the reductions to be udpated
+#'
+#' @importFrom DBI dbListTables dbWriteTable
+#' @export
+updateDuckReduction <- function(con,
+                                reductions = c("pca", "umap"),
+                                data = list()){
+    stopifnot(names(data) == reductions)
+    for(dr in reductions){
+        reductionTableName <- paste0("Reductions", "__", dr)
+        stopifnot(
+            reductionTableName %in% dbListTables(con)
+        )
+        ## ensure the first column of the data frame is "cell"
+        stopifnot(colnames(data[[dr]])[1] == "cell")
+        dbWriteTable(
+            con,
+            reductionTableName,
+            data[[dr]],
+            overwrite = TRUE
+        )
+    }
+}
+
+#' updateDuckMeta
+#'
+#' Update the meta data table of a duckdb database
+#'
+#' @param con duckdb connection
+#' @param data meta data (data frame) to be updated, with the first column as 'cell'
+#'
+#' @importFrom DBI dbWriteTable
+#' @export
+updateDuckMeta <- function(con,
+                           assay = "RNA",
+                           data){
+    nCells <- queryDuckCells(con, assay = assay) %>% length
+    stopifnot(nCells == nrow(data))
+    dbWriteTable(con, "metaData", data, overwrite= TRUE)
 }
 
 #' queryDuckExpr
@@ -127,80 +274,80 @@ queryDuckExpr <- function(con,
                           populateZero = FALSE,
                           cellNames = TRUE){
 
-  inputFeatures <- features
-  dataTableName <- paste0(assay, "__", layer)
-  featureTableName <- paste0(assay, "__", "featureTbl")
-  cellTableName <- paste0(assay, "__", "cellTbl")
-  idx <- tbl(con, featureTableName) %>%
-    mutate(rowIndex = row_number()) %>%
-    filter(features %in% inputFeatures) %>%
-    pull(rowIndex)
-  df <- tbl(con, dataTableName) %>%
-    filter(i %in% idx) %>%
-    collect()
+    inputFeatures <- features
+    dataTableName <- paste0(assay, "__", layer)
+    featureTableName <- paste0(assay, "__", "featureTbl")
+    cellTableName <- paste0(assay, "__", "cellTbl")
+    idx <- tbl(con, featureTableName) %>%
+        mutate(rowIndex = row_number()) %>%
+        filter(features %in% inputFeatures) %>%
+        pull(rowIndex)
+    df <- tbl(con, dataTableName) %>%
+        filter(i %in% idx) %>%
+        collect()
 
-  allCells <- tbl(con, cellTableName) %>% pull("cells")
-  cells <- allCells[as.vector(df$j)]
-  allFeatures <- tbl(con, featureTableName) %>% pull("features")
-  filteredFeatures <- allFeatures[as.vector(df$i)]
+    allCells <- tbl(con, cellTableName) %>% pull("cells")
+    cells <- allCells[as.vector(df$j)]
+    allFeatures <- tbl(con, featureTableName) %>% pull("features")
+    filteredFeatures <- allFeatures[as.vector(df$i)]
 
-  ## arrow tidyr::pivot_wider seems not implemented yet
-  ## https://github.com/apache/arrow/issues/34265
-  d0 <- df %>%
-    select(x)
-  d0$feature <- filteredFeatures
-  d0$cell <- cells
-  d0 <- as_tibble(d0)
-  d0 <- d0 %>%
-    pivot_wider(id_cols = "cell", names_from = "feature", values_from = "x") %>%
-    tibble::column_to_rownames("cell") %>%
-    collect() %>%
-    as.data.frame()
+    ## arrow tidyr::pivot_wider seems not implemented yet
+    ## https://github.com/apache/arrow/issues/34265
+    d0 <- df %>%
+        select(x)
+    d0$feature <- filteredFeatures
+    d0$cell <- cells
+    d0 <- as_tibble(d0)
+    d0 <- d0 %>%
+        pivot_wider(id_cols = "cell", names_from = "feature", values_from = "x") %>%
+        tibble::column_to_rownames("cell") %>%
+        collect() %>%
+        as.data.frame()
 
-  selectedFeatures <- intersect(inputFeatures, unique(filteredFeatures))
-  d0.cells <- allCells[which(allCells %in% rownames(d0))]
+    selectedFeatures <- intersect(inputFeatures, unique(filteredFeatures))
+    d0.cells <- allCells[which(allCells %in% rownames(d0))]
 
-  d0 <- d0[d0.cells, selectedFeatures]
-  if(is.data.frame(d0)){
-  expr <- d0 %>%
-    as.list() %>%
-    sapply(FUN = function(x){
-      names(x) <- rownames(d0);
-      x[!is.na(x)]
-    })
-  }else{
-    expr <- list()
-    expr[[1]] <- d0
-    names(expr) <- selectedFeatures
-    names(expr[[1]]) <- d0.cells
-  }
-
-  if(populateZero){
-    ## some feature may have only 0 expr
-    existFeatures <- intersect(inputFeatures, allFeatures)
-    nFeature <- existFeatures %>%
-      length()
-    fullexpr <- lapply(1:nFeature, function(x){
-      k <- rep(0, length(allCells))
-      names(k) <- allCells
-      return(k)
-    })
-    names(fullexpr) <- existFeatures
-    for(f in existFeatures){
-      if(f %in% names(expr)){
-        fullexpr[[f]][match(names(expr[[f]]), names(fullexpr[[f]]))] <- expr[[f]]
-      }
+    d0 <- d0[d0.cells, selectedFeatures]
+    if(is.data.frame(d0)){
+        expr <- d0 %>%
+            as.list() %>%
+            sapply(FUN = function(x){
+                names(x) <- rownames(d0);
+                x[!is.na(x)]
+            })
+    }else{
+        expr <- list()
+        expr[[1]] <- d0
+        names(expr) <- selectedFeatures
+        names(expr[[1]]) <- d0.cells
     }
-    expr <- fullexpr
-  }
 
-  if(!cellNames){
-    expr <- lapply(expr, function(x){
-      names(x) <- NULL;
-      return(x)
-    })
-  }
-  return(expr)
+    if(populateZero){
+        ## some feature may have only 0 expr
+        existFeatures <- intersect(inputFeatures, allFeatures)
+        nFeature <- existFeatures %>%
+            length()
+        fullexpr <- lapply(1:nFeature, function(x){
+            k <- rep(0, length(allCells))
+            names(k) <- allCells
+            return(k)
+        })
+        names(fullexpr) <- existFeatures
+        for(f in existFeatures){
+            if(f %in% names(expr)){
+                fullexpr[[f]][match(names(expr[[f]]), names(fullexpr[[f]]))] <- expr[[f]]
+            }
+        }
+        expr <- fullexpr
+    }
+
+    if(!cellNames){
+        expr <- lapply(expr, function(x){
+            names(x) <- NULL;
+            return(x)
+        })
+    }
+    return(expr)
 }
 
 #' queryDuckAssays
@@ -216,18 +363,18 @@ queryDuckExpr <- function(con,
 #' @importFrom stringr str_detect str_remove
 #' @export
 queryDuckAssays <- function(con){
-  duckdbTables <- dbListTables(con)
-  if(any(str_detect(duckdbTables, "__counts"))){
-    duckdbAssays <- duckdbTables[str_detect(duckdbTables, "__counts")] %>%
-      str_remove("__counts")
-  }else if(any(str_detect(duckdbTables,"__data"))){
-    duckdbAssays <- duckdbTables[str_detect(duckdbTables, "__data")] %>%
-      str_remove("__data")
-  }else{
-    warining("no counts and data table detected in duckdb file.")
-    duckdbAssays <- NULL
-  }
-  return(duckdbAssays)
+    duckdbTables <- dbListTables(con)
+    if(any(str_detect(duckdbTables, "__counts"))){
+        duckdbAssays <- duckdbTables[str_detect(duckdbTables, "__counts")] %>%
+            str_remove("__counts")
+    }else if(any(str_detect(duckdbTables,"__data"))){
+        duckdbAssays <- duckdbTables[str_detect(duckdbTables, "__data")] %>%
+            str_remove("__data")
+    }else{
+        warining("no counts and data table detected in duckdb file.")
+        duckdbAssays <- NULL
+    }
+    return(duckdbAssays)
 }
 
 
@@ -245,13 +392,13 @@ queryDuckAssays <- function(con){
 #' @export
 queryDuckMeta <- function(con, meta = "metaData"){
 
-  stopifnot(meta %in% dbListTables(con))
+    stopifnot(meta %in% dbListTables(con))
 
-  d <- tbl(con, meta) %>%
-    collect() %>%
-    tibble::column_to_rownames("cell")
+    d <- tbl(con, meta) %>%
+        collect() %>%
+        tibble::column_to_rownames("cell")
 
-  return(d)
+    return(d)
 }
 
 #' queryDuckReduction
@@ -271,19 +418,19 @@ queryDuckReduction <- function(con,
                                reduction = "umap",
                                nComponents = 2L){
 
-  tableName <- paste0("Reductions__", reduction)
+    tableName <- paste0("Reductions__", reduction)
 
-  stopifnot(tableName %in% dbListTables(con))
+    stopifnot(tableName %in% dbListTables(con))
 
-  d <- tbl(con, tableName) %>%
-    collect() %>%
-    tibble::column_to_rownames("cell")
+    d <- tbl(con, tableName) %>%
+        collect() %>%
+        tibble::column_to_rownames("cell")
 
-  n <- min(ncol(d), nComponents)
+    n <- min(ncol(d), nComponents)
 
-  d <- d %>% dplyr::select(1:n)
+    d <- d %>% dplyr::select(1:n)
 
-  return(d)
+    return(d)
 }
 
 #' listDuckReduction
@@ -299,9 +446,9 @@ queryDuckReduction <- function(con,
 #' @export
 listDuckReduction <- function(con){
 
-  dbTables <- dbListTables(con)
-  dbTables <- dbTables[which(str_detect(dbTables, "^Reductions__"))]
-  return(str_remove(dbTables, "^Reductions__"))
+    dbTables <- dbListTables(con)
+    dbTables <- dbTables[which(str_detect(dbTables, "^Reductions__"))]
+    return(str_remove(dbTables, "^Reductions__"))
 
 }
 
@@ -656,20 +803,22 @@ duckModuleScore <- function(con,
     return(features.scores.use)
 }
 
-# Check the length of components of a list
-#
-# @param values A list whose components should be checked
-# @param cutoff A minimum value to check for
-#
-# @return a vector of logicals
-#
-## copyed from seurat utilities.R
+#' LengthCheck
+#'
+#' Check the length of components of a list, copyed from Seurat utilities.R
+#'
+#' @param values A list whose components should be checked
+#' @param cutoff A minimum value to check for
+#'
+#' @return a vector of logicals
+#'
+#' @noRd
 LengthCheck <- function(values, cutoff = 0) {
-  return(vapply(
-    X = values,
-    FUN = function(x) {
-      return(length(x = x) > cutoff)
-    },
-    FUN.VALUE = logical(1)
-  ))
+    return(vapply(
+        X = values,
+        FUN = function(x) {
+            return(length(x = x) > cutoff)
+        },
+        FUN.VALUE = logical(1)
+    ))
 }

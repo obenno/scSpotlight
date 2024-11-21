@@ -26,7 +26,8 @@ mod_CellCycling_ui <- function(id){
 #'
 #' @noRd
 mod_CellCycling_server <- function(id,
-                                  seuratObj){
+                                   seuratObj,
+                                   assay){
     moduleServer( id, function(input, output, session){
         ns <- session$ns
         observeEvent(input$addCycling, {
@@ -42,7 +43,7 @@ mod_CellCycling_server <- function(id,
                     session = session
                 )
             }else if( all(GetAssayData(seuratObj(), layer = "counts")@x == GetAssayData(seuratObj(), layer = "data")@x) ||
-                      dim(GetAssayData(seuratObj(), layer = "data"))[1] == 0 ){
+                          dim(GetAssayData(seuratObj(), layer = "data"))[1] == 0 ){
                 showNotification(
                     ui = "Please normalize data before adding cycling phase...",
                     action = NULL,
@@ -53,17 +54,6 @@ mod_CellCycling_server <- function(id,
                 )
             }else{
                 obj <- seuratObj()
-                ## only use the features has expression
-                ##geneExpr <- GetAssayData(obj, assay = NULL, layer = "counts") %>%
-                ##    Matrix::rowSums()
-                ##pool2 <- which(geneExpr > 0) %>% names
-                ##message("head(pool2): ", paste(head(pool2), collapse = ","))
-                ##pool <- rownames(obj)
-                ##message("pool2 %in% pool: ", all(pool2 %in% pool))
-                ##message("pool %in% pool2: ", all(pool %in% pool2))
-                ##message("length(pool): ", length(pool))
-                ##message("length(pool2): ", length(pool2))
-                ##message("head(pool): ", paste(pool, collapse=","))
 
                 ## use the seurat original CellCycling function for now
                 withProgress(
@@ -71,13 +61,21 @@ mod_CellCycling_server <- function(id,
                     tryCatch(
                     {
                         obj <- CellCycleScoring(
-                          obj,
-                          s.features = s.genes,
-                          g2m.features = g2m.genes,
-                          ctrl = NULL,
-                          set.ident = FALSE
+                            obj,
+                            s.features = s.genes,
+                            g2m.features = g2m.genes,
+                            ctrl = NULL,
+                            set.ident = FALSE
                         )
                         seuratObj(obj)
+                        ## Update duckdb
+                        con <- duckConnect(session, read_only = FALSE)
+                        on.exit(dbDisconnect(con))
+                        updateDuckMeta(
+                            con,
+                            assay = assay(),
+                            data = rownames_to_column(seuratObj()[[]], "cell")
+                        )
                         showNotification(
                             ui = "Successfully Added!",
                             action = NULL,

@@ -7,7 +7,7 @@
 seurat2duckdb(
   object,
   dbFile = "output.duckdb",
-  assay = "RNA",
+  assays = "RNA",
   layers = c("counts", "data"),
   reductions = Reductions(object),
   memory_limit = "4GB",
@@ -20,8 +20,6 @@ seurat2duckdb(
 
 \item{dbFile}{output duckdb filename, please ensure no previous db exists, connection will be closed after conversion}
 
-\item{assay}{searat assay used}
-
 \item{layers}{layers to be converted, please ensure at least one of c("counts", "data") exists, scale.data is not supported yet}
 
 \item{reductions}{object reductions to be included, default: c("pca", "umap", "tsne")}
@@ -31,6 +29,8 @@ seurat2duckdb(
 \item{threads}{threads used by duckdb driver, note: need to parse string here}
 
 \item{overwrite}{whether to overwrite existing tables, only could be TRUE for now}
+
+\item{assay}{searat assay used}
 }
 \description{
 Convert seurat object to onDisk duckdb file

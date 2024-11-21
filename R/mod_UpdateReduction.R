@@ -28,40 +28,37 @@ mod_UpdateReduction_ui <- function(id){
 #'
 #' @importFrom qs qsave
 mod_UpdateReduction_server <- function(id,
-                                       duckdbConnection,
-                                       reductionProcessed,
-                                       scatterReductionIndicator){
+                                       reductionUpdateIndicator,
+                                       reductionProcessed){
 
   moduleServer( id, function(input, output, session){
       ns <- session$ns
 
-      reduction_list <- reactive({
-          req(duckdbConnection())
-          k <- listDuckReduction(duckdbConnection())
+      observeEvent(reductionUpdateIndicator(), {
+          req(file.exists(session$userData$duckdb))
+          con <- duckConnect(session)
+          on.exit(dbDisconnect(con))
+          k <- listDuckReduction(con)
           idx <- na.omit(match(c("umap", "tsne", "pca"), k))
           ordered_reduction <- k[c(idx, setdiff(1:length(k), idx))]
-          return(ordered_reduction)
-      })
-
-      observeEvent(reduction_list(),{
-          req(reduction_list())
           ## update input list
           updateSelectInput(
             session = session,
             inputId = "reduction",
             label = "Choose reduction",
-            choices = reduction_list(),
+            choices = ordered_reduction,
             selected = NULL
           )
+      }, priority = -200)
 
-      })
+      observeEvent(input$reduction, {
+         reductionUpdateIndicator(reductionUpdateIndicator()+1)
+      }, ignoreNULL = TRUE)
 
-      extract_reduction <- ExtendedTask$new(function(dbFile, reduction, filePath){
+      extract_reduction <- ExtendedTask$new(function(reduction, filePath){
           future_promise({
 
-              con <- DBI::dbConnect(duckdb::duckdb(),
-                                    dbdir = dbFile,
-                                    read_only = TRUE)
+              con <- duckConnect(session)
               on.exit(DBI::dbDisconnect(con))
 
               d <- queryDuckReduction(
@@ -78,8 +75,8 @@ mod_UpdateReduction_server <- function(id,
 
       })
 
-      observeEvent(input$reduction, {
-          req(duckdbConnection())
+      observeEvent(reductionUpdateIndicator(), {
+          req(file.exists(session$userData$duckdb))
           req(input$reduction!="None")
 
           showNotification(
@@ -96,11 +93,9 @@ mod_UpdateReduction_server <- function(id,
           )
           message("Transferring reductionData...")
           reductionProcessed(FALSE)
-          promise_dbFile <- session$userData$duckdb
           promise_reduction <- input$reduction
           promise_filePath <- file.path(session$userData$tempDir, hash_md5(input$reduction))
-          extract_reduction$invoke(dbFile = promise_dbFile,
-                                   reduction = promise_reduction,
+          extract_reduction$invoke(reduction = promise_reduction,
                                    filePath = promise_filePath)
 
       }, priority = -500)
@@ -109,9 +104,6 @@ mod_UpdateReduction_server <- function(id,
           if(extract_reduction$status() == "success"){
               removeNotification(id = "update_reduction_notification", session)
               session$sendCustomMessage(type = "reduction_ready", extract_reduction$result())
-              message("UpdateReduction module increased scatter indicator")
-              scatterReductionIndicator(scatterReductionIndicator()+1)
-
           }else{
               message("extract_reduction error: ", extract_reduction$result())
           }

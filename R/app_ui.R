@@ -213,7 +213,7 @@ right_sidebar_ui <- function(){
                 title = "Reduction",
                 value = "analysis_reduction",
                 icon = bsicons::bs_icon("signpost"),
-                mod_UpdateReduction_ui("reductionUpdate"),
+                mod_UpdateReduction_ui("updateReduction"),
                 class = "bg-light text-black"
             ),
             ## Category options
@@ -221,7 +221,7 @@ right_sidebar_ui <- function(){
                 title = "Category",
                 value = "analysis_category",
                 icon = bsicons::bs_icon("qr-code"),
-                mod_UpdateCategory_ui("categoryUpdate"),
+                mod_UpdateCategory_ui("updateCategory"),
                 class = "bg-light text-black"
             ),
             ## Input FeatureList
@@ -243,7 +243,7 @@ right_sidebar_ui <- function(){
                 title = "Reduction",
                 value = "analysis_reduction",
                 icon = bsicons::bs_icon("signpost"),
-                mod_UpdateReduction_ui("reductionUpdate"),
+                mod_UpdateReduction_ui("updateReduction"),
                 class = "bg-light text-black"
             ),
             ## Category options
@@ -251,7 +251,7 @@ right_sidebar_ui <- function(){
                 title = "Category",
                 value = "analysis_category",
                 icon = bsicons::bs_icon("qr-code"),
-                mod_UpdateCategory_ui("categoryUpdate"),
+                mod_UpdateCategory_ui("updateCategory"),
                 class = "bg-light text-black"
             ),
             ## Input FeatureList

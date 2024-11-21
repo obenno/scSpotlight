@@ -73,23 +73,22 @@ mod_AssignCellCluster_ui <- function(id){
 #' @importFrom arrow arrow_table
 #' @importFrom dplyr pull filter mutate
 #' @importFrom tibble tibble column_to_rownames
+#' @importFrom DBI dbDisconnect
 #'
-#' @noRd 
+#' @noRd
 mod_AssignCellCluster_server <- function(id,
-                                         duckdbConnection,
                                          selectedPoints,
                                          categorySelectedCells,
                                          group.by,
                                          split.by,
                                          metaColLevels,
-                                         scatterReductionIndicator,
-                                         scatterColorIndicator){
+                                         newMetaColData){
+
   moduleServer( id, function(input, output, session){
     ns <- session$ns
 
-    newMetaData <- reactiveVal(NULL)
-
     observe({
+
         if(isTruthy(manuallySelectedCells())){
 
             shinyjs::hide("selectCellFromCat")
@@ -116,6 +115,7 @@ mod_AssignCellCluster_server <- function(id,
             shinyjs::hide("chosenSplit")
 
         }else if(split.by() != "None" && group.by() != "None"){
+
             updateSelectInput(
                 inputId = "chosenGroup",
                 label = "Identities from group.by",
@@ -133,10 +133,10 @@ mod_AssignCellCluster_server <- function(id,
             shinyjs::show("chosenGroup")
             shinyjs::show("chosenSplit")
         }
-    })
+    }, priority = -20)
 
     input_group.by <- reactive({
-
+        message("group.by() changed...")
         if(group.by() == "None"){
             NULL
         }else{
@@ -145,7 +145,7 @@ mod_AssignCellCluster_server <- function(id,
     })
 
     input_split.by <- reactive({
-
+        message("split.by() changed...")
         if(split.by() == "None"){
             NULL
         }else{
@@ -157,7 +157,7 @@ mod_AssignCellCluster_server <- function(id,
         input$chosenGroup,
         input$chosenSplit
     ), {
-        req(duckdbConnection())
+        req(file.exists(session$userData$duckdb))
         req(input_group.by())
         req(!isTruthy(selectedPoints()))
 
@@ -168,25 +168,30 @@ mod_AssignCellCluster_server <- function(id,
         message("input$chosenGroup: ", isolate(input$chosenGroup))
         message("input$chosenSplit: ", isolate(input$chosenSplit))
         session$sendCustomMessage(
-                    type = "selectPointsByCategory",
-                    list(groupBy = input_group.by(),
-                         splitBy = input_split.by(),
-                         selectedGroupBy = input$chosenGroup,
-                         selectedSplitBy = input$chosenSplit)
-                )
+            type = "selectPointsByCategory",
+            list(groupBy = input_group.by(),
+                 splitBy = input_split.by(),
+                 selectedGroupBy = input$chosenGroup,
+                 selectedSplitBy = input$chosenSplit)
+        )
     })
 
     manuallySelectedCells <- reactive({
-        req(duckdbConnection())
-        if(isTruthy(selectedPoints())){
-            d <- queryDuckMeta(duckdbConnection())
+
+        ## Do not use req() here, or it will block the validation chain
+        if(isTruthy(selectedPoints()) && file.exists(session$userData$duckdb)){
+            con <- duckConnect(session)
+            on.exit(dbDisconnect(con))
+            d <- queryDuckMeta(con)
             cells <- d %>%
                 mutate(idx = row_number()) %>%
                 filter(idx %in% selectedPoints()) %>%
                 rownames()
+
         }else{
             cells <- NULL
         }
+        message("cells is: ", paste0(cells, collapse=","))
         cells
     })
 
@@ -194,7 +199,6 @@ mod_AssignCellCluster_server <- function(id,
         manuallySelectedCells(),
         categorySelectedCells()
     ),{
-        req(duckdbConnection())
         req(group.by())
         req(split.by())
         if(isTruthy(manuallySelectedCells())){
@@ -206,7 +210,7 @@ mod_AssignCellCluster_server <- function(id,
         }
         ##message("selectedCells: ", cells)
         cells
-    })
+    }, ignoreNULL = FALSE)
 
     ## Always shoot a notification for number of selected cells
     observeEvent(selectedCells(), {
@@ -266,12 +270,12 @@ mod_AssignCellCluster_server <- function(id,
             message("Initializing new meta column...")
             ## ask client to update metaData
             session$sendCustomMessage(
-                      type = "addNewMeta",
-                      list(
-                        colName = input$newMeta,
-                        colValue = input$assignAs
-                      )
-                    )
+                type = "addNewMeta",
+                list(
+                    colName = input$newMeta,
+                    colValue = input$assignAs
+                )
+            )
 
             ## show finishing notification
             showNotification(
@@ -289,6 +293,12 @@ mod_AssignCellCluster_server <- function(id,
         }
 
     })
+
+    ##observeEvent(newMetaColData(), {
+    ##    message("newMetaColData()", paste0(newMetaColData(), collapse=","))
+    ##    ## reset newMetaColData
+    ##    newMetaColData(NULL)
+    ##})
 
     ##seuratObj_orig <- reactiveVal(NULL)
     ##subset_obj <- mod_SubsetCells_server(

@@ -90,13 +90,12 @@ mod_dataInput_inputUI <- function(id){
 #' @noRd
 mod_dataInput_server <- function(id,
                                  obj,
-                                 duckdbConnection,
                                  hvgSelectMethod,
                                  clusterDims,
                                  clusterResolution,
-                                 scatterReductionIndicator,
-                                 scatterColorIndicator,
-                                 objIndicator){
+                                 geneUpdateIndicator,
+                                 metaUpdateIndicator,
+                                 reductionUpdateIndicator){
     moduleServer( id, function(input, output, session){
         ns <- session$ns
 
@@ -315,28 +314,13 @@ mod_dataInput_server <- function(id,
 
                     seuratObj <- standard_process_seurat(seuratObj, hvg_method = hvg_method,
                                                          ndims = clusterDims(), res = clusterResolution())
+
                 }
             }else if(str_detect(inputFileName(), ".duckdb$")){
-                newCon <- dbConnect(
-                    duckdb::duckdb(),
-                    dbdir = inputFilePath(),
-                    read_only = TRUE,
-                    config = list(
-                        memory_limit = "500MB",
-                        temp_directory = session$userData$tempDir,
-                        threads = as.character(golem::get_golem_options("nCores"))
-                    )
-                )
                 file.symlink(from = inputFilePath(), to = session$userData$duckdb)
-                duckdbConnection(newCon)
-            }else{
-                waiter_update(html = waiting_screen("Input format not supported, please reload the page..."))
-                stop("Input format not supported")
-            }
-
-            ## update assay list
-            if(isTruthy(duckdbConnection())){
-                duckdbAssays <- queryDuckAssays(duckdbConnection())
+                con <- duckConnect(session)
+                duckdbAssays <- queryDuckAssays(con)
+                dbDisconnect(con)
                 updateSelectInput(
                     session = session,
                     inputId = "selectAssay",
@@ -344,6 +328,12 @@ mod_dataInput_server <- function(id,
                     selected = duckdbAssays[1]
                 )
             }else{
+                waiter_update(html = waiting_screen("Input format not supported, please reload the page..."))
+                stop("Input format not supported")
+            }
+
+            ## update assay list
+            if(isTruthy(seuratObj)){
                 updateSelectInput(
                     session = session,
                     inputId = "selectAssay",
@@ -351,8 +341,29 @@ mod_dataInput_server <- function(id,
                     selected = ifelse(isTruthy(seuratObj), DefaultAssay(seuratObj), NULL)
                 )
             }
+
             obj(seuratObj)
+
+            message("Converting seurat object to duckdb...")
+            selectedLayers <- intersect(c("counts", "data"), Layers(seuratObj))
+            seurat2duckdb(
+                object = seuratObj,
+                dbFile = session$userData$duckdb,
+                assays = Assays(seuratObj),
+                layers = selectedLayers
+            )
+            message("Finished convertion")
+            ## Update indicators
+            metaUpdateIndicator(metaUpdateIndicator()+1)
+            reductionUpdateIndicator(reductionUpdateIndicator()+1)
+            geneUpdateIndicator(geneUpdateIndicator()+1)
             waiter_hide()
+        }, priority = 10)
+
+        observeEvent(input$selectAssay,{
+            ## Data of different assays were stored in the same metadata
+            ## reductions were "independent" with assay switch
+            geneUpdateIndicator(geneUpdateIndicator()+1)
         })
 
         selectedAssay <- reactive({

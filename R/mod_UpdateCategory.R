@@ -39,10 +39,8 @@ mod_UpdateCategory_ui <- function(id){
 #' @import shiny
 #' @noRd
 mod_UpdateCategory_server <- function(id,
-                                      duckdbConnection,
                                       metaCols,
-                                      scatterReductionIndicator,
-                                      scatterColorIndicator){
+                                      scatterUpdateIndicator){
   moduleServer( id, function(input, output, session){
 
       ns <- session$ns
@@ -72,15 +70,14 @@ mod_UpdateCategory_server <- function(id,
 
       observeEvent(input$group.by, {
           if(input$group.by!="None"){
-              message("groupby increased scatterColorIndicator()")
-              scatterColorIndicator(scatterColorIndicator()+1)
+              message("groupby increased scatterUpdateIndicator()")
+              scatterUpdateIndicator(scatterUpdateIndicator()+1)
           }
       }, ignoreInit = TRUE)
 
       observeEvent(input$split.by, {
-          req(duckdbConnection())
-          scatterReductionIndicator(scatterReductionIndicator()+1)
-          scatterColorIndicator(scatterColorIndicator()+1)
+          scatterUpdateIndicator(scatterUpdateIndicator()+1)
+
       }, ignoreInit = TRUE)
 
       selected_group.by <- reactive({
