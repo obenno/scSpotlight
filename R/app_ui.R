@@ -309,7 +309,7 @@ infoBox_ui <- function(){
             ## seurat5 VariableFeaturePlot() has bug on pulling data
             ##nav_panel(
             ##    title = "HVGPlot",
-            ##    plotOutput("HVGPlot") %>% withSpinner(fill_container = T)
+            ##    plotOutput("HVGPlot")
             ##),
             nav_panel(
                 title = "DotPlot",
@@ -344,7 +344,7 @@ infoBox_ui <- function(){
             ## seurat5 VariableFeaturePlot() has bug on pulling data
             ##nav_panel(
             ##    title = "HVGPlot",
-            ##    plotOutput("HVGPlot") %>% withSpinner(fill_container = T)
+            ##    plotOutput("HVGPlot")
             ##),
             nav_panel(
                 title = "ElbowPlot",
@@ -357,7 +357,7 @@ infoBox_ui <- function(){
             ##nav_panel(
             ##    title = "DEG Heatmap",
             ##    tagList()
-            ##    ##plotOutut("DEG_heatmap") %>% withSpinner(fill_container = T)
+            ##    ##plotOutut("DEG_heatmap")
             ##),
             nav_panel(
                 title = "DEG List",

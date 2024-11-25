@@ -20,7 +20,7 @@ mod_FeaturePlot_ui <- function(id){
                 dblclick = dblclickOpts(
                     id = ns("multiFeaturePlot_dblclick")
                 )
-            )## %>% withSpinner(fill_container = T)
+            )
 
         )
         ##withWaiterOnElement(

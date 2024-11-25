@@ -1,11 +1,17 @@
 import "shiny";
-//import { createReglScatterInstance } from './modules/reglScatter.js';
+// not sure why waiter was not exposed as library
+// cannot import even added it to externals config
+// seems nothing wrong in the webpack config
+// https://github.com/JohnCoene/waiter/blob/776f9f3ccd27aa3322d6c6d37c47b3d7b1f393e6/webpack.common.js#L64
+// https://webpack.js.org/configuration/output/#outputlibrary
+// exporting not tested, remove import temporarily
+//import "waiter";
+
 import {
   resize_infoBox,
   update_collapse_icon,
 } from "./modules/collapse_infoBox.js";
-import * as myWaiter from "./modules/myWaiter.js";
-export * as myWaiter from "./modules/myWaiter.js";
+
 
 import { reglScatterCanvas } from "./modules/reglScatter.js";
 import {
@@ -96,11 +102,12 @@ var reglElementData = new reglScatterCanvas("reglScatter");
 // R waiter package spinners
 // keep the style exactly the same with R function
 var waiterSpinner = {
-  id: "mainClusterPlot-clusterPlot",
+  id: mainPlotElId,
   html: '<div class="loaderz-05" style = "color:var(--bs-primary);"></div>',
   color: "#ffffff",
-  image: "",
+  image: null,
 };
+//const waiter = window.waiter;
 
 const extractNonNumericCol = (reglElementData) => {
   // select non-numeric columns, and transfer to server side
@@ -307,7 +314,7 @@ Shiny.addCustomMessageHandler("addNewMeta", (msg) => {
 Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
   // Add spinners for the plot
   // waiter is from R waiter package
-  //myWaiter.show(waiterSpinner);
+  window.waiter.show(waiterSpinner);
 
   // do necessary cleanups
   // ensure the featurePlot canvas is hidden
@@ -400,7 +407,7 @@ Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
   }
 
   // hide spinner
-  //waiter.hide('mainClusterPlot-clusterPlot');
+  window.waiter.hide(mainPlotElId);
 
   //featurePlot().then({});
 });
