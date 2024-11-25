@@ -51,9 +51,9 @@ mod_UpdateReduction_server <- function(id,
           )
       }, priority = -200)
 
-      observeEvent(input$reduction, {
-         reductionUpdateIndicator(reductionUpdateIndicator()+1)
-      }, ignoreNULL = TRUE)
+      ##observeEvent(input$reduction, {
+      ##   reductionUpdateIndicator(reductionUpdateIndicator()+1)
+      ##}, ignoreNULL = TRUE)
 
       extract_reduction <- ExtendedTask$new(function(reduction, filePath){
           future_promise({
@@ -75,7 +75,7 @@ mod_UpdateReduction_server <- function(id,
 
       })
 
-      observeEvent(reductionUpdateIndicator(), {
+      observeEvent(input$reduction, {
           req(file.exists(session$userData$duckdb))
           req(input$reduction!="None")
 
