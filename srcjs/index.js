@@ -12,7 +12,6 @@ import {
   update_collapse_icon,
 } from "./modules/collapse_infoBox.js";
 
-
 import { reglScatterCanvas } from "./modules/reglScatter.js";
 import {
   initShelter,
@@ -369,11 +368,11 @@ Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
   reglElementData.scatterplots.forEach((sp, idx) => {
     sp.subscribe("select", ({ points: selectedPoints }) => {
       const hoveredLegends = Array.from(
-        document.querySelectorAll("#reglScatter-catLegend :hover"),
+        document.querySelectorAll("#"+ mainPlotElId + " :hover"),
       );
 
       // ensure the legend was not hovered
-      if (hoveredLegends.length == 0) {
+      if (hoveredLegends.length > 0) {
         let selectedCells = selectedPoints.map(
           (i) => reglElementData.plotData.cells[idx][i],
         );
@@ -388,7 +387,7 @@ Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
   reglElementData.scatterplots.forEach((sp, idx) => {
     sp.subscribe("deselect", () => {
       reglElementData.plotData.selectedCells = [];
-      Shiny.setInputValue("selectedPoints", null, { priority: "event" });
+      Shiny.setInputValue("selectedPoints", null);
     });
   });
 
