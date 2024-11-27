@@ -7,6 +7,8 @@ import "shiny";
 // exporting not tested, remove import temporarily
 //import "waiter";
 
+import * as spinner from "./modules/myWaiter.js";
+
 import {
   resize_infoBox,
   update_collapse_icon,
@@ -17,6 +19,7 @@ import {
   initShelter,
   readQS,
   featurePlot,
+  vlnPlot,
   initWebRInstance,
 } from "./modules/webr.js";
 import {
@@ -27,6 +30,27 @@ import {
 
 // id of the mainClusterPlot parent div
 const mainPlotElId = "mainClusterPlot-clusterPlot";
+// vlnPlot id
+const vlnPlotElId = "VlnPlot";
+// vlnPlot id
+const dotPlotElId = "dotPlot";
+
+// R waiter package spinners
+// keep the style exactly the same with R function
+var clusterPlotSpinner = {
+  id: mainPlotElId,
+  html: '<div class="loaderz-05" style = "color:var(--bs-primary);"></div>',
+  color: "#ffffff",
+  image: null,
+};
+
+var infoBoxContentId = "infoBox_content";
+var infoBoxSpinner = {
+  id: infoBoxContentId,
+  html: '<div class="loaderz-05" style = "color:var(--bs-primary);"></div>',
+  color: "#ffffff",
+  image: null,
+};
 
 // init webR instance for reading reduction and expr data
 let webR;
@@ -92,20 +116,27 @@ document.addEventListener(
       downloadEl.style.bottom = "1%";
       downloadEl.style.bottom = `calc(${downloadEl.style.bottom} - ${containerEl.scrollTop}px)`;
     });
+
+    // auto update vlnPlot when resizing
+    // Create ResizeObserver instance
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        console.log("in the resize observer");
+        if (entry.target.id == vlnPlotElId) {
+          console.log("resized...");
+          updateVlnPlot(vlnPlotElId);
+        }
+      }
+    });
+
+    // start observer
+    resizeObserver.observe(document.getElementById(vlnPlotElId));
   },
   false,
 );
 
 var reglElementData = new reglScatterCanvas("reglScatter");
 
-// R waiter package spinners
-// keep the style exactly the same with R function
-var waiterSpinner = {
-  id: mainPlotElId,
-  html: '<div class="loaderz-05" style = "color:var(--bs-primary);"></div>',
-  color: "#ffffff",
-  image: null,
-};
 //const waiter = window.waiter;
 
 const extractNonNumericCol = (reglElementData) => {
@@ -313,7 +344,7 @@ Shiny.addCustomMessageHandler("addNewMeta", (msg) => {
 Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
   // Add spinners for the plot
   // waiter is from R waiter package
-  window.waiter.show(waiterSpinner);
+  window.waiter.show(clusterPlotSpinner);
 
   // do necessary cleanups
   // ensure the featurePlot canvas is hidden
@@ -368,7 +399,7 @@ Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
   reglElementData.scatterplots.forEach((sp, idx) => {
     sp.subscribe("select", ({ points: selectedPoints }) => {
       const hoveredLegends = Array.from(
-        document.querySelectorAll("#"+ mainPlotElId + " :hover"),
+        document.querySelectorAll("#" + mainPlotElId + " :hover"),
       );
 
       // ensure the legend was not hovered
@@ -409,6 +440,9 @@ Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
   window.waiter.hide(mainPlotElId);
 
   //featurePlot().then({});
+
+  //update vlnplot
+  updateVlnPlot(vlnPlotElId);
 });
 
 const updateFeaturePlot = (canvas) => {
@@ -468,3 +502,78 @@ function getPadding(element) {
     left: parseInt(style.paddingLeft, 10),
   };
 }
+
+const updateVlnPlot = (vlnPlotElId) => {
+  // Firstly check the spinners
+  spinner.hideSpinner(infoBoxContentId);
+  // show spinner
+  spinner.showSpinner(infoBoxSpinner);
+  const canvas = document.getElementById(vlnPlotElId);
+  const container = canvas.parentElement;
+  const rect = container.getBoundingClientRect();
+  const containerPadding = getPadding(container);
+  const canvasWidth =
+    rect.width - containerPadding.left - containerPadding.right;
+  const canvasHeight =
+    rect.height - containerPadding.top - containerPadding.bottom;
+  canvas.width = canvasWidth * 2;
+  canvas.height = canvasHeight * 2;
+  canvas.style.width = "100%";
+  canvas.style.height = "100%";
+
+  if (canvasWidth > 0 && canvasHeight > 0) {
+    // It seems that webR does not support typedArray
+    const expressionInput = {};
+    let expr = false;
+    // vlnPlot only illustrates expression of the first selected genes
+    if (reglElementData.plotMetaData.selectedFeatures.length > 0) {
+      const f = reglElementData.plotMetaData.selectedFeatures[0];
+      expressionInput[f] = Array.from(
+        reglElementData.origData.expressionData[f],
+      );
+      expr = f;
+    }
+
+    let fixedMetaCol = [
+      "nCount_RNA",
+      "nFeature_RNA",
+      "percent.mt",
+      "percent.rp",
+    ];
+    const metaInput = {};
+    for (let i = 0; i < fixedMetaCol.length; i++) {
+      if (
+        Object.keys(reglElementData.origData.cellMetaData).includes(
+          fixedMetaCol[i],
+        )
+      ) {
+        metaInput[fixedMetaCol[i]] = Array.from(
+          reglElementData.origData.cellMetaData[fixedMetaCol[i]],
+        );
+      }
+    }
+    const groupInput = {};
+    groupInput[reglElementData.plotMetaData.group_by] =
+      reglElementData.origData.cellMetaData[
+        reglElementData.plotMetaData.group_by
+      ];
+    const dfInput = { ...groupInput, ...metaInput, ...expressionInput };
+
+    vlnPlot(
+      shelter,
+      canvasWidth,
+      canvasHeight,
+      dfInput,
+      reglElementData.plotMetaData.group_by,
+      (expr = expr),
+    ).then((res) => {
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      let img = res.images[0];
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      // hide spinner
+      spinner.hideSpinner(infoBoxContentId);
+    });
+  }
+  shelter.purge();
+};

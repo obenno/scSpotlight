@@ -1,8 +1,17 @@
 // These are modified functions of waiter.js to use the spinner
 // on box tabs: navset_card_tab()
 
-//import 'waiter';
-// waiter was imported by waiter package
+// https://github.com/JohnCoene/waiter
+
+//MIT License
+
+//Copyright (c) 2019 John Coene
+//
+//Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+//
+//The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+//
+//THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 // elements to hide on recomputed
 var waiterToHideOnRender = new Map();
@@ -11,12 +20,12 @@ var waiterToHideOnError = new Map();
 var waiterToHideOnSilentError = new Map();
 
 let defaultWaiter = {
-  id: null, 
-  html: '<div class="container--box"><div class="boxxy"><div class="spinner spinner--1"></div></div></div>', 
-  color: '#333e48', 
-  hideOnRender: false, 
-  hideOnError: false, 
-  hideOnSilentError: false, 
+  id: null,
+  html: '<div class="container--box"><div class="boxxy"><div class="spinner spinner--1"></div></div></div>',
+  color: "#333e48",
+  hideOnRender: false,
+  hideOnError: false,
+  hideOnSilentError: false,
   image: null,
   fadeOut: false,
   ns: null,
@@ -32,39 +41,38 @@ let defaultWaiter = {
  * @param  {number} offsetHeight - Offset for the Height dimension.
  */
 export const getDimensions = (element, offsetTop = 0, offsetHeight = 0) => {
+  let height = element.getBoundingClientRect().height;
+  let width = element.getBoundingClientRect().width;
 
-    let height = element.getBoundingClientRect().height;
-    let width = element.getBoundingClientRect().width;
+  let paddingTop = window.getComputedStyle(element).paddingTop;
+  let paddingBottom = window.getComputedStyle(element).paddingBottom;
+  let marginTop = window.getComputedStyle(element).marginTop;
+  let marginBottom = window.getComputedStyle(element).marginBottom;
+  paddingTop = parseInt(paddingTop);
+  paddingBottom = parseInt(paddingBottom);
+  marginTop = parseInt(marginTop);
+  marginBottom = parseInt(marginBottom);
 
-    let paddingTop = window.getComputedStyle(element).paddingTop;
-    let paddingBottom = window.getComputedStyle(element).paddingBottom;
-    let marginTop = window.getComputedStyle(element).marginTop;
-    let marginBottom = window.getComputedStyle(element).marginBottom;
-    paddingTop = parseInt(paddingTop);
-    paddingBottom = parseInt(paddingBottom);
-    marginTop = parseInt(marginTop);
-    marginBottom = parseInt(marginBottom);
+  let paddingLeft = window.getComputedStyle(element).paddingLeft;
+  let paddingRight = window.getComputedStyle(element).paddingRight;
+  let marginLeft = window.getComputedStyle(element).marginLeft;
+  let marginRight = window.getComputedStyle(element).marginRight;
+  paddingLeft = parseInt(paddingLeft);
+  paddingRight = parseInt(paddingRight);
+  marginLeft = parseInt(marginLeft);
+  marginRight = parseInt(marginRight);
 
-    let paddingLeft = window.getComputedStyle(element).paddingLeft;
-    let paddingRight = window.getComputedStyle(element).paddingRight;
-    let marginLeft = window.getComputedStyle(element).marginLeft;
-    let marginRight = window.getComputedStyle(element).marginRight;
-    paddingLeft = parseInt(paddingLeft);
-    paddingRight = parseInt(paddingRight);
-    marginLeft = parseInt(marginLeft);
-    marginRight = parseInt(marginRight);
-
-    height = height - paddingTop - paddingBottom - marginTop - marginBottom;
-    width = width - paddingLeft - paddingRight - marginLeft - marginRight;
-    var elementPosition = {
-	    width: width,
-	    height: height,
-	    //top: isNaN(element.offsetTop) ? offsetTop : element.offsetTop + offsetTop,
-	    //left: isNaN(element.offsetLeft) ? 0 : element.offsetLeft,
-        // force top and left to be 0
-        top: 0,
-        left: 0,
-	};
+  height = height - paddingTop - paddingBottom - marginTop - marginBottom;
+  width = width - paddingLeft - paddingRight - marginLeft - marginRight;
+  var elementPosition = {
+    width: width,
+    height: height,
+    //top: isNaN(element.offsetTop) ? offsetTop : element.offsetTop + offsetTop,
+    //left: isNaN(element.offsetLeft) ? 0 : element.offsetLeft,
+    // force top and left to be 0
+    top: 0,
+    left: 0,
+  };
 
   return elementPosition;
 };
@@ -76,12 +84,12 @@ export const getDimensions = (element, offsetTop = 0, offsetHeight = 0) => {
  * @example
  * // defaults
  * show({
- *   id: null, 
- *   html: '<div class="container--box"><div class="boxxy"><div class="spinner spinner--1"></div></div></div>', 
- *   color: '#333e48', 
- *   hideOnRender: false, 
- *   hideOnError: false, 
- *   hideOnSilentError: false, 
+ *   id: null,
+ *   html: '<div class="container--box"><div class="boxxy"><div class="spinner spinner--1"></div></div></div>',
+ *   color: '#333e48',
+ *   hideOnRender: false,
+ *   hideOnError: false,
+ *   hideOnSilentError: false,
  *   image: null,
  *   fadeOut: false,
  *   ns: null,
@@ -89,23 +97,21 @@ export const getDimensions = (element, offsetTop = 0, offsetHeight = 0) => {
  *   onHidden: setWaiterHiddenInput
  * });
  */
-export const show = (params = defaultWaiter) => {
-
+export const showSpinner = (params = defaultWaiter) => {
   // declare
   var dom,
-      selector = 'body',
-      exists = false;
+    selector = "body",
+    exists = false;
 
   // get parent
-  if(params.id !== null)
-    selector = '#' + params.id;
-  
+  if (params.id !== null) selector = "#" + params.id;
+
   dom = document.querySelector(selector);
-  if(dom == undefined){
+  if (dom == undefined) {
     console.log("Cannot find", params.id);
-    return ;
+    return;
   }
-  
+
   // allow missing for testing
   params.hideOnRender = params.hideOnRender || false;
 
@@ -118,39 +124,36 @@ export const show = (params = defaultWaiter) => {
   let el = getDimensions(dom); // get dimensions
 
   // no id = fll screen
-  if(params.id === null){
+  if (params.id === null) {
     el.height = window.innerHeight;
     el.width = $("body").width();
   }
-  
+
   // force static if position relative
   // otherwise overlay is completely off
   var pos = window.getComputedStyle(dom, null).position;
-  if(pos == 'relative')
-    dom.className += ' staticParent';
+  if (pos == "relative") dom.className += " staticParent";
 
   // check if overlay exists
   dom.childNodes.forEach((el) => {
-    if(el.className === 'waiter-overlay')
-      exists = true;
+    if (el.className === "waiter-overlay") exists = true;
   });
 
-  if(exists){
+  if (exists) {
     console.log("waiter on", params.id, "already exists");
     return;
   }
-  
+
   hideRecalculate(params.id);
 
-  console.log(el);
-  let overlay =  createOverlay(params, el);
-  // append overlay to dom
-  dom.appendChild(overlay);
-
+  // do not add spinner element when el has 0 width and height
+  if (el.width > 0 && el.height > 0) {
+    let overlay = createOverlay(params, el);
+    // append overlay to dom
+    dom.appendChild(overlay);
+  }
   // set input
-  if(params.onShown != undefined)
-    params.onShown(params.id);
-  
+  if (params.onShown != undefined) params.onShown(params.id);
 };
 
 // storage to avoid multiple CSS injections
@@ -158,25 +161,22 @@ let hiddenRecalculating = new Map();
 /**
  * Hide the recalculate effect from base shiny for a
  * specific element.
- * @param  {string} id - Id of element to hide the 
+ * @param  {string} id - Id of element to hide the
  * recalculate.
  */
 export const hideRecalculate = (id) => {
+  if (id === null) return;
 
-  if(id === null)
-    return ;
-  
-  if(hiddenRecalculating.get(id))
-    return;
-  
+  if (hiddenRecalculating.get(id)) return;
+
   hiddenRecalculating.set(id, true);
 
-  var css = '#' + id + '.recalculating {opacity: 1.0 !important; }',
-      head = document.head || document.getElementsByTagName('head')[0],
-      style = document.createElement('style');
+  var css = "#" + id + ".recalculating {opacity: 1.0 !important; }",
+    head = document.head || document.getElementsByTagName("head")[0],
+    style = document.createElement("style");
 
   style.id = id + "-waiter-recalculating";
-  if (style.styleSheet){
+  if (style.styleSheet) {
     style.styleSheet.cssText = css;
   } else {
     style.appendChild(document.createTextNode(css));
@@ -192,44 +192,68 @@ export const hideRecalculate = (id) => {
  * @param  {HTMLElement} el - Element to overlay.
  */
 export const createOverlay = (params, el) => {
-	// create overlay
-	let overlay = document.createElement("DIV");
-	// create overlay content
-	let overlayContent = document.createElement("DIV");
-	// insert html
-	overlayContent.innerHTML = params.html;
-	overlayContent.classList.add("waiter-overlay-content");
+  // create overlay
+  let overlay = document.createElement("DIV");
+  // create overlay content
+  let overlayContent = document.createElement("DIV");
+  // insert html
+  overlayContent.innerHTML = params.html;
+  overlayContent.classList.add("waiter-overlay-content");
 
-	// dynamic position
-	if(params.id == null)
-		overlay.style.position = "fixed";
-	else
-		overlay.style.position = "absolute";
+  // dynamic position
+  if (params.id == null) overlay.style.position = "fixed";
+  else overlay.style.position = "absolute";
 
-	// dynamic dimensions
-	overlay.style.height = el.height + 'px';
-	overlay.style.width = el.width + 'px';
-	overlay.style.top = el.top + 'px';
-	overlay.style.left = el.left + 'px';
-	overlay.style.backgroundColor = params.color;
-	overlay.classList.add("waiter-overlay");
-    // Add flex container classes
-    overlay.classList.add("html-fill-item");
-    overlay.classList.add("html-fill-container");
+  // dynamic dimensions
+  overlay.style.height = el.height + "px";
+  overlay.style.width = el.width + "px";
+  overlay.style.top = el.top + "px";
+  overlay.style.left = el.left + "px";
+  overlay.style.backgroundColor = params.color;
+  overlay.classList.add("waiter-overlay");
+  // Add flex container classes
+  overlay.classList.add("html-fill-item");
+  overlay.classList.add("html-fill-container");
 
-	if(params.image != null && params.image != ''){
-		overlay.style.backgroundImage = "url('" + params.image + "')";
-	}
+  if (params.image != null && params.image != "") {
+    overlay.style.backgroundImage = "url('" + params.image + "')";
+  }
 
-	// either full-screen or partial
-	if(params.id !== null) {
-		overlay.classList.add("waiter-local");
-	} else {
-		overlay.classList.add('waiter-fullscreen');
-	}
+  // either full-screen or partial
+  if (params.id !== null) {
+    overlay.classList.add("waiter-local");
+  } else {
+    overlay.classList.add("waiter-fullscreen");
+  }
 
-	// append overlay content in overlay
-	overlay.appendChild(overlayContent);
+  // append overlay content in overlay
+  overlay.appendChild(overlayContent);
 
-	return overlay;
+  return overlay;
+};
+
+/**
+ * @function
+ * @param  {string} id - Id of element containing the waiter.
+ * if 'null' assumes the waiter is full screen.
+ * @param  {Function} onHidden - A callback function to call
+ * when the waiter is hidden. Leave on 'null' to not use.
+ */
+export const hideSpinner = (id, onHidden = null) => {
+  var selector = "body";
+  if (id !== null) selector = "#" + id;
+  let overlay = $(selector).find(".waiter-overlay");
+  if (overlay.length == 0) return;
+  let timeout = 250;
+  if (waiterToFadeout.get(selector)) {
+    let value = waiterToFadeout.get(selector);
+    if (typeof value == "boolean") value = 500;
+    $(overlay).fadeOut(value);
+    timeout = timeout + value;
+  }
+  // this is to avoid the waiter screen from flashing
+  setTimeout(function () {
+    overlay.remove();
+  }, timeout);
+  if (onHidden != undefined && onHidden != null) onHidden(id);
 };

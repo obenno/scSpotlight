@@ -257,3 +257,73 @@ d
   }
   return df;
 }
+
+
+export async function vlnPlot(shelter, figWidth, figHeight, df, group, expr= false) {
+  let result = await shelter.captureR(
+    `
+plotVln <- function(df, x, y){
+    p <- ggplot(df, aes(x = !!as.symbol(x),
+                        y = !!as.symbol(y),
+                        fill = !!as.symbol(x))) +
+      geom_violin(alpha = 0.8, scale="width")
+    if(nrow(df) > 20000){
+        p <- p + geom_boxplot(width = 0.2, fill = "white", outlier.shape = NA)
+    }else{
+        if(!all(pull(df, !!as.symbol(y)) == 0)){
+            p <- p + geom_jitter(alpha = 0.5, size =0.6)
+        }
+    }
+    p <- p +theme_classic() +
+      labs(title = y,
+           x = "",
+           y = "") +
+      theme(legend.position = "none",
+            axis.text.x = element_text(angle = 45,
+                                       hjust = 1,
+                                       vjust =1,
+                                       color = "black"))
+    return(p)
+}
+
+##head(df)
+
+## check the input df colnames
+stopifnot(group %in% colnames(df))
+k <- setdiff(colnames(df), group)
+if(is.character(expr) && (expr %in% k)){
+    df <- df %>% select(!!as.symbol(group), !!as.symbol(expr))
+    k <- expr
+}
+
+pList <- list()
+for(i in seq_along(k)){
+    pList[[i]] <- plotVln(df, group, k[i])
+}
+if(length(pList) >=2){
+    ncol <- 2
+}else{
+    ncol <- length(pList)
+}
+wrap_plots(pList, ncol=ncol)
+`,
+    {
+      env: {
+        group: group,
+        df: df,
+        expr: expr
+      },
+      captureGraphics: {
+        width: figWidth,
+        height: figHeight,
+        bg: "cornsilk",
+      },
+      withAutoprint: true,
+      captureStreams: true,
+      captureConditions: true,
+    },
+  );
+
+  return result;
+  //console.log("new library: ", res);
+}

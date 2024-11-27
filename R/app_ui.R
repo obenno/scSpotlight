@@ -304,7 +304,9 @@ infoBox_ui <- function(){
             ##title = "",
             nav_panel(
                 title = "VlnPlot",
-                mod_VlnPlot_ui("vlnPlot")
+                tags$canvas(id = "VlnPlot",
+                            style = "height: 100%;")
+                ##mod_VlnPlot_ui("vlnPlot")
             ),
             ## seurat5 VariableFeaturePlot() has bug on pulling data
             ##nav_panel(
@@ -339,7 +341,8 @@ infoBox_ui <- function(){
             ##title = "",
             nav_panel(
                 title = "VlnPlot",
-                mod_VlnPlot_ui("vlnPlot")
+                tags$canvas(id = "VlnPlot",
+                            style = "height: 100%;")
             ),
             ## seurat5 VariableFeaturePlot() has bug on pulling data
             ##nav_panel(
