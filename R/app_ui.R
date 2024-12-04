@@ -315,7 +315,8 @@ infoBox_ui <- function(){
             ##),
             nav_panel(
                 title = "DotPlot",
-                mod_DotPlot_ui("dotPlot")
+                tags$canvas(id = "DotPlot",
+                            style = "height: 100%;")
             ),
             nav_spacer(),
             nav_item(
@@ -355,7 +356,8 @@ infoBox_ui <- function(){
             ),
             nav_panel(
                 title = "DotPlot",
-                mod_DotPlot_ui("dotPlot")
+                tags$canvas(id = "DotPlot",
+                            style = "height: 100%;")
             ),
             ##nav_panel(
             ##    title = "DEG Heatmap",

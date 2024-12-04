@@ -340,19 +340,20 @@ mod_dataInput_server <- function(id,
                     choices = ifelse(isTruthy(seuratObj), Assays(seuratObj), ""),
                     selected = ifelse(isTruthy(seuratObj), DefaultAssay(seuratObj), NULL)
                 )
+                obj(seuratObj)
+
+                message("Converting seurat object to duckdb...")
+                selectedLayers <- intersect(c("counts", "data"), Layers(seuratObj))
+                seurat2duckdb(
+                    object = seuratObj,
+                    dbFile = session$userData$duckdb,
+                    assays = Assays(seuratObj),
+                    layers = selectedLayers
+                )
+                message("Finished convertion")
             }
 
-            obj(seuratObj)
 
-            message("Converting seurat object to duckdb...")
-            selectedLayers <- intersect(c("counts", "data"), Layers(seuratObj))
-            seurat2duckdb(
-                object = seuratObj,
-                dbFile = session$userData$duckdb,
-                assays = Assays(seuratObj),
-                layers = selectedLayers
-            )
-            message("Finished convertion")
             ## Update indicators
             metaUpdateIndicator(metaUpdateIndicator()+1)
             reductionUpdateIndicator(reductionUpdateIndicator()+1)

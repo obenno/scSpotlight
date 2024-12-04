@@ -239,9 +239,14 @@ export const createOverlay = (params, el) => {
  * @param  {Function} onHidden - A callback function to call
  * when the waiter is hidden. Leave on 'null' to not use.
  */
-export const hideSpinner = (id, onHidden = null) => {
+export const hideSpinner = ({ id, onHidden = null }) => {
   var selector = "body";
   if (id !== null) selector = "#" + id;
+  let dom = $(selector)[0];
+  // restore class of the dom
+  if (dom.classList.contains("staticParent")) {
+    dom.classList.remove("staticParent");
+  }
   let overlay = $(selector).find(".waiter-overlay");
   if (overlay.length == 0) return;
   let timeout = 250;

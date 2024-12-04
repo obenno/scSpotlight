@@ -20,6 +20,7 @@ import {
   readQS,
   featurePlot,
   vlnPlot,
+  dotPlot,
   initWebRInstance,
 } from "./modules/webr.js";
 import {
@@ -28,12 +29,17 @@ import {
 } from "./modules/featureSparkLine.js";
 //import * as arrow from "apache-arrow";
 
+// keep global variables as small as possible
+// query elements inside functions when necessary
+
 // id of the mainClusterPlot parent div
 const mainPlotElId = "mainClusterPlot-clusterPlot";
-// vlnPlot id
+// featurePlot canvas id
+const featurePlotElId = "featurePlotCanvas";
+// vlnPlot canvas id
 const vlnPlotElId = "VlnPlot";
-// vlnPlot id
-const dotPlotElId = "dotPlot";
+// dotPlot canvas id
+const dotPlotElId = "DotPlot";
 
 // R waiter package spinners
 // keep the style exactly the same with R function
@@ -65,7 +71,6 @@ let shelter;
 
 // init normal shelter for webR to gain better control of the r objects
 //const shelterInstance = await initShelter(plotWebR);
-console.log("running here");
 // code below will ensure the functions were invoked after all the shiny content loaded
 // thus here init scatterplot instance
 document.addEventListener(
@@ -119,18 +124,38 @@ document.addEventListener(
 
     // auto update vlnPlot when resizing
     // Create ResizeObserver instance
-    const resizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        console.log("in the resize observer");
-        if (entry.target.id == vlnPlotElId) {
-          console.log("resized...");
-          updateVlnPlot(vlnPlotElId);
+    const featurePlotCanvas = document.getElementById(featurePlotElId);
+    const vlnPlotCanvas = document.getElementById(vlnPlotElId);
+    const dotPlotCanvas = document.getElementById(dotPlotElId);
+    const resizeObserver = new ResizeObserver(
+      debounce((entries) => {
+        for (const entry of entries) {
+          if (shelter) {
+            // ensure shelter was initiated
+            if (entry.target === vlnPlotCanvas && panelSelected(entry.target)) {
+              console.log("resized vlnplot...");
+              updateVlnPlot(vlnPlotCanvas);
+            }
+            if (entry.target === dotPlotCanvas && panelSelected(entry.target)) {
+              console.log("resized dotplot...");
+              updateDotPlot(dotPlotCanvas);
+            }
+            if (
+              entry.target === featurePlotCanvas &&
+              entry.target.style.display !== "none"
+            ) {
+              console.log("resized featureplot...");
+              updateFeaturePlot(featurePlotCanvas);
+            }
+          }
         }
-      }
-    });
+      }, 250),
+    );
 
     // start observer
-    resizeObserver.observe(document.getElementById(vlnPlotElId));
+    resizeObserver.observe(featurePlotCanvas);
+    resizeObserver.observe(vlnPlotCanvas);
+    resizeObserver.observe(dotPlotCanvas);
   },
   false,
 );
@@ -175,33 +200,39 @@ Shiny.addCustomMessageHandler("createSparkLine", (feature) => {
   Shiny.setInputValue("inputFeatures-storedFeatures", storedFeatures);
 });
 
-Shiny.addCustomMessageHandler("reduction_ready", (msg) => {
-  try {
-    fetch("data/" + msg)
-      .then((file) => {
-        const now = new Date();
-        console.log(`start time: ${now.toLocaleTimeString()}`);
-        return file.arrayBuffer();
-      })
-      .then(async (buffer) => await readQS(webR, buffer))
-      .then((df) => {
-        const now = new Date();
-        console.log(`end time: ${now.toLocaleTimeString()}`);
-        console.log("qs df: ", df);
-        reglElementData.updateReductionData(df);
-        Shiny.setInputValue("reductionProcessed", true, { priority: "event" });
-      });
-  } catch (error) {
-    console.error("There was a problem:", error);
-  }
-});
+//Shiny.addCustomMessageHandler("reduction_ready", (msg) => {
+//  try {
+//    fetch("data/" + msg)
+//      .then((file) => {
+//        const now = new Date();
+//        console.log(`start loading reduction: ${now.toLocaleTimeString()}`);
+//        return file.arrayBuffer();
+//      })
+//      .then(async (buffer) => await readQS(webR, buffer))
+//      .then((df) => {
+//        const now = new Date();
+//        console.log(`end loading reduction: ${now.toLocaleTimeString()}`);
+//        console.log("qs df: ", df);
+//        reglElementData.updateReductionData(df);
+//        Shiny.setInputValue("reductionProcessed", true, { priority: "event" });
+//      });
+//  } catch (error) {
+//    console.error("There was a problem:", error);
+//  }
+//});
 
 Shiny.addCustomMessageHandler("meta_ready", (msg) => {
   try {
     fetch("data/" + msg)
-      .then((file) => file.arrayBuffer())
+      .then((file) => {
+        const now = new Date();
+        console.log(`start loading meta: ${now.toLocaleTimeString()}`);
+        return file.arrayBuffer();
+      })
       .then(async (buffer) => await readQS(webR, buffer))
       .then((metaData) => {
+        const now = new Date();
+        console.log(`end loading meta: ${now.toLocaleTimeString()}`);
         console.log("qs meta", metaData);
         reglElementData.updateCellMetaData(metaData);
         const nonNumericCols = extractNonNumericCol(reglElementData);
@@ -253,7 +284,7 @@ Shiny.addCustomMessageHandler("clear_expr", (msg) => {
   document.getElementById("featureSparkLine").innerHTML = "";
 
   // hide featurePlot and show scatterplot
-  const featurePlotCanvas = document.getElementById("featurePlotCanvas");
+  const featurePlotCanvas = document.getElementById(featurePlotElId);
   featurePlotCanvas.style.display = "none";
   reglElementData.plotEl.style.display = "flex";
 });
@@ -342,14 +373,18 @@ Shiny.addCustomMessageHandler("addNewMeta", (msg) => {
 });
 
 Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
+  // first remove spinner if exists
+  try {
+    spinner.hideSpinner(clusterPlotSpinner);
+  } catch (error) {}
   // Add spinners for the plot
   // waiter is from R waiter package
-  window.waiter.show(clusterPlotSpinner);
+  spinner.showSpinner(clusterPlotSpinner);
 
   // do necessary cleanups
   // ensure the featurePlot canvas is hidden
   const parentDiv = document.getElementById(mainPlotElId);
-  const featurePlotCanvas = document.getElementById("featurePlotCanvas");
+  const featurePlotCanvas = document.getElementById(featurePlotElId);
   featurePlotCanvas.style.display = "none";
   reglElementData.plotEl.style.display = "none";
 
@@ -380,7 +415,9 @@ Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
 
   console.log("Generating plotEl");
   // regenerate plot elements
+  console.profile("Generating plotEl");
   reglElementData.generatePlotEl();
+  console.profileEnd("Generating plotEl");
   console.log("reglElementData :", reglElementData);
   // update legend elements
   parentDiv.appendChild(reglElementData.plotEl);
@@ -427,25 +464,39 @@ Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
     !reglElementData.plotMetaData.moduleScore
   ) {
     console.log("Drawing featurePlot...");
-    updateFeaturePlot(featurePlotCanvas);
 
+    updateFeaturePlot(featurePlotCanvas);
+    console.log("featureplot udpated...");
     // show featurePlotCanvas
     featurePlotCanvas.style.display = "flex";
+
     //reglElementData.plotEl.style.display = "none";
   } else {
     reglElementData.plotEl.style.display = "flex";
   }
 
   // hide spinner
-  window.waiter.hide(mainPlotElId);
+  spinner.hideSpinner(clusterPlotSpinner);
 
   //featurePlot().then({});
-
-  //update vlnplot
-  updateVlnPlot(vlnPlotElId);
+  const vlnPlotCanvas = document.getElementById(vlnPlotElId);
+  const dotPlotCanvas = document.getElementById(dotPlotElId);
+  // update vlnplot
+  updateVlnPlot(vlnPlotCanvas);
+  // update dotplot
+  updateDotPlot(dotPlotCanvas);
 });
 
 const updateFeaturePlot = (canvas) => {
+  // Firstly check the spinners
+  try {
+    spinner.hideSpinner(clusterPlotSpinner);
+  } catch (error) {
+    console.error("error: ", error);
+  }
+  // show spinner
+  spinner.showSpinner(clusterPlotSpinner);
+
   const container = canvas.parentElement;
   const rect = container.getBoundingClientRect();
   const containerPadding = getPadding(container);
@@ -458,32 +509,36 @@ const updateFeaturePlot = (canvas) => {
   canvas.style.width = "100%";
   canvas.style.height = "100%";
 
-  // It seems that webR does not support typedArray
-  const expressionInput = {};
-  for (let f of reglElementData.plotMetaData.selectedFeatures) {
-    expressionInput[f] = Array.from(reglElementData.origData.expressionData[f]);
+  if (canvasWidth > 0 && canvasHeight > 0) {
+    // It seems that webR does not support typedArray
+    const expressionInput = {};
+    for (let f of reglElementData.plotMetaData.selectedFeatures) {
+      expressionInput[f] = Array.from(
+        reglElementData.origData.expressionData[f],
+      );
+    }
+    const drInput = {};
+    for (let i of Object.keys(reglElementData.origData.reductionData)) {
+      drInput[i] = Array.from(reglElementData.origData.reductionData[i]);
+    }
+    //console.log("reglElementData.origData.expressionData: ", reglElementData.origData.expressionData);
+    //console.log(expressionInput);
+    featurePlot(
+      shelter,
+      canvasWidth,
+      canvasHeight,
+      drInput,
+      expressionInput,
+    ).then((res) => {
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      let img = res.images[0];
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      // hide spinner
+      spinner.hideSpinner(clusterPlotSpinner);
+      shelter.purge();
+    });
   }
-  const drInput = {};
-  for (let i of Object.keys(reglElementData.origData.reductionData)) {
-    drInput[i] = Array.from(reglElementData.origData.reductionData[i]);
-  }
-  //console.log("reglElementData.origData.expressionData: ", reglElementData.origData.expressionData);
-  //console.log(expressionInput);
-  featurePlot(
-    shelter,
-    canvasWidth,
-    canvasHeight,
-    drInput,
-    //reglElementData.origData.reductionData,
-    //reglElementData.origData.expressionData)
-    expressionInput,
-  ).then((res) => {
-    const ctx = canvas.getContext("2d");
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    let img = res.images[0];
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-  });
-  shelter.purge();
 };
 
 Shiny.addCustomMessageHandler("reglScatter_deselect", (msg) => {
@@ -503,12 +558,15 @@ function getPadding(element) {
   };
 }
 
-const updateVlnPlot = (vlnPlotElId) => {
+const updateVlnPlot = (canvas) => {
   // Firstly check the spinners
-  spinner.hideSpinner(infoBoxContentId);
+  try {
+    spinner.hideSpinner(infoBoxSpinner);
+  } catch (error) {
+    console.error("error: ", error);
+  }
   // show spinner
   spinner.showSpinner(infoBoxSpinner);
-  const canvas = document.getElementById(vlnPlotElId);
   const container = canvas.parentElement;
   const rect = container.getBoundingClientRect();
   const containerPadding = getPadding(container);
@@ -524,6 +582,7 @@ const updateVlnPlot = (vlnPlotElId) => {
   if (canvasWidth > 0 && canvasHeight > 0) {
     // It seems that webR does not support typedArray
     const expressionInput = {};
+    const metaInput = {};
     let expr = false;
     // vlnPlot only illustrates expression of the first selected genes
     if (reglElementData.plotMetaData.selectedFeatures.length > 0) {
@@ -532,24 +591,24 @@ const updateVlnPlot = (vlnPlotElId) => {
         reglElementData.origData.expressionData[f],
       );
       expr = f;
-    }
+    } else {
+      let fixedMetaCol = [
+        "nCount_RNA",
+        "nFeature_RNA",
+        "percent.mt",
+        "percent.rp",
+      ];
 
-    let fixedMetaCol = [
-      "nCount_RNA",
-      "nFeature_RNA",
-      "percent.mt",
-      "percent.rp",
-    ];
-    const metaInput = {};
-    for (let i = 0; i < fixedMetaCol.length; i++) {
-      if (
-        Object.keys(reglElementData.origData.cellMetaData).includes(
-          fixedMetaCol[i],
-        )
-      ) {
-        metaInput[fixedMetaCol[i]] = Array.from(
-          reglElementData.origData.cellMetaData[fixedMetaCol[i]],
-        );
+      for (let i = 0; i < fixedMetaCol.length; i++) {
+        if (
+          Object.keys(reglElementData.origData.cellMetaData).includes(
+            fixedMetaCol[i],
+          )
+        ) {
+          metaInput[fixedMetaCol[i]] = Array.from(
+            reglElementData.origData.cellMetaData[fixedMetaCol[i]],
+          );
+        }
       }
     }
     const groupInput = {};
@@ -572,8 +631,110 @@ const updateVlnPlot = (vlnPlotElId) => {
       let img = res.images[0];
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       // hide spinner
-      spinner.hideSpinner(infoBoxContentId);
+      spinner.hideSpinner(infoBoxSpinner);
+      shelter.purge();
     });
   }
-  shelter.purge();
+};
+
+const updateDotPlot = (canvas) => {
+  // Firstly check the spinners
+  try {
+    spinner.hideSpinner(infoBoxSpinner);
+  } catch (error) {
+    console.error("error: ", error);
+  }
+  // show spinner
+  spinner.showSpinner(infoBoxSpinner);
+  const container = canvas.parentElement;
+  const rect = container.getBoundingClientRect();
+  const containerPadding = getPadding(container);
+  const canvasWidth =
+    rect.width - containerPadding.left - containerPadding.right;
+  const canvasHeight =
+    rect.height - containerPadding.top - containerPadding.bottom;
+  canvas.width = canvasWidth * 2;
+  canvas.height = canvasHeight * 2;
+  canvas.style.width = "100%";
+  canvas.style.height = "100%";
+
+  if (canvasWidth > 0 && canvasHeight > 0) {
+    // It seems that webR does not support typedArray
+    const expressionInput = {};
+    // dotPlot only be rendered when there are more than one selected genes
+    if (reglElementData.plotMetaData.selectedFeatures.length > 1) {
+      for (let f of reglElementData.plotMetaData.selectedFeatures) {
+        expressionInput[f] = Array.from(
+          reglElementData.origData.expressionData[f],
+        );
+      }
+
+      const groupInput = {};
+      groupInput[reglElementData.plotMetaData.group_by] =
+        reglElementData.origData.cellMetaData[
+          reglElementData.plotMetaData.group_by
+        ];
+      const dfInput = { ...groupInput, ...expressionInput };
+
+      dotPlot(
+        shelter,
+        canvasWidth,
+        canvasHeight,
+        dfInput,
+        reglElementData.plotMetaData.group_by,
+      ).then((res) => {
+        const ctx = canvas.getContext("2d");
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        let img = res.images[0];
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        // hide spinner
+        spinner.hideSpinner(infoBoxSpinner);
+        // purge R objects
+        shelter.purge();
+      });
+    } else {
+      const ctx = canvas.getContext("2d");
+      // Set text properties
+      //const bodyFontSize = getComputedStyle(document.documentElement)
+      //      .getPropertyValue('--bs-body-font-size')
+      //      .trim();
+      //const bodyFontFamily = getComputedStyle(document.documentElement)
+      //      .getPropertyValue('--bs-body-font-family')
+      //      .trim();
+      ctx.font = "30px Arial"; // Font size and family
+      ctx.fillStyle = "#636363"; // Text color
+      ctx.textAlign = "left"; // Text alignment
+      ctx.textBaseline = "top"; // Vertical alignment
+
+      // Draw filled text
+      ctx.fillText("Please select at least two features", 10, 10); // Text, x, y
+      // hide spinner
+      spinner.hideSpinner(infoBoxSpinner);
+    }
+  }
+};
+
+// Debounce helper function
+function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
+
+// function to check if the infoBox panel is selected/active
+const panelSelected = (el) => {
+  let parent = el.parentElement;
+  while (parent) {
+    if (parent.dataset.value === el.id) {
+      break;
+    }
+    parent = parent.parentElement;
+  }
+  return parent && parent.classList.contains("active");
 };

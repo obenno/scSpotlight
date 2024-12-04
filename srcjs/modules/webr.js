@@ -207,10 +207,13 @@ wrap_plots(pList, ncol=ncol)
 }
 
 export async function readQS(webR, buffer) {
+  let now = new Date();
+  console.log(`start qs reading: ${now.toLocaleTimeString()}`);
   const randomString = Math.random().toString(36).substring(2, 10);
   const vfsPath = randomString + ".qs";
   const uint8Array = new Uint8Array(buffer);
   await webR.FS.writeFile(vfsPath, uint8Array);
+
   let res = await webR.evalR(
     `
 d <- qs::qread(qsFile, use_alt_rep=TRUE) %>%
@@ -221,7 +224,7 @@ for(i in 1:ncol(d)){
         d[, i] <- as.character(d[, i])
     }
 }
-d
+as.list(d)
 `,
     {
       env: {
@@ -234,11 +237,26 @@ d
   );
   // delete the file
   await webR.FS.unlink(vfsPath);
+  //now = new Date();
+  //console.log(`finished qs reading: ${now.toLocaleTimeString()}`);
   // RDataFrame.toObject() will convert df to json array
   // rownames will be omitted
-  const df = await res.toObject();
+  //
+  // Convert the whole data frame will consume too much memory
+  // So here we loop the list to convert one "column" each time
+  const df = {};
+  let idx = 0;
+  const colNames = await res.names();
+  for await (const i of res) {
+    const out = await i.toJs();
+    df[colNames[idx]] = out["values"];
+    idx++;
+  }
+  //now = new Date();
+  //console.log(`finished object convertion: ${now.toLocaleTimeString()}`);
   // destroy res to release memory
   await webR.destroy(res);
+
   for (const key in df) {
     if (Array.isArray(df[key]) && df[key].length > 0) {
       const firstElement = df[key][0];
@@ -255,11 +273,19 @@ d
       }
     }
   }
+  now = new Date();
+  console.log(`finished looping: ${now.toLocaleTimeString()}`);
   return df;
 }
 
-
-export async function vlnPlot(shelter, figWidth, figHeight, df, group, expr= false) {
+export async function vlnPlot(
+  shelter,
+  figWidth,
+  figHeight,
+  df,
+  group,
+  expr = false,
+) {
   let result = await shelter.captureR(
     `
 plotVln <- function(df, x, y){
@@ -286,15 +312,14 @@ plotVln <- function(df, x, y){
     return(p)
 }
 
-##head(df)
-
+## rename the feature column
+## dataframe conversion will check/fix "-"
+if(is.character(expr)){
+    colnames(df)[ncol(df)] <- expr
+}
 ## check the input df colnames
 stopifnot(group %in% colnames(df))
 k <- setdiff(colnames(df), group)
-if(is.character(expr) && (expr %in% k)){
-    df <- df %>% select(!!as.symbol(group), !!as.symbol(expr))
-    k <- expr
-}
 
 pList <- list()
 for(i in seq_along(k)){
@@ -311,7 +336,7 @@ wrap_plots(pList, ncol=ncol)
       env: {
         group: group,
         df: df,
-        expr: expr
+        expr: expr, // dataframe convertion will auto "check/fix" column names
       },
       captureGraphics: {
         width: figWidth,
@@ -325,5 +350,70 @@ wrap_plots(pList, ncol=ncol)
   );
 
   return result;
-  //console.log("new library: ", res);
+}
+
+export async function dotPlot(shelter, figWidth, figHeight, df, group) {
+  let result = await shelter.captureR(
+    `
+summarize_expr <- function(df, group, feature){
+    d0 <- df %>%
+        group_by(!!as.symbol(group)) %>%
+        summarize(
+            avg.exp = mean(expm1(!!as.symbol(feature))),
+            totalCells = n(),
+            expressed = sum(!!as.symbol(feature) >0)
+        ) %>%
+        ungroup()
+    d0 <- d0 %>%
+        mutate(
+            pct.exp = expressed/totalCells,
+            features.plot = feature,
+            avg.exp.scaled = as.vector(scale(log1p(d0$avg.exp)))
+        ) %>%
+        dplyr::select(!!as.symbol(group), avg.exp, pct.exp, features.plot, avg.exp.scaled)
+    return(d0)
+}
+features <- setdiff(colnames(df), c("cell", "cells", group)) # ensure no cells column was included
+d <- do.call(
+    what=rbind,
+    args = lapply(features, FUN=function(x){
+        summarize_expr(df, group, x)
+    })
+)
+
+p <- ggplot(d, aes(x = features.plot, y= !!as.symbol(group),
+                   fill = avg.exp.scaled, size = pct.exp))+
+    geom_point(shape=21, color = "black")+
+    scale_fill_gradient(low="white", high="#800080")+
+    theme_classic() +
+    labs(size = "Pct Expr",
+         fill = "Avg Expr",
+         title = "",
+         x = "",
+         y = "") +
+    theme(legend.position = "right",
+          axis.text.x = element_text(angle = 75,
+                                     hjust = 1,
+                                     vjust = 1,
+                                     color = "black"),
+          axis.text.y = element_text(color = "black"))
+print(p)
+`,
+    {
+      env: {
+        group: group,
+        df: df,
+      },
+      captureGraphics: {
+        width: figWidth,
+        height: figHeight,
+        bg: "cornsilk",
+      },
+      withAutoprint: true,
+      captureStreams: true,
+      captureConditions: true,
+    },
+  );
+
+  return result;
 }
