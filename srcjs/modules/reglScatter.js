@@ -1,6 +1,7 @@
 import createScatterplot, { createRenderer } from "regl-scatterplot";
 import * as d3 from "d3";
 import html2canvas from "html2canvas";
+import { tableFromArrays } from "apache-arrow";
 
 export class reglScatterCanvas {
   // this will create a element containing all the elements of the scatter plot
@@ -24,6 +25,7 @@ export class reglScatterCanvas {
     this.expLegendEl.classList.add("html-fill-container");
 
     // init origData slot to store orignal data
+    // udpate to arrow table via update method
     this.origData = {
       reductionData: {},
       cellMetaData: {},
@@ -56,19 +58,22 @@ export class reglScatterCanvas {
   }
 
   updateReductionData(reductionData) {
-    for (let key in reductionData) {
-      this.origData.reductionData[key] = new Float32Array(reductionData[key]);
-    }
+    //for (let key in reductionData) {
+    //  this.origData.reductionData[key] = new Float32Array(reductionData[key]);
+    //}
+    this.origData.reductionData = tableFromArrays(reductionData);
   }
 
   updateCellMetaData(cellMetaData) {
-    this.origData.cellMetaData = cellMetaData;
+    //this.origData.cellMetaData = cellMetaData;
+    this.origData.cellMetaData = tableFromArrays(cellMetaData);
   }
 
   updateExpressionData(expressionData) {
     for (let key in expressionData) {
       this.origData.expressionData[key] = new Float32Array(expressionData[key]);
     }
+    //this.origData.expressionData = tableFromArrays(expressionData);
   }
 
   updatePlotMetaData(group_by = null, split_by = null, moduleScore = false) {
@@ -79,11 +84,17 @@ export class reglScatterCanvas {
     // cluster+expr+twoSplit   => when selected one feature, and split_by has two levels
     // cluster+multiSplit      => no selected feature, split_by != null
     // cluster+expr+multiSplit => when selected one feature, and split_by has more than two levels
+    //const nGroupBy = group_by
+    //  ? new Set(this.origData.cellMetaData[group_by]).size
+    //  : 0;
+    //const nSplitBy = split_by
+    //  ? new Set(this.origData.cellMetaData[split_by]).size
+    //  : 0;
     const nGroupBy = group_by
-      ? new Set(this.origData.cellMetaData[group_by]).size
+          ? new Set(this.origData.cellMetaData.getChild(group_by).toArray()).size
       : 0;
     const nSplitBy = split_by
-      ? new Set(this.origData.cellMetaData[split_by]).size
+          ? new Set(this.origData.cellMetaData.getChild(split_by).toArray()).size
       : 0;
     // confirm plotting mode
     let plottingMode = "clusterOnly";
@@ -146,7 +157,7 @@ export class reglScatterCanvas {
       }
     });
 
-    // Note: origData will not to modified or removed, only clear plotData and plotMetaData
+    // Note: origData will not be modified or removed, only clear plotData and plotMetaData
     this.plotData = {
       pointsData: [],
       colorData: [],
@@ -298,9 +309,10 @@ export class reglScatterCanvas {
     plotData["cells"] = zData["cells"];
 
     // generate category label data for each panel
-    let catTitles = [
-      ...new Set(this.origData.cellMetaData[this.plotMetaData.group_by]),
-    ].sort(sortStringArray);
+    let groupByArray = this.origData.cellMetaData.getChild(
+      this.plotMetaData.group_by
+    ).toArray();
+    let catTitles = [...new Set(groupByArray)].sort(sortStringArray);
 
     // generate category label coordinates
     // for each panel, assign empty value for expr panel
@@ -546,15 +558,18 @@ export class reglScatterCanvas {
     let prefix = null;
     let split_category = {};
     let split_expr = {};
+
+    const groupByArray = group_by ? metaData.getChild(group_by).toArray() : []
+    const splitByArray = split_by ? metaData.getChild(split_by).toArray() : []
     switch (mode) {
       case "clusterOnly":
         prefix = "Cat: ";
-        text = prefix.concat(metaData[group_by][pointId]);
+      text = prefix.concat(groupByArray[pointId]);
         break;
       case "cluster+expr+noSplit":
         if (spIndex == 0) {
           prefix = "Cat: ";
-          text = prefix.concat(metaData[group_by][pointId]);
+          text = prefix.concat(groupByArray[pointId]);
         } else {
           prefix = "Expr: ";
           text = prefix.concat(
@@ -563,10 +578,10 @@ export class reglScatterCanvas {
         }
         break;
       case "cluster+expr+twoSplit":
-        split_category = splitArrByMeta(metaData[group_by], metaData[split_by]);
+        split_category = splitArrByMeta(groupByArray, splitByArray);
         split_expr = splitArrByMeta(
           expressionData[plotFeature],
-          metaData[split_by],
+          splitByArray
         );
 
         if (spIndex === 0) {
@@ -592,7 +607,7 @@ export class reglScatterCanvas {
         }
         break;
       case "cluster+multiSplit":
-        split_category = splitArrByMeta(metaData[group_by], metaData[split_by]);
+        split_category = splitArrByMeta(groupByArray, splitByArray);
         prefix = "Cat: ";
         text = prefix.concat(
           split_category[Object.keys(split_category)[spIndex]][pointId],
@@ -601,7 +616,7 @@ export class reglScatterCanvas {
       case "cluster+expr+multiSplit":
         split_expr = splitArrByMeta(
           expressionData[plotFeature],
-          metaData[split_by],
+          splitByArray
         );
         prefix = "Expr: ";
         text = prefix.concat(
@@ -634,23 +649,23 @@ export class reglScatterCanvas {
 
       if (pointsData.x.length < 15000) {
         opacity = 0.8;
-        pointSize = 5;
+        pointSize = 3;
       } else if (pointsData.x.length > 50000 && pointsData.x.length <= 500000) {
         opacity = 0.6;
-        pointSize = 3;
+        pointSize = 1;
       } else if (
         pointsData.x.length > 500000 &&
         pointsData.x.length <= 1000000
       ) {
         opacity = 0.4;
-        pointSize = 1;
+        pointSize = 0.5;
         performanceMode = true;
       } else if (
         pointsData.x.length > 1000000 &&
         pointsData.x.length <= 2000000
       ) {
-        opacity = 0.2;
-        pointSize = 0.5;
+        opacity = 0.4;
+        pointSize = 0.2;
         performanceMode = true;
       } else if (pointsData.x.length > 2000000) {
         opacity = 0.2;
@@ -903,9 +918,11 @@ export class reglScatterCanvas {
     switch (mode) {
       case "clusterOnly":
         if (nPanels == 1) {
+          const groupByArray = metaData.getChild(group_by).toArray();
           // convert metaData array to integer array
           zData["point_Z_data"][0] = convert_stringArr_to_integer(
-            metaData[group_by],
+            //metaData[group_by],
+            groupByArray
           );
           //zData["labelData"][0] = metaData[group_by].map((e) =>
           //  catTag.concat(e),
@@ -918,8 +935,10 @@ export class reglScatterCanvas {
         break;
       case "cluster+expr+noSplit":
         if (nPanels == 2) {
+          const groupByArray = metaData.getChild(group_by).toArray();
           zData["point_Z_data"][0] = convert_stringArr_to_integer(
-            metaData[group_by],
+            //metaData[group_by],
+            groupByArray
           );
           zData["point_Z_data"][1] =
             reglScatterCanvas.scaleDataZ(expressionData); // expr panel
@@ -942,16 +961,30 @@ export class reglScatterCanvas {
         break;
       case "cluster+expr+twoSplit":
         if (nPanels == 4) {
+          const groupByArray = metaData.getChild(group_by).toArray();
+          const splitByArray = metaData.getChild(split_by).toArray();
           split_z = splitArrByMeta(
-            convert_stringArr_to_integer(metaData[group_by]),
-            metaData[split_by],
+            //convert_stringArr_to_integer(metaData[group_by]),
+            // metaData[split_by],
+            convert_stringArr_to_integer(groupByArray),
+            splitByArray
           );
           split_category = splitArrByMeta(
-            metaData[group_by],
-            metaData[split_by],
+            //metaData[group_by],
+            //metaData[split_by],
+            convert_stringArr_to_integer(groupByArray),
+            splitByArray
           );
-          split_cells = splitArrByMeta(metaData["cells"], metaData[split_by]);
-          split_expr = splitArrByMeta(expressionData, metaData[split_by]);
+          //split_cells = splitArrByMeta(metaData["cells"], metaData[split_by]);
+          split_cells = splitArrByMeta(
+            metaData.getChild("cells").toArray(),
+            splitByArray
+          );
+          //split_expr = splitArrByMeta(expressionData, metaData[split_by]);
+          split_expr = splitArrByMeta(
+            expressionData,
+            splitByArray
+          );
           for (let i = 0; i < Object.keys(split_z).length; i++) {
             zData["point_Z_data"][i * 2] = split_z[Object.keys(split_z)[i]];
             //zData["labelData"][i * 2] = split_category[
@@ -980,39 +1013,60 @@ export class reglScatterCanvas {
         }
         break;
       case "cluster+multiSplit":
-        split_z = splitArrByMeta(
-          convert_stringArr_to_integer(metaData[group_by]),
-          metaData[split_by],
-        );
-        split_category = splitArrByMeta(metaData[group_by], metaData[split_by]);
-        split_cells = splitArrByMeta(metaData["cells"], metaData[split_by]);
+        if (true) {
+          const groupByArray = metaData.getChild(group_by).toArray();
+          const splitByArray = metaData.getChild(split_by).toArray();
+          split_z = splitArrByMeta(
+            //convert_stringArr_to_integer(metaData[group_by]),
+            //metaData[split_by],
+            convert_stringArr_to_integer(groupByArray),
+            splitByArray
+          );
+          //split_category = splitArrByMeta(metaData[group_by], metaData[split_by]);
+          split_category = splitArrByMeta(groupByArray, splitByArray);
+          //split_cells = splitArrByMeta(metaData["cells"], metaData[split_by]);
+          split_cells = splitArrByMeta(
+            metaData.getChild("cells").toArray(),
+            splitByArray
+          );
 
-        for (let i = 0; i < Object.keys(split_z).length; i++) {
-          zData["point_Z_data"][i] = split_z[Object.keys(split_z)[i]];
-          //zData["labelData"][i] = split_category[
-          //  Object.keys(split_category)[i]
-          //].map((e) => catTag.concat(e));
-          zData["panelTitles"][i] = Object.keys(split_category)[i];
-          zData["colorData"][i] = catColors;
-          zData["zType"][i] = "category";
-          zData["cells"][i] = split_cells[Object.keys(split_cells)[i]];
+          for (let i = 0; i < Object.keys(split_z).length; i++) {
+            zData["point_Z_data"][i] = split_z[Object.keys(split_z)[i]];
+            //zData["labelData"][i] = split_category[
+            //  Object.keys(split_category)[i]
+            //].map((e) => catTag.concat(e));
+            zData["panelTitles"][i] = Object.keys(split_category)[i];
+            zData["colorData"][i] = catColors;
+            zData["zType"][i] = "category";
+            zData["cells"][i] = split_cells[Object.keys(split_cells)[i]];
+          }
         }
         break;
       case "cluster+expr+multiSplit":
-        split_expr = splitArrByMeta(expressionData, metaData[split_by]);
-        split_cells = splitArrByMeta(metaData["cells"], metaData[split_by]);
-        for (let i = 0; i < Object.keys(split_expr).length; i++) {
-          zData["point_Z_data"][i] = reglScatterCanvas.scaleDataZ(
-            split_expr[Object.keys(split_expr)[i]],
-          ); // expr panels
-          //zData["labelData"][i] = [];
-          //split_expr[Object.keys(split_expr)[i]].forEach((e, idx) => {
-          //  zData["labelData"][i][idx] = exprTag.concat(d3.format(".3f")(e));
-          //});
-          zData["panelTitles"][i] = Object.keys(split_expr)[i];
-          zData["colorData"][i] = exprColorMap;
-          zData["zType"][i] = "expr";
-          zData["cells"][i] = split_cells[Object.keys(split_cells)[i]];
+        if (true) {
+          const groupByArray = metaData.getChild(group_by).toArray();
+          const splitByArray = metaData.getChild(split_by).toArray();
+          //split_expr = splitArrByMeta(expressionData, metaData[split_by]);
+          //split_cells = splitArrByMeta(metaData["cells"], metaData[split_by]);
+          split_expr = splitArrByMeta(expressionData, splitByArray);
+          split_cells = splitArrByMeta(
+            metaData.getChild("cells").toArray(),
+            splitByArray
+          );
+
+          for (let i = 0; i < Object.keys(split_expr).length; i++) {
+            zData["point_Z_data"][i] = reglScatterCanvas.scaleDataZ(
+              split_expr[Object.keys(split_expr)[i]],
+            ); // expr panels
+            //zData["labelData"][i] = [];
+            //split_expr[Object.keys(split_expr)[i]].forEach((e, idx) => {
+            //  zData["labelData"][i][idx] = exprTag.concat(d3.format(".3f")(e));
+            //});
+            zData["panelTitles"][i] = Object.keys(split_expr)[i];
+            zData["colorData"][i] = exprColorMap;
+            zData["zType"][i] = "expr";
+            zData["cells"][i] = split_cells[Object.keys(split_cells)[i]];
+          }
         }
     }
     return zData;
@@ -1021,6 +1075,8 @@ export class reglScatterCanvas {
   static prepare_XY_data(reductionData, metaData, mode, nPanels, split_by) {
     // pointData is array of panels' regl-scatterplot x,y input
     // this function process data into an object
+    //
+    // reductionData, metaData are arrow tables
     let point_XY_data = [];
     let split_x = null;
     let split_y = null;
@@ -1049,8 +1105,10 @@ export class reglScatterCanvas {
         break;
       case "cluster+expr+twoSplit":
         if (nPanels == 4) {
-          split_x = splitArrByMeta(reductionConverted.X, metaData[split_by]);
-          split_y = splitArrByMeta(reductionConverted.Y, metaData[split_by]);
+          //split_x = splitArrByMeta(reductionConverted.X, metaData[split_by]);
+          //split_y = splitArrByMeta(reductionConverted.Y, metaData[split_by]);
+          split_x = splitArrByMeta(reductionConverted.X, metaData.getChild(split_by).toArray());
+          split_y = splitArrByMeta(reductionConverted.Y, metaData.getChild(split_by).toArray());
           for (let i = 0; i < Object.keys(split_x).length; i++) {
             point_XY_data[i * 2] = {
               x: split_x[Object.keys(split_x)[i]],
@@ -1064,8 +1122,10 @@ export class reglScatterCanvas {
         }
         break;
       case "cluster+multiSplit":
-        split_x = splitArrByMeta(reductionConverted.X, metaData[split_by]);
-        split_y = splitArrByMeta(reductionConverted.Y, metaData[split_by]);
+        //split_x = splitArrByMeta(reductionConverted.X, metaData[split_by]);
+        //split_y = splitArrByMeta(reductionConverted.Y, metaData[split_by]);
+        split_x = splitArrByMeta(reductionConverted.X, metaData.getChild(split_by).toArray());
+        split_y = splitArrByMeta(reductionConverted.Y, metaData.getChild(split_by).toArray());
         for (let i = 0; i < Object.keys(split_x).length; i++) {
           point_XY_data[i] = {
             x: split_x[Object.keys(split_x)[i]],
@@ -1074,8 +1134,10 @@ export class reglScatterCanvas {
         }
         break;
       case "cluster+expr+multiSplit":
-        split_x = splitArrByMeta(reductionConverted.X, metaData[split_by]);
-        split_y = splitArrByMeta(reductionConverted.Y, metaData[split_by]);
+        //split_x = splitArrByMeta(reductionConverted.X, metaData[split_by]);
+        //split_y = splitArrByMeta(reductionConverted.Y, metaData[split_by]);
+        split_x = splitArrByMeta(reductionConverted.X, metaData.getChild(split_by).toArray());
+        split_y = splitArrByMeta(reductionConverted.Y, metaData.getChild(split_by).toArray());
         for (let i = 0; i < Object.keys(split_x).length; i++) {
           point_XY_data[i] = {
             x: split_x[Object.keys(split_x)[i]],
@@ -1089,19 +1151,31 @@ export class reglScatterCanvas {
   static scaleDataXY(dataXY) {
     // data is the object transformed from R
     // column name: X, Y
-    let xmin = d3.min(dataXY.X);
-    let xmax = d3.max(dataXY.X);
-    let ymin = d3.min(dataXY.Y);
-    let ymax = d3.max(dataXY.Y);
+    // input dataXY is arrow table instead of regular json {X:[], Y:[]}
+    // output regular json object
+    const xColumn = dataXY.getChild("X").toArray()
+    const yColumn = dataXY.getChild("Y").toArray()
+    let xmin = d3.min(xColumn);
+    let xmax = d3.max(xColumn);
+    let ymin = d3.min(yColumn);
+    let ymax = d3.max(yColumn);
+
+    //let xmin = d3.min(dataXY.X);
+    //let xmax = d3.max(dataXY.X);
+    //let ymin = d3.min(dataXY.Y);
+    //let ymax = d3.max(dataXY.Y);
     let dataMin = d3.min([xmin, ymin]);
     let dataMax = d3.max([xmax, ymax]);
 
     const dScale = d3.scaleLinear([dataMin, dataMax], [-1, 1]).nice();
+    //let data = {
+    //  X: dataXY.X.map(dScale),
+    //  Y: dataXY.Y.map(dScale),
+    //};
     let data = {
-      X: dataXY.X.map(dScale),
-      Y: dataXY.Y.map(dScale),
-    };
-
+      X: xColumn.map(dScale),
+      Y: yColumn.map(dScale)
+    }
     return data;
   }
 
@@ -1117,15 +1191,14 @@ export class reglScatterCanvas {
 
   updateCatLegend() {
     //const pointData_z = this.plotData["pointsData"].map((e) => e.z);
-
+    const groupByArray = this.plotMetaData.group_by ?  this.origData.cellMetaData.getChild(this.plotMetaData.group_by).toArray() : [];
+    const splitByArray = this.plotMetaData.split_by ?  this.origData.cellMetaData.getChild(this.plotMetaData.split_by).toArray() : [];
     // Add cluster legends, no legend for "cluster+expr+multiSplit" mode
     if (this.plotMetaData.mode != "cluster+expr+multiSplit") {
-      let catTitles = [
-        ...new Set(this.origData.cellMetaData[this.plotMetaData.group_by]),
-      ].sort(sortStringArray);
+      let catTitles = [...new Set(groupByArray)].sort(sortStringArray);
       let catNumbers = catTitles.map((e, i) => {
         let counts = 0;
-        this.origData.cellMetaData[this.plotMetaData.group_by].forEach((d) => {
+        groupByArray.forEach((d) => {
           if (d == e) {
             counts++;
           }
@@ -1241,8 +1314,7 @@ export class reglScatterCanvas {
     let pointsIndex = [];
 
     let factorLevel = {};
-    let uniqueArr = new Set(metaData[group_by]);
-    let sortedUniqueArr = Array.from(uniqueArr).sort(sortStringArray);
+    let sortedUniqueArr = [...new Set(metaData.getChild(group_by).toArray())].sort(sortStringArray);
     sortedUniqueArr.forEach((e, i) => {
       factorLevel[e] = i;
     });

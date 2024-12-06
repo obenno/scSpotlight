@@ -178,21 +178,6 @@ app_server <- function(input, output, session) {
             collapse_infoBox(session)
         }
     }, priority = 100) # high priority for UI components
-    ## Draw VlnPlot
-    ##mod_VlnPlot_server("vlnPlot",
-    ##                   seuratObj,
-    ##                   categoryInfo$group.by,
-    ##                   categoryInfo$split.by,
-    ##                   selectedFeature,
-    ##                   featureInfo$filteredInputFeatures,
-    ##                   featureInfo$moduleScore)
-
-    ## Draw DotPlot
-    ##mod_DotPlot_server("dotPlot",
-    ##                   seuratObj,
-    ##                   categoryInfo$group.by,
-    ##                   categoryInfo$split.by,
-    ##                   featureInfo$filteredInputFeatures)
 
     ## Rename Clusters
     selectedPoints <- eventReactive(input$selectedPoints, {
@@ -206,6 +191,7 @@ app_server <- function(input, output, session) {
 
     observeEvent(input$newMetaColData, {
         d <- input$newMetaColData[[1]] %>% unlist()
+        str(d)
         colName <- names(input$newMetaColData)[1]
         ## update seuratObj
         if(isTruthy(seuratObj())){
@@ -223,14 +209,16 @@ app_server <- function(input, output, session) {
         ## update duckdb
         if(file.exists(session$userData$duckdb)){
             withProgress(
-                messsage = "Updating duckdb...",
+                message = "Updating duckdb...",
                 {
                     con <- duckConnect(session, read_only=FALSE)
                     on.exit(dbDisconnect(con))
-                    dbExecute(
-                        con,
-                        sprintf("ALTER TABLE metaData ADD COLUMN %s VARCHAR", colName)
-                    )
+                    if(!(colName %in% colnames(tbl(con, "metaData")))){
+                        dbExecute(
+                            con,
+                            sprintf("ALTER TABLE metaData ADD COLUMN %s VARCHAR", colName)
+                        )
+                    }
                     ## duckdb rowid starts from 0, not 1 !
                     for(i in seq_along(d)) {
                         dbExecute(
