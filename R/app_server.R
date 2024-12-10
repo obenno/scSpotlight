@@ -12,6 +12,10 @@ app_server <- function(input, output, session) {
     ## newly created duckdb file
     tempDir <- file.path(getwd(), paste0("tmp_", session$token))
     if(dir.create(tempDir)){
+        ## create dir to store reduction, meta and expr files
+        dir.create(file.path(tempDir, "reduction"))
+        dir.create(file.path(tempDir, "meta"))
+        dir.create(file.path(tempDir, "expr"))
         addResourcePath("data", tempDir)
         session$userData$tempDir <- tempDir
         message("temp dir created: ", session$userData$tempDir)

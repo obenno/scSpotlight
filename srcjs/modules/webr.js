@@ -237,8 +237,8 @@ as.list(d)
   );
   // delete the file
   await webR.FS.unlink(vfsPath);
-  //now = new Date();
-  //console.log(`finished qs reading: ${now.toLocaleTimeString()}`);
+  now = new Date();
+  console.log(`finished qs reading: ${now.toLocaleTimeString()}`);
   // RDataFrame.toObject() will convert df to json array
   // rownames will be omitted
   //
@@ -252,8 +252,8 @@ as.list(d)
     df[colNames[idx]] = out["values"];
     idx++;
   }
-  //now = new Date();
-  //console.log(`finished object convertion: ${now.toLocaleTimeString()}`);
+  now = new Date();
+  console.log(`finished object convertion: ${now.toLocaleTimeString()}`);
   // destroy res to release memory
   await webR.destroy(res);
 
@@ -278,13 +278,125 @@ as.list(d)
   return df;
 }
 
+export async function qsReadNumVector(shelter, url) {
+  let now = new Date();
+  console.log(`start qs reading: ${now.toLocaleTimeString()}`);
+  //const randomString = Math.random().toString(36).substring(2, 10);
+  //const vfsPath = randomString + ".qs";
+  //const uint8Array = new Uint8Array(buffer);
+  //await webR.FS.writeFile(vfsPath, uint8Array);
+
+  let res = await shelter.evalR(
+    `
+d <- qs::qread_url(url, use_alt_rep=TRUE)
+d
+`,
+    {
+      env: {
+        url: url,
+      },
+      withAutoprint: false,
+      captureStreams: true,
+      captureConditions: true,
+    },
+  );
+  // toTypedArray() return float64
+  // convert to float32 array
+  const out = new Float32Array(await res.toTypedArray());
+  // destroy res to release memory
+  await shelter.purge();
+  now = new Date();
+  console.log(`finished qs reading: ${now.toLocaleTimeString()}`);
+  return out;
+}
+
+export async function qsReadList(shelter, url) {
+  let now = new Date();
+  console.log(`start qs reading: ${now.toLocaleTimeString()}`);
+
+  let res = await shelter.evalR(
+    `
+d <- qs::qread_url(url, use_alt_rep=TRUE)
+d
+`,
+    {
+      env: {
+        url: url,
+      },
+      withAutoprint: false,
+      captureStreams: true,
+      captureConditions: true,
+    },
+  );
+
+  let idx = 0;
+  const out = {};
+  const colNames = Object.keys(await res.toObject({ depth: 1 }));
+  //const out = await res.toObject();
+  for await (const i of res) {
+    const e = await i.toObject({ depth: 1 });
+
+    const dataType = await e.type.toString();
+    if (dataType === "number") {
+      const dataArray = await e.value.toArray();
+      if (isIntegerArray(dataArray)) {
+        out[colNames[idx]] = {
+          type: dataType,
+          value: Int32Array.from(dataArray),
+        };
+      } else {
+        out[colNames[idx]] = {
+          type: dataType,
+          value: Float32Array.from(dataArray),
+        };
+      }
+    } else if (dataType === "category") {
+      const dataObject = {};
+      const catData = await e.value.toObject({ depth: 1 });
+      const catNames = Object.keys(catData);
+      for (const cat of catNames) {
+        dataObject[cat] = await catData[cat].toTypedArray();
+      }
+      out[colNames[idx]] = { type: dataType, value: dataObject };
+    } else {
+      out[colNames[idx]] = { type: dataType, value: [] };
+    }
+    //df[colNames[idx]] = out["values"];
+    idx++;
+  }
+  // destroy res to release memory
+  await shelter.purge();
+
+  now = new Date();
+  console.log(`finished looping: ${now.toLocaleTimeString()}`);
+  return out;
+}
+
+export async function qsRead(shelter) {
+  let fn = await shelter.evalR(
+    `
+function(url){
+    qs::qread_url(url, use_alt_rep=TRUE)
+}
+`,
+    {
+      withAutoprint: false,
+      captureStreams: true,
+      captureConditions: true,
+    },
+  );
+  return fn;
+}
+
 export async function vlnPlot(
   shelter,
   figWidth,
   figHeight,
   df,
   group,
+  groupOrder,
   expr = false,
+  colors = [],
 ) {
   let result = await shelter.captureR(
     `
@@ -300,7 +412,11 @@ plotVln <- function(df, x, y){
             p <- p + geom_jitter(alpha = 0.5, size =0.6)
         }
     }
-    p <- p +theme_classic() +
+    if(length(colors)>0){
+        p <- p + scale_fill_manual(values = colors)
+    }
+    p <- p +
+      theme_classic() +
       labs(title = y,
            x = "",
            y = "") +
@@ -322,13 +438,17 @@ stopifnot(group %in% colnames(df))
 k <- setdiff(colnames(df), group)
 
 pList <- list()
+if(!is.null(groupOrder)){
+    df[, group] <- factor(df[, group], levels = groupOrder)
+}
 for(i in seq_along(k)){
     pList[[i]] <- plotVln(df, group, k[i])
 }
+
 if(length(pList) >=2){
     ncol <- 2
 }else{
-    ncol <- length(pList)
+    ncol <- ifelse(length(pList) > 0, length(pList), 1)
 }
 wrap_plots(pList, ncol=ncol)
 `,
@@ -337,6 +457,8 @@ wrap_plots(pList, ncol=ncol)
         group: group,
         df: df,
         expr: expr, // dataframe convertion will auto "check/fix" column names
+        colors: colors,
+        groupOrder: groupOrder,
       },
       captureGraphics: {
         width: figWidth,
@@ -417,3 +539,7 @@ print(p)
 
   return result;
 }
+
+// helper function to check integer array and floating number array
+export const isFloatArray = (arr) => arr.every((num) => !Number.isInteger(num));
+export const isIntegerArray = (arr) => arr.every(Number.isInteger);

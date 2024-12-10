@@ -197,7 +197,6 @@ mod_InputFeature_server <- function(id,
       ## https://github.com/HenrikBengtsson/future/issues/206
       extract_expression <- ExtendedTask$new(function(assay, features, layer = "data", filePath) {
           future_promise({
-
               con <- duckConnect(session)
               on.exit(DBI::dbDisconnect(con))
               expr <- queryDuckExpr(
@@ -212,8 +211,8 @@ mod_InputFeature_server <- function(id,
               if(file.exists(filePath)){
                   file.remove(filePath)
               }
-              qsave(expr, filePath, preset = "high")
-              return(basename(filePath))
+              qsave(expr[[features]], filePath, preset = "high")
+              return(list(geneName = features, exprFile = basename(filePath)))
           })
       })
 
@@ -257,7 +256,7 @@ mod_InputFeature_server <- function(id,
           for(feature in selectedFeatures){
               start_extract_expr(feature, session) # create sparkline elements
               promise_feature <- feature
-              promise_filePath <- file.path(session$userData$tempDir, hash_md5(promise_feature))
+              promise_filePath <- file.path(session$userData$tempDir, "expr", hash_md5(promise_feature))
               extract_expression$invoke(assay = promise_assay,
                                         features = promise_feature,
                                         filePath = promise_filePath)
@@ -318,7 +317,7 @@ mod_InputFeature_server <- function(id,
               start_extract_expr(input$features, session)
               promise_assay <- assay()
               promise_features <- input$features[1]
-              promise_filePath <- file.path(session$userData$tempDir, hash_md5(promise_features))
+              promise_filePath <- file.path(session$userData$tempDir, "expr",hash_md5(promise_features))
               extract_expression$invoke(assay = promise_assay,
                                         features = promise_features,
                                         filePath = promise_filePath)

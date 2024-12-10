@@ -55,7 +55,7 @@ mod_UpdateReduction_server <- function(id,
       ##   reductionUpdateIndicator(reductionUpdateIndicator()+1)
       ##}, ignoreNULL = TRUE)
 
-      extract_reduction <- ExtendedTask$new(function(reduction, filePath){
+      extract_reduction <- ExtendedTask$new(function(reduction, dirPath){
           future_promise({
 
               con <- duckConnect(session)
@@ -66,11 +66,14 @@ mod_UpdateReduction_server <- function(id,
                   reduction = reduction
               )
               colnames(d) <- c("X", "Y")
-              if(file.exists(filePath)){
-                  file.remove(filePath)
+              if(!file.exists(dirPath)){
+                  stop(paste0(dirPath, " does not exist."))
               }
-              qsave(d, filePath, preset = "high")
-              return(basename(filePath))
+              xFileName <- hash_md5("X")
+              yFileName <- hash_md5("Y")
+              qsave(d$X, file.path(dirPath, xFileName), preset = "high")
+              qsave(d$Y, file.path(dirPath, yFileName), preset = "high")
+              return(list(xFile = xFileName, yFile = yFileName))
           })
 
       })
@@ -94,9 +97,9 @@ mod_UpdateReduction_server <- function(id,
           message("Transferring reductionData...")
           reductionProcessed(FALSE)
           promise_reduction <- input$reduction
-          promise_filePath <- file.path(session$userData$tempDir, hash_md5(input$reduction))
+          promise_dirPath <- file.path(session$userData$tempDir, "reduction")
           extract_reduction$invoke(reduction = promise_reduction,
-                                   filePath = promise_filePath)
+                                   dirPath = promise_dirPath)
 
       }, priority = -500)
 

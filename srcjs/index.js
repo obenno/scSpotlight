@@ -14,21 +14,23 @@ import {
   update_collapse_icon,
 } from "./modules/collapse_infoBox.js";
 
-import { reglScatterCanvas } from "./modules/reglScatter.js";
+import {
+  reglScatterCanvas,
+  expandMeta,
+  sortStringArray,
+} from "./modules/reglScatter.js";
 import {
   initShelter,
-  readQS,
   featurePlot,
   vlnPlot,
   dotPlot,
   initWebRInstance,
+  isIntegerArray,
 } from "./modules/webr.js";
 import {
   createSparkLine,
   updateSparkLine,
 } from "./modules/featureSparkLine.js";
-
-import { vectorFromArray, Table } from "apache-arrow";
 
 // keep global variables as small as possible
 // query elements inside functions when necessary
@@ -208,20 +210,22 @@ Shiny.addCustomMessageHandler("createSparkLine", (feature) => {
 
 Shiny.addCustomMessageHandler("reduction_ready", (msg) => {
   try {
-    fetch("data/" + msg)
-      .then((file) => {
-        const now = new Date();
-        console.log(`start loading reduction: ${now.toLocaleTimeString()}`);
-        return file.arrayBuffer();
-      })
-      .then(async (buffer) => await readQS(webR, buffer))
-      .then((df) => {
-        const now = new Date();
-        console.log(`end loading reduction: ${now.toLocaleTimeString()}`);
-        console.log("qs df: ", df);
-        reglElementData.updateReductionData(df);
-        Shiny.setInputValue("reductionProcessed", true, { priority: "event" });
-      });
+    const xFileURL = window.location.origin + "/data/reduction/" + msg.xFile;
+    const yFileURL = window.location.origin + "/data/reduction/" + msg.yFile;
+    (async () => {
+      const fn = await shelter.evalR(
+        "function (url) { qs::qread_url(url, use_alt_rep=TRUE) }",
+      );
+      const df = {};
+      const xRes = await fn.exec(xFileURL);
+      df["X"] = new Float32Array(await xRes.toTypedArray());
+      const yRes = await fn.exec(yFileURL);
+      df["Y"] = new Float32Array(await yRes.toTypedArray());
+      reglElementData.updateReductionData(df);
+      await shelter.purge();
+      Shiny.setInputValue("reductionProcessed", true, { priority: "event" });
+      console.log("reduction", df);
+    })();
   } catch (error) {
     console.error("There was a problem:", error);
   }
@@ -229,23 +233,63 @@ Shiny.addCustomMessageHandler("reduction_ready", (msg) => {
 
 Shiny.addCustomMessageHandler("meta_ready", (msg) => {
   try {
-    fetch("data/" + msg)
-      .then((file) => {
-        const now = new Date();
-        console.log(`start loading meta: ${now.toLocaleTimeString()}`);
-        return file.arrayBuffer();
-      })
-      .then(async (buffer) => await readQS(webR, buffer))
-      .then((metaData) => {
-        const now = new Date();
-        console.log(`end loading meta: ${now.toLocaleTimeString()}`);
-        console.log("qs meta", metaData);
-        reglElementData.updateCellMetaData(metaData);
-        const nonNumericCols = extractNonNumericCol(reglElementData);
-        Shiny.setInputValue("metaCols", nonNumericCols);
-        //console.log("metaData", reglElementData.origData.cellMetaData);
-        Shiny.setInputValue("metaProcessed", true, { priority: "event" });
+    const metaURL = window.location.origin + "/data/meta/" + msg.metaFile;
+    //let meta = {}
+    (async () => {
+      const fn = await shelter.evalR(
+        "function (url) { qs::qread_url(url, use_alt_rep=TRUE) }",
+      );
+      const res = await fn.exec(metaURL);
+      let idx = 0;
+      const out = {};
+      const loadedData = await res.toObject({ depth: 1 });
+      const colNames = Object.keys(loadedData);
+      //const out = await res.toObject();
+      for await (const i of res) {
+        const e = await i.toObject({ depth: 1 });
+
+        const dataType = await e.type.toString();
+        if (dataType === "number") {
+          const dataArray = await e.value.toArray();
+          if (isIntegerArray(dataArray)) {
+            out[colNames[idx]] = {
+              type: dataType,
+              value: Int32Array.from(dataArray),
+            };
+          } else {
+            out[colNames[idx]] = {
+              type: dataType,
+              value: Float32Array.from(dataArray),
+            };
+          }
+        } else if (dataType === "category") {
+          const dataObject = {};
+          const catData = await e.value.toObject({ depth: 1 });
+          const catNames = Object.keys(catData);
+          for (const cat of catNames) {
+            dataObject[cat] = await catData[cat].toTypedArray();
+            // original R array starts from 1
+            // here convert it to javascript convention
+            dataObject[cat] = dataObject[cat].map((e) => e - 1);
+          }
+          out[colNames[idx]] = { type: dataType, value: dataObject };
+        } else {
+          out[colNames[idx]] = { type: dataType, value: [] };
+        }
+        idx++;
+      }
+      console.log(out);
+      reglElementData.updateCellMetaData(out);
+      const nonNumericCols = [];
+      Object.keys(out).forEach((key) => {
+        if (out[key].type !== "number") {
+          nonNumericCols.push(key);
+        }
       });
+      Shiny.setInputValue("metaCols", nonNumericCols);
+      Shiny.setInputValue("metaProcessed", true, { priority: "event" });
+      await shelter.purge();
+    })();
   } catch (error) {
     console.error("There was a problem:", error);
   }
@@ -253,24 +297,28 @@ Shiny.addCustomMessageHandler("meta_ready", (msg) => {
 
 Shiny.addCustomMessageHandler("expr_ready", (msg) => {
   try {
-    fetch("data/" + msg)
-      .then((file) => file.arrayBuffer())
-      .then(async (buffer) => await readQS(webR, buffer))
-      .then((exprData) => {
-        console.log("qs expr", exprData);
-        reglElementData.updateExpressionData(exprData);
-        console.log("exprData", reglElementData.origData.expressionData);
-        const feature = Object.keys(exprData)[0];
-        const sparkLine = document
-          .getElementById("featureSparkLine")
-          .querySelectorAll(".featureSparkLine");
-        const sparkLineArray = [...sparkLine];
-        sparkLineArray.forEach((e) => {
-          if (e.querySelector("span").innerHTML == feature) {
-            updateSparkLine(e, reglElementData);
-          }
-        });
+    const exprURL = window.location.origin + "/data/expr/" + msg.exprFile;
+    (async () => {
+      const fn = await shelter.evalR(
+        "function (url) { qs::qread_url(url, use_alt_rep=TRUE) }",
+      );
+      const expr = {};
+      const res = await fn.exec(exprURL);
+      expr[msg.geneName] = new Float32Array(await res.toTypedArray());
+
+      reglElementData.updateExpressionData(expr);
+      console.log("exprData", reglElementData.origData.expressionData);
+      const feature = Object.keys(expr)[0];
+      const sparkLine = document
+        .getElementById("featureSparkLine")
+        .querySelectorAll(".featureSparkLine");
+      const sparkLineArray = [...sparkLine];
+      sparkLineArray.forEach((e) => {
+        if (e.querySelector("span").innerHTML == feature) {
+          updateSparkLine(e, reglElementData);
+        }
       });
+    })();
   } catch (error) {
     console.error("There was a problem:", error);
   }
@@ -303,14 +351,14 @@ Shiny.addCustomMessageHandler("selectPointsByCategory", (msg) => {
   const selectedSplitBy = msg.selectedSplitBy;
   const selectedCells = [];
   const groupByArray = groupBy
-    ? reglElementData.origData.cellMetaData.getChild(groupBy).toArray()
+    ? expandMeta(reglElementData.origData.cellMetaData[groupBy])
     : [];
   const splitByArray = splitBy
-    ? reglElementData.origData.cellMetaData.getChild(splitBy).toArray()
+    ? expandMeta(reglElementData.origData.cellMetaData[splitBy])
     : [];
-  const colNames = reglElementData.origData.cellMetaData.schema.names;
+  const colNames = Object.keys(reglElementData.origData.cellMetaData);
   const cellsArray = colNames.includes("cells")
-    ? reglElementData.origData.cellMetaData.getChild("cells").toArray()
+    ? expandMeta(reglElementData.origData.cellMetaData["cells"])
     : [];
   if (groupBy && selectedGroupBy) {
     if (!splitBy) {
@@ -351,27 +399,30 @@ Shiny.addCustomMessageHandler("addNewMeta", (msg) => {
   // selectedCells records manually selected points by lasso
   // or category selected cells updated by selectPointsByCategory
   const selectedCells = reglElementData.plotData.selectedCells;
-  const colNames = metaData.schema.names;
+  const colNames = Object.keys(metaData);
   if (colNames.length > 0 && selectedCells.length > 0) {
-    const nCells = metaData.getChildAt(0).toArray().length;
+    const nCells = expandMeta(metaData[Object.keys(metaData)[0]]).length;
     //console.log(Object.keys(metaData).includes(newMetaCol));
     //console.log(!Object.keys(metaData).includes(newMetaCol));
     if (!colNames.includes(newMetaCol)) {
-      reglElementData.origData.cellMetaData = tableMutateCol(
-        reglElementData.origData.cellMetaData,
-        newMetaCol,
-        vectorFromArray(Array(nCells).fill("unknown")),
-      );
-      //console.log(reglElementData.origData.cellMetaData);
+      reglElementData.origData.cellMetaData[newMetaCol] = {
+        type: "category",
+        value: {
+          unknown: Array(nCells)
+            .fill(0)
+            .map((_, i) => i),
+        },
+      };
+      //console.log(reglElementData.origData.cellMetaData[newMetaCol]);
     }
-    console.log("colNames", reglElementData.origData.cellMetaData.schema.names);
-    const idx = selectedCells.map((e) => metaData.getChild("cells").indexOf(e));
+    const idx = selectedCells.map((e) =>
+      expandMeta(metaData["cells"]).indexOf(e),
+    );
     console.log("idx", idx);
-
     //idx.forEach((e) => {
     //  reglElementData.origData.cellMetaData
     //    .getChild(newMetaCol)
-    //    .set(e, assignAs);
+    //    .gset(e, assignAs);
     //});
     //
     // arrow vector set function has a bug, the same value will
@@ -380,34 +431,39 @@ Shiny.addCustomMessageHandler("addNewMeta", (msg) => {
     //
     // thus convert to array and replace the value
     //
-    let nn = reglElementData
-          .origData.cellMetaData
-          .getChild(newMetaCol)
-          .toArray()
+
+    let nn = expandMeta(reglElementData.origData.cellMetaData[newMetaCol]);
+    console.log("nn", nn);
     idx.forEach((e) => {
-      nn[e] = assignAs
-    })
-    reglElementData.origData.cellMetaData = tableMutateCol(
-      reglElementData.origData.cellMetaData,
-      newMetaCol,
-      vectorFromArray(nn)
-    );
+      nn[e] = assignAs;
+    });
+    const result = nn.reduce((acc, val, index) => {
+      (acc[val] = acc[val] || []).push(index);
+      return acc;
+    }, {});
+    reglElementData.origData.cellMetaData[newMetaCol].value = result;
   }
   console.log({
-    [newMetaCol]: reglElementData.origData.cellMetaData
-      .getChild(newMetaCol)
-      .toArray(),
+    [newMetaCol]: expandMeta(reglElementData.origData.cellMetaData[newMetaCol]),
   });
 
-  const nonNumericCols = extractNonNumericCol(reglElementData);
+  const nonNumericCols = Object.keys(
+    reglElementData.origData.cellMetaData,
+  ).reduce((acc, val, _) => {
+    if (reglElementData.origData.cellMetaData[val].type === "category") {
+      acc.push(val);
+    }
+    return acc;
+  }, []);
+  console.log("nonNumericCols", nonNumericCols);
   Shiny.setInputValue("metaCols", nonNumericCols);
   // send the newMetaCol data to R
   Shiny.setInputValue(
     "newMetaColData",
     {
-      [newMetaCol]: reglElementData.origData.cellMetaData
-        .getChild(newMetaCol)
-        .toArray(),
+      [newMetaCol]: expandMeta(
+        reglElementData.origData.cellMetaData[newMetaCol],
+      ),
     },
     { priority: "event" },
   );
@@ -441,17 +497,13 @@ Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
 
   // update group_by levels to server side
   let groupByLevels = group_by
-    ? new Set(
-        reglElementData.origData.cellMetaData.getChild(group_by).toArray(),
-      )
+    ? new Set(expandMeta(reglElementData.origData.cellMetaData[group_by]))
     : null;
   groupByLevels = group_by ? [...groupByLevels].sort() : null;
   // when split_by == null, this will return a set with size 0
   //     // update split_by levels to server side
   let splitByLevels = split_by
-    ? new Set(
-        reglElementData.origData.cellMetaData.getChild(split_by).toArray(),
-      )
+    ? new Set(expandMeta(reglElementData.origData.cellMetaData[split_by]))
     : null;
   splitByLevels = split_by ? [...splitByLevels].sort() : null;
   Shiny.setInputValue("metaColLevels", {
@@ -505,7 +557,7 @@ Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
       }
     });
   });
-  reglElementData.scatterplots.forEach((sp, idx) => {
+  reglElementData.scatterplots.forEach((sp, _) => {
     sp.subscribe("deselect", () => {
       reglElementData.plotData.selectedCells = [];
       Shiny.setInputValue("selectedPoints", null);
@@ -571,12 +623,10 @@ const updateFeaturePlot = (canvas) => {
       );
     }
     const drInput = {};
-    const colNames = reglElementData.origData.reductionData.schema.names;
+    const colNames = Object.keys(reglElementData.origData.reductionData);
     for (let i of colNames) {
       // webr dataframe convertion doesn't support typed array
-      drInput[i] = Array.from(
-        reglElementData.origData.reductionData.getChild(i).toArray(),
-      );
+      drInput[i] = Array.from(reglElementData.origData.reductionData[i]);
     }
     featurePlot(
       shelter,
@@ -655,33 +705,46 @@ const updateVlnPlot = (canvas) => {
         "percent.rp",
       ];
 
-      const colNames = reglElementData.origData.cellMetaData.schema.names;
+      const colNames = Object.keys(reglElementData.origData.cellMetaData);
 
       for (let i = 0; i < fixedMetaCol.length; i++) {
         if (colNames.includes(fixedMetaCol[i])) {
-          metaInput[fixedMetaCol[i]] = reglElementData.origData.cellMetaData
-            .getChild(fixedMetaCol[i])
-            .toArray();
+          metaInput[fixedMetaCol[i]] = expandMeta(
+            reglElementData.origData.cellMetaData[fixedMetaCol[i]],
+          );
         }
       }
     }
     const groupInput = {};
-    groupInput[reglElementData.plotMetaData.group_by] =
-      reglElementData.origData.cellMetaData
-        .getChild(reglElementData.plotMetaData.group_by)
-        .toArray();
+    groupInput[reglElementData.plotMetaData.group_by] = expandMeta(
+      reglElementData.origData.cellMetaData[
+        reglElementData.plotMetaData.group_by
+      ],
+    );
+    const groupOrder = [
+      ...new Set(groupInput[reglElementData.plotMetaData.group_by]),
+    ].sort(sortStringArray);
     const dfInput = { ...groupInput, ...metaInput, ...expressionInput };
     for (const k of Object.keys(dfInput)) {
       // webr dataframe convertion doesn't support typed array
       dfInput[k] = Array.from(dfInput[k]);
     }
+    console.log(
+      "vlnPlot inputs: ",
+      dfInput,
+      reglElementData.plotMetaData.group_by,
+      groupOrder,
+      expr,
+    );
     vlnPlot(
       shelter,
       canvasWidth,
       canvasHeight,
       dfInput,
       reglElementData.plotMetaData.group_by,
+      groupOrder,
       (expr = expr),
+      reglElementData.plotMetaData.catColors,
     ).then((res) => {
       const ctx = canvas.getContext("2d");
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -727,10 +790,10 @@ const updateDotPlot = (canvas) => {
       }
 
       const groupInput = {};
-      groupInput[reglElementData.plotMetaData.group_by] = Array.from(
-        reglElementData.origData.cellMetaData
-          .getChild(reglElementData.plotMetaData.group_by)
-          .toArray(),
+      groupInput[reglElementData.plotMetaData.group_by] = expandMeta(
+        reglElementData.origData.cellMetaData[
+          reglElementData.plotMetaData.group_by
+        ],
       );
 
       const dfInput = { ...groupInput, ...expressionInput };

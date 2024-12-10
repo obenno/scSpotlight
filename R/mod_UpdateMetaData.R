@@ -23,19 +23,39 @@ mod_UpdateMetaData_server <- function(id,
     moduleServer(id, function(input, output, session){
         ns <- session$ns
 
-        extract_meta <- ExtendedTask$new(function(filePath){
+        ## extract_meta will now only extract one column each time
+        extract_meta <- ExtendedTask$new(function(dirPath){
             future_promise({
 
                 con <- duckConnect(session)
                 on.exit(DBI::dbDisconnect(con))
                 d <- queryDuckMeta(con, "metaData")
                 d <- d %>% mutate(cells=1:nrow(d)) %>% as_tibble()
-
-                if(file.exists(filePath)){
-                    file.remove(filePath)
+                stopifnot(file.exists(dirPath))
+                out = list()
+                for(i in seq_along(colnames(d))){
+                    data <- d %>% dplyr::pull(i)
+                    if(is.numeric(data)){
+                        k <- list(
+                            type = "number",
+                            value = data
+                        )
+                    }else{
+                        k <- list(
+                            type = "category",
+                            value = split(seq_along(data), data)
+                        )
+                    }
+                    out[[i]] <- k
                 }
-                qsave(d, filePath, preset = "high")
-                return(basename(filePath))
+                names(out) <- colnames(d)
+                filePath <- file.path(
+                    dirPath,
+                    hash_md5("meta")
+                )
+                qsave(out, filePath, preset = "high")
+
+                return(list(metaFile = basename(filePath)))
 
             })
         })
@@ -57,11 +77,11 @@ mod_UpdateMetaData_server <- function(id,
             )
             message("Transferring metaData...")
             metaProcessed(FALSE)
-            promise_filePath <- file.path(
+            promise_dirPath <- file.path(
                 session$userData$tempDir,
-                hash_md5("metaData")
+                "meta"
             )
-            extract_meta$invoke(filePath = promise_filePath)
+            extract_meta$invoke(dirPath = promise_dirPath)
 
         }, priority = -200, ignoreNULL = TRUE) # lower priority than seurat2duckdb
 
