@@ -63,6 +63,8 @@ var options = {
     library: "scSpotlight",
   },
   externals: externals,
+  // added bs-icons
+  // https://stackoverflow.com/questions/69208829/bootstrap-icons-and-webpack-5-you-may-need-an-appropriate-loader-to-handle-thi
   module: {
     rules: loaders,
   },

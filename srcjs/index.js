@@ -8,6 +8,8 @@ import "shiny";
 //import "waiter";
 
 import * as spinner from "./modules/myWaiter.js";
+//import bootstrap-icons
+import 'bootstrap-icons/font/bootstrap-icons.css';
 
 import {
   resize_infoBox,
@@ -39,6 +41,8 @@ import {
 const mainPlotElId = "mainClusterPlot-clusterPlot";
 // featurePlot canvas id
 const featurePlotElId = "featurePlotCanvas";
+// vlnSelect widget id
+const vlnDropDownId = "vlnDropDown"
 // vlnPlot canvas id
 const vlnPlotElId = "VlnPlot";
 // dotPlot canvas id
@@ -101,6 +105,11 @@ document.addEventListener(
         infoBoxEl.querySelector(".bslib-full-screen-enter").style.display = "";
       }
     });
+
+    // add select widget to vlnplot box
+    const vlnDropDown = createVlnDropend(vlnDropDownId)
+    const vlnContainer = document.getElementById(vlnPlotElId).parentElement
+    vlnContainer.prepend(vlnDropDown)
 
     // Adjust widget elements on scroll
     document.getElementById(mainPlotElId).addEventListener("scroll", () => {
@@ -280,12 +289,13 @@ Shiny.addCustomMessageHandler("meta_ready", (msg) => {
       }
       console.log(out);
       reglElementData.updateCellMetaData(out);
-      const nonNumericCols = [];
-      Object.keys(out).forEach((key) => {
-        if (out[key].type !== "number") {
-          nonNumericCols.push(key);
-        }
-      });
+      const nonNumericCols = getNonNumericCols(reglElementData);
+      const numericCols = getNumericCols(reglElementData);
+
+      // update vlnplot dropdown list
+      emptyDropOptions(vlnDropDownId)
+      updateDropOptions(vlnDropDownId, numericCols)
+
       Shiny.setInputValue("metaCols", nonNumericCols);
       Shiny.setInputValue("metaProcessed", true, { priority: "event" });
       await shelter.purge();
@@ -671,7 +681,7 @@ const updateVlnPlot = (canvas) => {
     console.error("error: ", error);
   }
   // show spinner
-  spinner.showSpinner(infoBoxSpinner);
+  //spinner.showSpinner(infoBoxSpinner);
   const container = canvas.parentElement;
   const rect = container.getBoundingClientRect();
   const containerPadding = getPadding(container);
@@ -698,22 +708,12 @@ const updateVlnPlot = (canvas) => {
       );
       expr = f;
     } else {
-      let fixedMetaCol = [
-        "nCount_RNA",
-        "nFeature_RNA",
-        "percent.mt",
-        "percent.rp",
-      ];
 
-      const colNames = Object.keys(reglElementData.origData.cellMetaData);
+      const numericCols = getNumericCols(reglElementData);
 
-      for (let i = 0; i < fixedMetaCol.length; i++) {
-        if (colNames.includes(fixedMetaCol[i])) {
-          metaInput[fixedMetaCol[i]] = expandMeta(
-            reglElementData.origData.cellMetaData[fixedMetaCol[i]],
-          );
-        }
-      }
+      const selectedMetaCol = reglElementData.plotMetaData.selectedMeta || numericCols[0]
+      metaInput[selectedMetaCol] = expandMeta(reglElementData.origData.cellMetaData[selectedMetaCol])
+
     }
     const groupInput = {};
     groupInput[reglElementData.plotMetaData.group_by] = expandMeta(
@@ -880,3 +880,111 @@ const tableMutateCol = (table, colName, arrowVector) => {
   vec[colName] = arrowVector;
   return new Table(vec);
 };
+
+// function to create vlnplot dropend button
+const createVlnDropend = (Id) => {
+  const el = document.createElement('div')
+  el.id = Id
+  el.classList.add('btn-group', 'dropend')
+  el.style.width = '2rem';
+  el.style.position = "absolute";
+  el.style.zIndex = 1;
+  el.style.top = "0.2rem";
+  el.style.left = "0.2rem";
+  el.style.padding = "0";
+
+  el.style.display = "flex";
+  el.style.justifyContent = "center";
+  el.style.alignItems = "center";
+
+  const bt = document.createElement('button')
+  bt.classList.add('btn', 'dropdown-toggle', 'p-0')
+  bt.type = 'button'
+  bt.setAttribute('data-bs-toggle', 'dropdown');
+  bt.setAttribute('aria-expanded', 'false');
+  const icon = document.createElement('i')
+  icon.classList.add('bi', 'bi-columns')
+  icon.style.fontSize = "1.2rem";
+  bt.appendChild(icon)
+
+  const ul = document.createElement('ul')
+  ul.classList.add('dropdown-menu')
+
+  const listHeader = document.createElement('li')
+  const h = document.createElement('h6')
+  h.classList.add('dropdown-header')
+  h.innerHTML = "Select numeric meta data"
+  h.style.color = 'var(--bs-primary)'
+  listHeader.appendChild(h)
+  ul.appendChild(listHeader)
+
+  el.appendChild(bt)
+  el.appendChild(ul)
+
+  // add listener
+  el.addEventListener('click', function(e) {
+    if (e.target.classList.contains('dropdown-item')) {
+      e.preventDefault();
+      // when clicking, update plotMetaData with selected numeric meta
+      reglElementData.plotMetaData.selectedMeta = e.target.textContent
+      console.log("reglElementData.plotMetaData", reglElementData.plotMetaData)
+      const vlnPlotCanvas = document.getElementById(vlnPlotElId)
+      updateVlnPlot(vlnPlotCanvas)
+    }
+  })
+
+  return el
+}
+
+// function to update menu options of the dropend button
+const updateDropOptions = (btId, list = []) => {
+  const bt = document.getElementById(btId)
+  const menu = bt.querySelector(".dropdown-menu")
+
+  const listHeader = document.createElement('li')
+  const h = document.createElement('h6')
+  h.classList.add('dropdown-header')
+  h.innerHTML = "Select Numeric Meta Data"
+  h.style.color = 'var(--bs-primary)'
+  listHeader.appendChild(h)
+  menu.appendChild(listHeader)
+
+  list.forEach(e => {
+    const item = document.createElement('li')
+    const a = document.createElement('a')
+    a.classList.add('dropdown-item')
+    a.setAttribute('href', '#')
+    a.style.fontSize = '0.9rem';
+    a.innerHTML = e
+    item.appendChild(a)
+    menu.appendChild(item)
+  })
+}
+
+const emptyDropOptions = (btId) =>{
+  const bt = document.getElementById(btId)
+  const menu = bt.querySelector(".dropdown-menu")
+  reglScatterCanvas.removeAllChildNodes(menu)
+}
+
+// extract numeric meta columns
+const getNumericCols = (reglElementData) => {
+  const cols = []
+  Object.keys(reglElementData.origData.cellMetaData).forEach((key) => {
+    if (reglElementData.origData.cellMetaData[key].type === "number" && key !== "cells") {
+      cols.push(key);
+    }
+  });
+  return cols
+}
+
+// extrac nonNumeric meta columns
+const getNonNumericCols = (reglElementData) => {
+  const cols = []
+  Object.keys(reglElementData.origData.cellMetaData).forEach((key) => {
+    if (reglElementData.origData.cellMetaData[key].type === "category" && key !== "cells") {
+      cols.push(key);
+    }
+  });
+  return cols
+}
