@@ -39,6 +39,8 @@ import {
 
 // id of the mainClusterPlot parent div
 const mainPlotElId = "mainClusterPlot-clusterPlot";
+// id of the infobox panel
+const btmBoxListId = "bottom_box";
 // featurePlot canvas id
 const featurePlotElId = "featurePlotCanvas";
 // vlnSelect widget id
@@ -47,6 +49,8 @@ const vlnDropDownId = "vlnDropDown"
 const vlnPlotElId = "VlnPlot";
 // dotPlot canvas id
 const dotPlotElId = "DotPlot";
+
+
 
 // R waiter package spinners
 // keep the style exactly the same with R function
@@ -64,6 +68,9 @@ var infoBoxSpinner = {
   color: "#ffffff",
   image: null,
 };
+
+
+var reglElementData = new reglScatterCanvas("reglScatter");
 
 // init webR instance for reading reduction and expr data
 let webR;
@@ -142,11 +149,13 @@ document.addEventListener(
     const resizeObserver = new ResizeObserver(
       debounce((entries) => {
         for (const entry of entries) {
-          if (shelter) {
-            // ensure shelter was initiated
+          if (shelter && Object.keys(reglElementData.origData.cellMetaData).length > 0) {
+            // ensure shelter was initiated and reglElementData was populated
             if (entry.target === vlnPlotCanvas && panelSelected(entry.target)) {
-              console.log("resized vlnplot...");
-              updateVlnPlot(vlnPlotCanvas);
+              if(!document.getElementById(vlnDropDownId).querySelector('button').classList.contains('show')){
+                console.log("resized vlnplot...");
+                updateVlnPlot(vlnPlotCanvas);
+              }
             }
             if (entry.target === dotPlotCanvas && panelSelected(entry.target)) {
               console.log("resized dotplot...");
@@ -171,33 +180,6 @@ document.addEventListener(
   },
   false,
 );
-
-var reglElementData = new reglScatterCanvas("reglScatter");
-
-//const waiter = window.waiter;
-
-const extractNonNumericCol = (reglElementData) => {
-  // select non-numeric columns, and transfer to server side
-  // input is an arrow table
-  const nonNumericCols = [];
-  const colNames = reglElementData.origData.cellMetaData.schema.fields.map(
-    (field) => field.name,
-  );
-  for (let k of colNames) {
-    let kArray = reglElementData.origData.cellMetaData.getChild(k).toArray();
-    if (
-      k != "cells" &&
-      !kArray.every(
-        // retain string and integer number
-        // Modulo method is faster then .isInteger()
-        (item) => typeof item === "number",
-      )
-    ) {
-      nonNumericCols.push(k);
-    }
-  }
-  return nonNumericCols;
-};
 
 Shiny.addCustomMessageHandler("createSparkLine", (feature) => {
   const sparkLineEl = createSparkLine(feature);
@@ -674,6 +656,9 @@ function getPadding(element) {
 }
 
 const updateVlnPlot = (canvas) => {
+  // ensure the infobox panel selected vlnplot
+  // id was defined in R's nav_panel() title argument
+  //if(infoPanelActive(btmBoxListId) !== "VlnPlot") return false
   // Firstly check the spinners
   try {
     spinner.hideSpinner(infoBoxSpinner);
@@ -758,6 +743,9 @@ const updateVlnPlot = (canvas) => {
 };
 
 const updateDotPlot = (canvas) => {
+  // ensure the infobox panel selected vlnplot
+  // id was defined in R's nav_panel() title argument
+  //if(infoPanelActive(btmBoxListId) !== "DotPlot") return false
   // Firstly check the spinners
   try {
     spinner.hideSpinner(infoBoxSpinner);
@@ -988,3 +976,10 @@ const getNonNumericCols = (reglElementData) => {
   });
   return cols
 }
+
+//const infoPanelActive = (btmBoxListId) {
+//  const el = document.getElementById(btmBoxListId)
+//  activeItem = [...el.querySelectorAll('li.item')].filter(e => e.classList.contains('active'))[0]
+//    .dataset.value
+//  return activeItem
+//}
