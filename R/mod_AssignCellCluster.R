@@ -103,11 +103,12 @@ mod_AssignCellCluster_server <- function(id,
 
         }else if(split.by() == "None" && group.by() != "None"){
 
-            updateSelectInput(
+            updateSelectizeInput(
                 inputId = "chosenGroup",
                 label = "Identities from group.by",
                 choices = metaColLevels()[["groupBy"]],
-                selected = NULL
+                selected = NULL,
+                server = TRUE
             )
 
             shinyjs::show("selectCellFromCat")
@@ -116,17 +117,19 @@ mod_AssignCellCluster_server <- function(id,
 
         }else if(split.by() != "None" && group.by() != "None"){
 
-            updateSelectInput(
+            updateSelectizeInput(
                 inputId = "chosenGroup",
                 label = "Identities from group.by",
                 choices = metaColLevels()[["groupBy"]],
-                selected = NULL
+                selected = NULL,
+                server = TRUE
             )
-            updateSelectInput(
+            updateSelectizeInput(
                 inputId = "chosenSplit",
                 label = "Identities from split.by",
                 choices = metaColLevels()[["splitBy"]],
-                selected = NULL
+                selected = NULL,
+                server = TRUE
             )
 
             shinyjs::show("selectCellFromCat")

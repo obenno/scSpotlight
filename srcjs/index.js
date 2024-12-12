@@ -5,11 +5,16 @@ import "shiny";
 // https://github.com/JohnCoene/waiter/blob/776f9f3ccd27aa3322d6c6d37c47b3d7b1f393e6/webpack.common.js#L64
 // https://webpack.js.org/configuration/output/#outputlibrary
 // exporting not tested, remove import temporarily
-//import "waiter";
+// import "waiter";
 
-import * as spinner from "./modules/myWaiter.js";
+import {
+  initFullScreenSpinner,
+  removeFullScreenSpinner,
+  addOverlaySpinner,
+} from "./modules/spinner.js";
+
 //import bootstrap-icons
-import 'bootstrap-icons/font/bootstrap-icons.css';
+import "bootstrap-icons/font/bootstrap-icons.css";
 
 import {
   resize_infoBox,
@@ -21,6 +26,7 @@ import {
   expandMeta,
   sortStringArray,
 } from "./modules/reglScatter.js";
+
 import {
   initShelter,
   featurePlot,
@@ -29,10 +35,13 @@ import {
   initWebRInstance,
   isIntegerArray,
 } from "./modules/webr.js";
+
 import {
   createSparkLine,
   updateSparkLine,
 } from "./modules/featureSparkLine.js";
+
+//import './modules/virtualSelect.js'
 
 // keep global variables as small as possible
 // query elements inside functions when necessary
@@ -44,44 +53,26 @@ const btmBoxListId = "bottom_box";
 // featurePlot canvas id
 const featurePlotElId = "featurePlotCanvas";
 // vlnSelect widget id
-const vlnDropDownId = "vlnDropDown"
+const vlnDropDownId = "vlnDropDown";
 // vlnPlot canvas id
 const vlnPlotElId = "VlnPlot";
 // dotPlot canvas id
 const dotPlotElId = "DotPlot";
 
-
-
 // R waiter package spinners
 // keep the style exactly the same with R function
-var clusterPlotSpinner = {
-  id: mainPlotElId,
-  html: '<div class="loaderz-05" style = "color:var(--bs-primary);"></div>',
-  color: "#ffffff",
-  image: null,
-};
 
 var infoBoxContentId = "infoBox_content";
-var infoBoxSpinner = {
-  id: infoBoxContentId,
-  html: '<div class="loaderz-05" style = "color:var(--bs-primary);"></div>',
-  color: "#ffffff",
-  image: null,
-};
-
 
 var reglElementData = new reglScatterCanvas("reglScatter");
 
 // init webR instance for reading reduction and expr data
 let webR;
 let shelter;
-//let metaDataWebR;
-//let plotWebR;
 
-(async () => {
-  webR = await initWebRInstance();
-  shelter = await initShelter(webR);
-})();
+// two global variables to store spinners
+let infoBoxSpinner
+let mainPlotSpinner
 
 // init normal shelter for webR to gain better control of the r objects
 //const shelterInstance = await initShelter(plotWebR);
@@ -90,6 +81,22 @@ let shelter;
 document.addEventListener(
   "DOMContentLoaded",
   function () {
+
+    // Add full screen spinner
+    (async () => {
+      const fullScreenSpinner = initFullScreenSpinner("App Loading...");
+      document.body.prepend(fullScreenSpinner);
+      webR = await initWebRInstance();
+      shelter = await initShelter(webR);
+      removeFullScreenSpinner();
+    })();
+
+
+    // Add info box spinner
+    infoBoxSpinner = addOverlaySpinner(infoBoxContentId)
+    // Add main plot spinner
+    mainPlotSpinner = addOverlaySpinner(mainPlotElId)
+
     // Get infoBoxId
     const infoBoxEl =
       document.getElementById("bottom_box").parentElement.parentElement;
@@ -114,9 +121,9 @@ document.addEventListener(
     });
 
     // add select widget to vlnplot box
-    const vlnDropDown = createVlnDropend(vlnDropDownId)
-    const vlnContainer = document.getElementById(vlnPlotElId).parentElement
-    vlnContainer.prepend(vlnDropDown)
+    const vlnDropDown = createVlnDropend(vlnDropDownId);
+    const vlnContainer = document.getElementById(vlnPlotElId).parentElement;
+    vlnContainer.prepend(vlnDropDown);
 
     // Adjust widget elements on scroll
     document.getElementById(mainPlotElId).addEventListener("scroll", () => {
@@ -149,10 +156,18 @@ document.addEventListener(
     const resizeObserver = new ResizeObserver(
       debounce((entries) => {
         for (const entry of entries) {
-          if (shelter && Object.keys(reglElementData.origData.cellMetaData).length > 0) {
+          if (
+            shelter &&
+            Object.keys(reglElementData.origData.cellMetaData).length > 0
+          ) {  
             // ensure shelter was initiated and reglElementData was populated
             if (entry.target === vlnPlotCanvas && panelSelected(entry.target)) {
-              if(!document.getElementById(vlnDropDownId).querySelector('button').classList.contains('show')){
+              if (
+                !document
+                  .getElementById(vlnDropDownId)
+                  .querySelector("button")
+                  .classList.contains("show")
+              ) {
                 console.log("resized vlnplot...");
                 updateVlnPlot(vlnPlotCanvas);
               }
@@ -204,6 +219,11 @@ Shiny.addCustomMessageHandler("reduction_ready", (msg) => {
     const xFileURL = window.location.origin + "/data/reduction/" + msg.xFile;
     const yFileURL = window.location.origin + "/data/reduction/" + msg.yFile;
     (async () => {
+      // show spinner
+      if(mainPlotSpinner.style.display === "none"){
+        mainPlotSpinner.style.display = "flex"
+      }
+
       const fn = await shelter.evalR(
         "function (url) { qs::qread_url(url, use_alt_rep=TRUE) }",
       );
@@ -216,6 +236,8 @@ Shiny.addCustomMessageHandler("reduction_ready", (msg) => {
       await shelter.purge();
       Shiny.setInputValue("reductionProcessed", true, { priority: "event" });
       console.log("reduction", df);
+
+      // do not hide the spinner, since it will trigger the reglScatter_plot immediately
     })();
   } catch (error) {
     console.error("There was a problem:", error);
@@ -227,6 +249,10 @@ Shiny.addCustomMessageHandler("meta_ready", (msg) => {
     const metaURL = window.location.origin + "/data/meta/" + msg.metaFile;
     //let meta = {}
     (async () => {
+      // show main plot spinner
+      if(mainPlotSpinner.style.display === "none"){
+        mainPlotSpinner.style.display = "flex"
+      }
       const fn = await shelter.evalR(
         "function (url) { qs::qread_url(url, use_alt_rep=TRUE) }",
       );
@@ -275,12 +301,14 @@ Shiny.addCustomMessageHandler("meta_ready", (msg) => {
       const numericCols = getNumericCols(reglElementData);
 
       // update vlnplot dropdown list
-      emptyDropOptions(vlnDropDownId)
-      updateDropOptions(vlnDropDownId, numericCols)
+      emptyDropOptions(vlnDropDownId);
+      updateDropOptions(vlnDropDownId, numericCols);
 
       Shiny.setInputValue("metaCols", nonNumericCols);
       Shiny.setInputValue("metaProcessed", true, { priority: "event" });
       await shelter.purge();
+
+      // do not hide the spinner, since it will trigger the reglScatter_plot immediately
     })();
   } catch (error) {
     console.error("There was a problem:", error);
@@ -467,13 +495,12 @@ Shiny.addCustomMessageHandler("addNewMeta", (msg) => {
 
 Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
   // first remove spinner if exists
-  try {
-    spinner.hideSpinner(clusterPlotSpinner);
-  } catch (error) {}
-  // Add spinners for the plot
-  // waiter is from R waiter package
-  spinner.showSpinner(clusterPlotSpinner);
-
+  if(mainPlotSpinner.style.display === "none"){
+  // show spinners for the plot
+    console.log("mainPlotSpinner: ", mainPlotSpinner.style.display)
+    mainPlotSpinner.style.display = "flex";
+    console.log("mainPlotSpinner: ", mainPlotSpinner.style.display)
+  }
   // do necessary cleanups
   // ensure the featurePlot canvas is hidden
   const parentDiv = document.getElementById(mainPlotElId);
@@ -573,8 +600,11 @@ Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
   }
 
   // hide spinner
-  spinner.hideSpinner(clusterPlotSpinner);
-
+  if(mainPlotSpinner.style.display !== "none"){
+    console.log("mainPlotSpinner: ", mainPlotSpinner.style.display)
+    mainPlotSpinner.style.display = "none"
+    console.log("mainPlotSpinner: ", mainPlotSpinner.style.display)
+  }
   //featurePlot().then({});
   const vlnPlotCanvas = document.getElementById(vlnPlotElId);
   const dotPlotCanvas = document.getElementById(dotPlotElId);
@@ -586,13 +616,9 @@ Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
 
 const updateFeaturePlot = (canvas) => {
   // Firstly check the spinners
-  try {
-    spinner.hideSpinner(clusterPlotSpinner);
-  } catch (error) {
-    console.error("error: ", error);
+  if(mainPlotSpinner.style.display === "none"){
+    mainPlotSpinner.style.display = "flex"
   }
-  // show spinner
-  spinner.showSpinner(clusterPlotSpinner);
 
   const container = canvas.parentElement;
   const rect = container.getBoundingClientRect();
@@ -632,7 +658,9 @@ const updateFeaturePlot = (canvas) => {
       let img = res.images[0];
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       // hide spinner
-      spinner.hideSpinner(clusterPlotSpinner);
+      if(mainPlotSpinner.style.display !== "none"){
+        mainPlotSpinner.style.display = "none"
+      }
       shelter.purge();
     });
   }
@@ -661,12 +689,13 @@ const updateVlnPlot = (canvas) => {
   //if(infoPanelActive(btmBoxListId) !== "VlnPlot") return false
   // Firstly check the spinners
   try {
-    spinner.hideSpinner(infoBoxSpinner);
+    infoBoxSpinner.style.display = "none"
   } catch (error) {
     console.error("error: ", error);
   }
   // show spinner
-  //spinner.showSpinner(infoBoxSpinner);
+  infoBoxSpinner.style.display = "flex";
+
   const container = canvas.parentElement;
   const rect = container.getBoundingClientRect();
   const containerPadding = getPadding(container);
@@ -693,12 +722,13 @@ const updateVlnPlot = (canvas) => {
       );
       expr = f;
     } else {
-
       const numericCols = getNumericCols(reglElementData);
 
-      const selectedMetaCol = reglElementData.plotMetaData.selectedMeta || numericCols[0]
-      metaInput[selectedMetaCol] = expandMeta(reglElementData.origData.cellMetaData[selectedMetaCol])
-
+      const selectedMetaCol =
+        reglElementData.plotMetaData.selectedMeta || numericCols[0];
+      metaInput[selectedMetaCol] = expandMeta(
+        reglElementData.origData.cellMetaData[selectedMetaCol],
+      );
     }
     const groupInput = {};
     groupInput[reglElementData.plotMetaData.group_by] = expandMeta(
@@ -736,7 +766,7 @@ const updateVlnPlot = (canvas) => {
       let img = res.images[0];
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       // hide spinner
-      spinner.hideSpinner(infoBoxSpinner);
+      infoBoxSpinner.style.display = "none"
       shelter.purge();
     });
   }
@@ -748,12 +778,12 @@ const updateDotPlot = (canvas) => {
   //if(infoPanelActive(btmBoxListId) !== "DotPlot") return false
   // Firstly check the spinners
   try {
-    spinner.hideSpinner(infoBoxSpinner);
+    infoBoxSpinner.style.display = "none"
   } catch (error) {
     console.error("error: ", error);
   }
   // show spinner
-  spinner.showSpinner(infoBoxSpinner);
+  infoBoxSpinner.style.display = "flex"
   const container = canvas.parentElement;
   const rect = container.getBoundingClientRect();
   const containerPadding = getPadding(container);
@@ -771,11 +801,11 @@ const updateDotPlot = (canvas) => {
     const expressionInput = {};
     // dotPlot only be rendered when there are more than one selected genes
     if (reglElementData.plotMetaData.selectedFeatures.length > 1) {
-      for (let f of reglElementData.plotMetaData.selectedFeatures) {
-        expressionInput[f] = Array.from(
-          reglElementData.origData.expressionData[f],
-        );
-      }
+        for(let f of reglElementData.plotMetaData.selectedFeatures) {
+          expressionInput[f] = Array.from(
+            reglElementData.origData.expressionData[f],
+          );
+        }
 
       const groupInput = {};
       groupInput[reglElementData.plotMetaData.group_by] = expandMeta(
@@ -803,7 +833,7 @@ const updateDotPlot = (canvas) => {
         let img = res.images[0];
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         // hide spinner
-        spinner.hideSpinner(infoBoxSpinner);
+        infoBoxSpinner.style.display = "none"
         // purge R objects
         shelter.purge();
       });
@@ -824,7 +854,7 @@ const updateDotPlot = (canvas) => {
       // Draw filled text
       ctx.fillText("Please select at least two features", 10, 10); // Text, x, y
       // hide spinner
-      spinner.hideSpinner(infoBoxSpinner);
+      infoBoxSpinner.style.display = "none"
     }
   }
 };
@@ -871,10 +901,10 @@ const tableMutateCol = (table, colName, arrowVector) => {
 
 // function to create vlnplot dropend button
 const createVlnDropend = (Id) => {
-  const el = document.createElement('div')
-  el.id = Id
-  el.classList.add('btn-group', 'dropend')
-  el.style.width = '2rem';
+  const el = document.createElement("div");
+  el.id = Id;
+  el.classList.add("btn-group", "dropend");
+  el.style.width = "2rem";
   el.style.position = "absolute";
   el.style.zIndex = 1;
   el.style.top = "0.2rem";
@@ -885,101 +915,100 @@ const createVlnDropend = (Id) => {
   el.style.justifyContent = "center";
   el.style.alignItems = "center";
 
-  const bt = document.createElement('button')
-  bt.classList.add('btn', 'dropdown-toggle', 'p-0')
-  bt.type = 'button'
-  bt.setAttribute('data-bs-toggle', 'dropdown');
-  bt.setAttribute('aria-expanded', 'false');
-  const icon = document.createElement('i')
-  icon.classList.add('bi', 'bi-columns')
+  const bt = document.createElement("button");
+  bt.classList.add("btn", "dropdown-toggle", "p-0");
+  bt.type = "button";
+  bt.setAttribute("data-bs-toggle", "dropdown");
+  bt.setAttribute("aria-expanded", "false");
+  const icon = document.createElement("i");
+  icon.classList.add("bi", "bi-columns");
   icon.style.fontSize = "1.2rem";
-  bt.appendChild(icon)
+  bt.appendChild(icon);
 
-  const ul = document.createElement('ul')
-  ul.classList.add('dropdown-menu')
+  const ul = document.createElement("ul");
+  ul.classList.add("dropdown-menu");
 
-  const listHeader = document.createElement('li')
-  const h = document.createElement('h6')
-  h.classList.add('dropdown-header')
-  h.innerHTML = "Select numeric meta data"
-  h.style.color = 'var(--bs-primary)'
-  listHeader.appendChild(h)
-  ul.appendChild(listHeader)
+  const listHeader = document.createElement("li");
+  const h = document.createElement("h6");
+  h.classList.add("dropdown-header");
+  h.innerHTML = "Select numeric meta da ta";
+  h.style.color = "var(--bs-primary)";
+  listHeader.appendChild(h);
+  ul.appendChild(listHeader);
 
-  el.appendChild(bt)
-  el.appendChild(ul)
+  el.appendChild(bt);
+  el.appendChild(ul);
 
   // add listener
-  el.addEventListener('click', function(e) {
-    if (e.target.classList.contains('dropdown-item')) {
+  el.addEventListener("click", function (e) {
+    if (e.target.classList.contains("dropdown-item")) {
       e.preventDefault();
       // when clicking, update plotMetaData with selected numeric meta
-      reglElementData.plotMetaData.selectedMeta = e.target.textContent
-      console.log("reglElementData.plotMetaData", reglElementData.plotMetaData)
-      const vlnPlotCanvas = document.getElementById(vlnPlotElId)
-      updateVlnPlot(vlnPlotCanvas)
+      reglElementData.plotMetaData.selectedMeta = e.target.textContent;
+      console.log("reglElementData.plotMetaData", reglElementData.plotMetaData);
+      const vlnPlotCanvas = document.getElementById(vlnPlotElId);
+      updateVlnPlot(vlnPlotCanvas);
     }
-  })
+  });
 
-  return el
-}
+  return el;
+};
 
 // function to update menu options of the dropend button
 const updateDropOptions = (btId, list = []) => {
-  const bt = document.getElementById(btId)
-  const menu = bt.querySelector(".dropdown-menu")
+  const bt = document.getElementById(btId);
+  const menu = bt.querySelector(".dropdown-menu");
 
-  const listHeader = document.createElement('li')
-  const h = document.createElement('h6')
-  h.classList.add('dropdown-header')
-  h.innerHTML = "Select Numeric Meta Data"
-  h.style.color = 'var(--bs-primary)'
-  listHeader.appendChild(h)
-  menu.appendChild(listHeader)
+  const listHeader = document.createElement("li");
+  const h = document.createElement("h6");
+  h.classList.add("dropdown-header");
+  h.innerHTML = "Select Numeric Meta Data";
+  h.style.color = "var(--bs-primary)";
+  listHeader.appendChild(h);
+  menu.appendChild(listHeader);
 
-  list.forEach(e => {
-    const item = document.createElement('li')
-    const a = document.createElement('a')
-    a.classList.add('dropdown-item')
-    a.setAttribute('href', '#')
-    a.style.fontSize = '0.9rem';
-    a.innerHTML = e
-    item.appendChild(a)
-    menu.appendChild(item)
-  })
-}
+  list.forEach((e) => {
+    const item = document.createElement("li");
+    const a = document.createElement("a");
+    a.classList.add("dropdown-item");
+    a.setAttribute("href", "#");
+    a.style.fontSize = "0.9rem";
+    a.innerHTML = e;
+    item.appendChild(a);
+    menu.appendChild(item);
+  });
+};
 
-const emptyDropOptions = (btId) =>{
-  const bt = document.getElementById(btId)
-  const menu = bt.querySelector(".dropdown-menu")
-  reglScatterCanvas.removeAllChildNodes(menu)
-}
+const emptyDropOptions = (btId) => {
+  const bt = document.getElementById(btId);
+  const menu = bt.querySelector(".dropdown-menu");
+  reglScatterCanvas.removeAllChildNodes(menu);
+};
 
 // extract numeric meta columns
 const getNumericCols = (reglElementData) => {
-  const cols = []
+  const cols = [];
   Object.keys(reglElementData.origData.cellMetaData).forEach((key) => {
-    if (reglElementData.origData.cellMetaData[key].type === "number" && key !== "cells") {
+    if (
+      reglElementData.origData.cellMetaData[key].type === "number" &&
+      key !== "cells"
+    ) {
       cols.push(key);
     }
   });
-  return cols
-}
+  return cols;
+};
 
 // extrac nonNumeric meta columns
 const getNonNumericCols = (reglElementData) => {
-  const cols = []
+  const cols = [];
   Object.keys(reglElementData.origData.cellMetaData).forEach((key) => {
-    if (reglElementData.origData.cellMetaData[key].type === "category" && key !== "cells") {
+    if (
+      reglElementData.origData.cellMetaData[key].type === "category" &&
+      key !== "cells"
+    ) {
       cols.push(key);
     }
   });
-  return cols
-}
-
-//const infoPanelActive = (btmBoxListId) {
-//  const el = document.getElementById(btmBoxListId)
-//  activeItem = [...el.querySelectorAll('li.item')].filter(e => e.classList.contains('active'))[0]
-//    .dataset.value
-//  return activeItem
-//}
+  return cols;
+};
