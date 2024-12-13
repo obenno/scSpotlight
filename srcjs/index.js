@@ -67,12 +67,14 @@ var infoBoxContentId = "infoBox_content";
 var reglElementData = new reglScatterCanvas("reglScatter");
 
 // init webR instance for reading reduction and expr data
+// It seems put two async webr jobs in the same instance might cause data processing conflicts
+// We found this when reading reduction and meta data with just one instance
 let webR;
 let shelter;
 
 // two global variables to store spinners
-let infoBoxSpinner
-let mainPlotSpinner
+let infoBoxSpinner;
+let mainPlotSpinner;
 
 // init normal shelter for webR to gain better control of the r objects
 //const shelterInstance = await initShelter(plotWebR);
@@ -81,7 +83,6 @@ let mainPlotSpinner
 document.addEventListener(
   "DOMContentLoaded",
   function () {
-
     // Add full screen spinner
     (async () => {
       const fullScreenSpinner = initFullScreenSpinner("App Loading...");
@@ -91,11 +92,10 @@ document.addEventListener(
       removeFullScreenSpinner();
     })();
 
-
     // Add info box spinner
-    infoBoxSpinner = addOverlaySpinner(infoBoxContentId)
+    infoBoxSpinner = addOverlaySpinner(infoBoxContentId);
     // Add main plot spinner
-    mainPlotSpinner = addOverlaySpinner(mainPlotElId)
+    mainPlotSpinner = addOverlaySpinner(mainPlotElId);
 
     // Get infoBoxId
     const infoBoxEl =
@@ -158,8 +158,9 @@ document.addEventListener(
         for (const entry of entries) {
           if (
             shelter &&
+            //shelter2 &&
             Object.keys(reglElementData.origData.cellMetaData).length > 0
-          ) {  
+          ) {
             // ensure shelter was initiated and reglElementData was populated
             if (entry.target === vlnPlotCanvas && panelSelected(entry.target)) {
               if (
@@ -220,8 +221,8 @@ Shiny.addCustomMessageHandler("reduction_ready", (msg) => {
     const yFileURL = window.location.origin + "/data/reduction/" + msg.yFile;
     (async () => {
       // show spinner
-      if(mainPlotSpinner.style.display === "none"){
-        mainPlotSpinner.style.display = "flex"
+      if (mainPlotSpinner.style.display === "none") {
+        mainPlotSpinner.style.display = "flex";
       }
 
       const fn = await shelter.evalR(
@@ -250,31 +251,31 @@ Shiny.addCustomMessageHandler("meta_ready", (msg) => {
     //let meta = {}
     (async () => {
       // show main plot spinner
-      if(mainPlotSpinner.style.display === "none"){
-        mainPlotSpinner.style.display = "flex"
+      if (mainPlotSpinner.style.display === "none") {
+        mainPlotSpinner.style.display = "flex";
       }
       const fn = await shelter.evalR(
         "function (url) { qs::qread_url(url, use_alt_rep=TRUE) }",
       );
       const res = await fn.exec(metaURL);
-      let idx = 0;
       const out = {};
       const loadedData = await res.toObject({ depth: 1 });
-      const colNames = Object.keys(loadedData);
+      console.log(loadedData);
       //const out = await res.toObject();
-      for await (const i of res) {
-        const e = await i.toObject({ depth: 1 });
-
+      for (const key in loadedData) {
+        console.log("reading:", key);
+        const e = await loadedData[key].toObject({ depth: 1 });
+        console.log("reading succeed", e);
         const dataType = await e.type.toString();
         if (dataType === "number") {
           const dataArray = await e.value.toArray();
           if (isIntegerArray(dataArray)) {
-            out[colNames[idx]] = {
+            out[key] = {
               type: dataType,
               value: Int32Array.from(dataArray),
             };
           } else {
-            out[colNames[idx]] = {
+            out[key] = {
               type: dataType,
               value: Float32Array.from(dataArray),
             };
@@ -282,6 +283,7 @@ Shiny.addCustomMessageHandler("meta_ready", (msg) => {
         } else if (dataType === "category") {
           const dataObject = {};
           const catData = await e.value.toObject({ depth: 1 });
+
           const catNames = Object.keys(catData);
           for (const cat of catNames) {
             dataObject[cat] = await catData[cat].toTypedArray();
@@ -289,13 +291,12 @@ Shiny.addCustomMessageHandler("meta_ready", (msg) => {
             // here convert it to javascript convention
             dataObject[cat] = dataObject[cat].map((e) => e - 1);
           }
-          out[colNames[idx]] = { type: dataType, value: dataObject };
+          out[key] = { type: dataType, value: dataObject };
         } else {
-          out[colNames[idx]] = { type: dataType, value: [] };
+          out[key] = { type: dataType, value: [] };
         }
-        idx++;
       }
-      console.log(out);
+      console.log("metaData", out);
       reglElementData.updateCellMetaData(out);
       const nonNumericCols = getNonNumericCols(reglElementData);
       const numericCols = getNumericCols(reglElementData);
@@ -325,7 +326,7 @@ Shiny.addCustomMessageHandler("expr_ready", (msg) => {
       const expr = {};
       const res = await fn.exec(exprURL);
       expr[msg.geneName] = new Float32Array(await res.toTypedArray());
-
+      await shelter.purge();
       reglElementData.updateExpressionData(expr);
       console.log("exprData", reglElementData.origData.expressionData);
       const feature = Object.keys(expr)[0];
@@ -495,11 +496,11 @@ Shiny.addCustomMessageHandler("addNewMeta", (msg) => {
 
 Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
   // first remove spinner if exists
-  if(mainPlotSpinner.style.display === "none"){
-  // show spinners for the plot
-    console.log("mainPlotSpinner: ", mainPlotSpinner.style.display)
+  if (mainPlotSpinner.style.display === "none") {
+    // show spinners for the plot
+    console.log("mainPlotSpinner: ", mainPlotSpinner.style.display);
     mainPlotSpinner.style.display = "flex";
-    console.log("mainPlotSpinner: ", mainPlotSpinner.style.display)
+    console.log("mainPlotSpinner: ", mainPlotSpinner.style.display);
   }
   // do necessary cleanups
   // ensure the featurePlot canvas is hidden
@@ -600,10 +601,10 @@ Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
   }
 
   // hide spinner
-  if(mainPlotSpinner.style.display !== "none"){
-    console.log("mainPlotSpinner: ", mainPlotSpinner.style.display)
-    mainPlotSpinner.style.display = "none"
-    console.log("mainPlotSpinner: ", mainPlotSpinner.style.display)
+  if (mainPlotSpinner.style.display !== "none") {
+    console.log("mainPlotSpinner: ", mainPlotSpinner.style.display);
+    mainPlotSpinner.style.display = "none";
+    console.log("mainPlotSpinner: ", mainPlotSpinner.style.display);
   }
   //featurePlot().then({});
   const vlnPlotCanvas = document.getElementById(vlnPlotElId);
@@ -616,8 +617,8 @@ Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
 
 const updateFeaturePlot = (canvas) => {
   // Firstly check the spinners
-  if(mainPlotSpinner.style.display === "none"){
-    mainPlotSpinner.style.display = "flex"
+  if (mainPlotSpinner.style.display === "none") {
+    mainPlotSpinner.style.display = "flex";
   }
 
   const container = canvas.parentElement;
@@ -658,8 +659,8 @@ const updateFeaturePlot = (canvas) => {
       let img = res.images[0];
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       // hide spinner
-      if(mainPlotSpinner.style.display !== "none"){
-        mainPlotSpinner.style.display = "none"
+      if (mainPlotSpinner.style.display !== "none") {
+        mainPlotSpinner.style.display = "none";
       }
       shelter.purge();
     });
@@ -689,7 +690,7 @@ const updateVlnPlot = (canvas) => {
   //if(infoPanelActive(btmBoxListId) !== "VlnPlot") return false
   // Firstly check the spinners
   try {
-    infoBoxSpinner.style.display = "none"
+    infoBoxSpinner.style.display = "none";
   } catch (error) {
     console.error("error: ", error);
   }
@@ -766,7 +767,7 @@ const updateVlnPlot = (canvas) => {
       let img = res.images[0];
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       // hide spinner
-      infoBoxSpinner.style.display = "none"
+      infoBoxSpinner.style.display = "none";
       shelter.purge();
     });
   }
@@ -778,12 +779,12 @@ const updateDotPlot = (canvas) => {
   //if(infoPanelActive(btmBoxListId) !== "DotPlot") return false
   // Firstly check the spinners
   try {
-    infoBoxSpinner.style.display = "none"
+    infoBoxSpinner.style.display = "none";
   } catch (error) {
     console.error("error: ", error);
   }
   // show spinner
-  infoBoxSpinner.style.display = "flex"
+  infoBoxSpinner.style.display = "flex";
   const container = canvas.parentElement;
   const rect = container.getBoundingClientRect();
   const containerPadding = getPadding(container);
@@ -801,11 +802,11 @@ const updateDotPlot = (canvas) => {
     const expressionInput = {};
     // dotPlot only be rendered when there are more than one selected genes
     if (reglElementData.plotMetaData.selectedFeatures.length > 1) {
-        for(let f of reglElementData.plotMetaData.selectedFeatures) {
-          expressionInput[f] = Array.from(
-            reglElementData.origData.expressionData[f],
-          );
-        }
+      for (let f of reglElementData.plotMetaData.selectedFeatures) {
+        expressionInput[f] = Array.from(
+          reglElementData.origData.expressionData[f],
+        );
+      }
 
       const groupInput = {};
       groupInput[reglElementData.plotMetaData.group_by] = expandMeta(
@@ -833,7 +834,7 @@ const updateDotPlot = (canvas) => {
         let img = res.images[0];
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         // hide spinner
-        infoBoxSpinner.style.display = "none"
+        infoBoxSpinner.style.display = "none";
         // purge R objects
         shelter.purge();
       });
@@ -854,7 +855,7 @@ const updateDotPlot = (canvas) => {
       // Draw filled text
       ctx.fillText("Please select at least two features", 10, 10); // Text, x, y
       // hide spinner
-      infoBoxSpinner.style.display = "none"
+      infoBoxSpinner.style.display = "none";
     }
   }
 };

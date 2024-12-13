@@ -36,6 +36,10 @@ mod_UpdateMetaData_server <- function(id,
                 for(i in seq_along(colnames(d))){
                     data <- d %>% dplyr::pull(i)
                     if(is.numeric(data)){
+                        data[is.na(data)] <- 0
+                        data[is.nan(data)] <- 0
+                        data[is.null(data)] <- 0
+                        data[is.infinite(data)] <- 0
                         k <- list(
                             type = "number",
                             value = data
