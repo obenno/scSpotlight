@@ -461,12 +461,18 @@ export class ScatterModel {
       return new Float32Array(values.length);
     }
     // If all values are equal (e.g., all zero), map to low end of color range.
-    if (maxValue <= 0 || minValue === maxValue) {
+    if (minValue === maxValue) {
       return new Float32Array(values.length);
     }
-    // Expression is non-negative in this app context; keep zero anchored to
-    // the low end of the color scale for consistent interpretation.
+
+    // Keep zero-anchored scaling for non-negative expression values, but
+    // preserve dynamic range for mixed-sign vectors (e.g., module scores).
+    if (minValue < 0) {
+      const zScale = d3.scaleLinear([minValue, maxValue], [0, 1]).nice();
+      return Float32Array.from(values, (e) => zScale(e));
+    }
+
     const zScale = d3.scaleLinear([0, maxValue], [0, 1]).nice();
-    return Float32Array.from(values, (e) => zScale(Math.max(0, e)));
+    return Float32Array.from(values, (e) => zScale(e));
   }
 }

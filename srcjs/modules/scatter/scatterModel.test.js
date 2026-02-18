@@ -253,4 +253,15 @@ describe("ScatterModel panel data assembly", () => {
     expect(scaled[1]).toBeCloseTo(0.5, 3);
     expect(scaled[2]).toBeCloseTo(1, 3);
   });
+
+  it("preserves mixed-sign expression variation", () => {
+    const model = buildModel();
+    const scaled = model.scaleDataZ(new Float32Array([-2, -1, 0, 1, 2]));
+    expect(scaled).toBeInstanceOf(Float32Array);
+    expect(scaled[0]).toBeCloseTo(0, 3);
+    expect(scaled[1]).toBeCloseTo(0.25, 3);
+    expect(scaled[2]).toBeCloseTo(0.5, 3);
+    expect(scaled[3]).toBeCloseTo(0.75, 3);
+    expect(scaled[4]).toBeCloseTo(1, 3);
+  });
 });
