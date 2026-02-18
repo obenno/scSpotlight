@@ -145,6 +145,10 @@ describe("ScatterModel panel data assembly", () => {
     expect(plot.panelTitles).toHaveLength(2);
     expect(plot.pointsData[0].x.length).toBe(4);
     expect(plot.pointsData[1].x.length).toBe(4);
+    expect(plot.pointsData[0].x).toBeInstanceOf(Float32Array);
+    expect(plot.pointsData[0].y).toBeInstanceOf(Float32Array);
+    expect(plot.pointsData[1].x).toBeInstanceOf(Float32Array);
+    expect(plot.pointsData[1].y).toBeInstanceOf(Float32Array);
     expect(plot.zType.every((z) => z === "category")).toBe(true);
     expect(plot.cells[0]).toHaveLength(4);
     expect(plot.cells[1]).toHaveLength(4);
@@ -168,6 +172,12 @@ describe("ScatterModel panel data assembly", () => {
     const plot = model.buildPlotData();
 
     expect(plot.pointsData).toHaveLength(4);
+    plot.pointsData.forEach((panel) => {
+      expect(panel.x).toBeInstanceOf(Float32Array);
+      expect(panel.y).toBeInstanceOf(Float32Array);
+    });
+    expect(plot.pointsData[1].z).toBeInstanceOf(Float32Array);
+    expect(plot.pointsData[3].z).toBeInstanceOf(Float32Array);
     expect(plot.zType).toEqual(["category", "expr", "category", "expr"]);
     expect(plot.pointsData[0].x.length).toBe(4);
     expect(plot.pointsData[1].x.length).toBe(4);
@@ -215,9 +225,32 @@ describe("ScatterModel panel data assembly", () => {
   it("maps constant expression values to low-end color scale", () => {
     const model = buildModel();
     const scaled = model.scaleDataZ([0, 0, 0, 0]);
-    expect(scaled).toEqual([0, 0, 0, 0]);
+    expect(scaled).toBeInstanceOf(Float32Array);
+    expect(Array.from(scaled)).toEqual([0, 0, 0, 0]);
 
     const scaledNonZeroConstant = model.scaleDataZ([5, 5, 5]);
-    expect(scaledNonZeroConstant).toEqual([0, 0, 0]);
+    expect(scaledNonZeroConstant).toBeInstanceOf(Float32Array);
+    expect(Array.from(scaledNonZeroConstant)).toEqual([0, 0, 0]);
+  });
+
+  it("accepts typed arrays for expression scaling", () => {
+    const model = buildModel();
+    const scaled = model.scaleDataZ(new Float32Array([0, 5, 10]));
+    expect(scaled).toBeInstanceOf(Float32Array);
+    expect(scaled).toHaveLength(3);
+    expect(scaled[0]).toBeLessThan(scaled[1]);
+    expect(scaled[1]).toBeLessThan(scaled[2]);
+    scaled.forEach((z) => {
+      expect(z).toBeGreaterThanOrEqual(0);
+      expect(z).toBeLessThanOrEqual(1);
+    });
+  });
+
+  it("anchors expression scaling at zero", () => {
+    const model = buildModel();
+    const scaled = model.scaleDataZ(new Float32Array([2, 4, 8]));
+    expect(scaled[0]).toBeCloseTo(0.25, 3);
+    expect(scaled[1]).toBeCloseTo(0.5, 3);
+    expect(scaled[2]).toBeCloseTo(1, 3);
   });
 });

@@ -366,14 +366,23 @@ export class ScatterModel {
     switch (mode) {
       case "clusterOnly": {
         if (nPanels === 1) {
-          pointXY[0] = { x: reductionConverted.X, y: reductionConverted.Y };
+          pointXY[0] = {
+            x: new Float32Array(reductionConverted.X),
+            y: new Float32Array(reductionConverted.Y),
+          };
         }
         break;
       }
       case "cluster+expr+noSplit": {
         if (nPanels === 2) {
-          pointXY[0] = { x: reductionConverted.X, y: reductionConverted.Y };
-          pointXY[1] = { x: reductionConverted.X, y: reductionConverted.Y };
+          pointXY[0] = {
+            x: new Float32Array(reductionConverted.X),
+            y: new Float32Array(reductionConverted.Y),
+          };
+          pointXY[1] = {
+            x: new Float32Array(reductionConverted.X),
+            y: new Float32Array(reductionConverted.Y),
+          };
         }
         break;
       }
@@ -385,8 +394,14 @@ export class ScatterModel {
           const keys = Object.keys(splitX);
           for (let i = 0; i < keys.length; i++) {
             const key = keys[i];
-            pointXY[i * 2] = { x: splitX[key], y: splitY[key] };
-            pointXY[i * 2 + 1] = { x: splitX[key], y: splitY[key] };
+            pointXY[i * 2] = {
+              x: new Float32Array(splitX[key]),
+              y: new Float32Array(splitY[key]),
+            };
+            pointXY[i * 2 + 1] = {
+              x: new Float32Array(splitX[key]),
+              y: new Float32Array(splitY[key]),
+            };
           }
         }
         break;
@@ -424,26 +439,34 @@ export class ScatterModel {
     const centerX = (xmin + xmax) / 2;
     const centerY = (ymin + ymax) / 2;
     const range = Math.max(xmax - xmin, ymax - ymin, 1e-9);
+    const precisionScale = 1e4;
+    const compact = (v) => Math.fround(Math.round(v * precisionScale) / precisionScale);
     return {
-      X: xColumn.map((x) => ((x - centerX) / range) * 2),
-      Y: yColumn.map((y) => ((y - centerY) / range) * 2),
+      X: xColumn.map((x) => compact(((x - centerX) / range) * 2)),
+      Y: yColumn.map((y) => compact(((y - centerY) / range) * 2)),
     };
   }
 
   scaleDataZ(arrayZ) {
-    if (!Array.isArray(arrayZ) || arrayZ.length === 0) {
-      return [];
+    const isArrayLike =
+      Array.isArray(arrayZ) ||
+      (ArrayBuffer.isView(arrayZ) && !(arrayZ instanceof DataView));
+    if (!isArrayLike || arrayZ.length === 0) {
+      return new Float32Array(0);
     }
-    const minValue = d3.min(arrayZ);
-    const maxValue = d3.max(arrayZ);
+    const values = ArrayBuffer.isView(arrayZ) ? arrayZ : Float32Array.from(arrayZ);
+    const minValue = d3.min(values);
+    const maxValue = d3.max(values);
     if (!Number.isFinite(minValue) || !Number.isFinite(maxValue)) {
-      return arrayZ.map(() => 0);
+      return new Float32Array(values.length);
     }
     // If all values are equal (e.g., all zero), map to low end of color range.
-    if (minValue === maxValue) {
-      return arrayZ.map(() => 0);
+    if (maxValue <= 0 || minValue === maxValue) {
+      return new Float32Array(values.length);
     }
-    const zScale = d3.scaleLinear([minValue, maxValue], [0, 1]).nice();
-    return arrayZ.map((e) => zScale(e));
+    // Expression is non-negative in this app context; keep zero anchored to
+    // the low end of the color scale for consistent interpretation.
+    const zScale = d3.scaleLinear([0, maxValue], [0, 1]).nice();
+    return Float32Array.from(values, (e) => zScale(Math.max(0, e)));
   }
 }

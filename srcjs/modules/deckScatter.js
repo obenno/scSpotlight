@@ -1,11 +1,48 @@
 import { OrthographicView, COORDINATE_SYSTEM } from "@deck.gl/core";
 import { ScatterplotLayer } from "@deck.gl/layers";
 import * as d3 from "d3";
-import html2canvas from "html2canvas";
 import { ScatterModel } from "./scatter/scatterModel.js";
 import { ScatterRenderer } from "./scatter/scatterRenderer.js";
 import { ScatterOverlay } from "./scatter/scatterOverlay.js";
 import { ScatterInteractions } from "./scatter/scatterInteractions.js";
+import { ScatterLifecycle } from "./scatter/scatterLifecycle.js";
+import { computePanelLayout } from "./scatter/scatterLayout.js";
+import {
+  getGlobalBoundsFromPanels,
+  computeViewStateFromBounds,
+} from "./scatter/scatterViewState.js";
+import {
+  panelLayerFilter,
+  resolveViewStateUpdate,
+} from "./scatter/scatterDeckController.js";
+import {
+  projectWorldToPanel,
+  projectWorldToCanvas,
+  parsePanelIndexFromPickInfo,
+} from "./scatter/scatterCoordinates.js";
+import { buildHoverText } from "./scatter/scatterTooltip.js";
+import {
+  getPanelViewRects,
+  hasInvalidPanelRects,
+} from "./scatter/scatterRelayout.js";
+import {
+  createLabelSliderElement,
+  createInfoWidgetElement,
+  createDownloadIconElement,
+  createNoteElement,
+  showNoteElement,
+  hideNoteElement,
+} from "./scatter/scatterUI.js";
+import {
+  setLabelCanvasVisibility as setLabelCanvasVisibilityInDOM,
+  setPanelOverlayVisibility as setPanelOverlayVisibilityInDOM,
+  setResizeBlankVisibility,
+} from "./scatter/scatterDOMState.js";
+import {
+  createLegendEntryElement,
+  findIndexes as findLegendIndexes,
+  computeHighlightIndices,
+} from "./scatter/scatterLegend.js";
 //import { tableFromArrays } from "apache-arrow";
 
 export class reglScatterCanvas {
@@ -48,12 +85,12 @@ export class reglScatterCanvas {
 
     this.renderer = new ScatterRenderer();
     this.interactions = new ScatterInteractions();
+    this.lifecycle = new ScatterLifecycle();
     this.deck = null;
     this.viewStates = {};
     this.baseZoomByView = {};
     this.panelBuffers = [];
     this.globalBounds = null;
-    this.scatterplots = [];
     this.noteId = null;
     this.hoveredPoint = null;
     this.highlightByPanel = null;
@@ -74,7 +111,7 @@ export class reglScatterCanvas {
     this.initialLayoutPending = false;
     this.onPanelDoubleClick = null;
     this.onWindowResize = () => {
-      if (this.allowResizeBlank && !this.initialLayoutPending) {
+      if (this.allowResizeBlank && !this.initialLayoutPending && this.lifecycle.isReady()) {
         this.beginResizeBlank();
       }
       this.relayoutDebounced();
@@ -112,10 +149,10 @@ export class reglScatterCanvas {
       split_by,
       moduleScore,
     );
-    console.log("plotMetaData: ", this.plotMetaData);
   }
 
   clear() {
+    this.lifecycle.setClearing();
     // clear elements and plotData
     while (this.plotEl.firstChild) {
       this.constructor.removeAllChildNodes(this.plotEl);
@@ -148,7 +185,6 @@ export class reglScatterCanvas {
       this.resizeObserver = null;
     }
     window.removeEventListener("resize", this.onWindowResize);
-    this.scatterplots = [];
     this.viewStates = {};
     this.baseZoomByView = {};
     this.lastZoomByView = {};
@@ -196,6 +232,7 @@ export class reglScatterCanvas {
     //});
     //
     //adjustObserver.observe(this.plotEl, { attributes: true, childList: true, subtree: true });
+    this.lifecycle.setIdle();
   }
 
   static removeAllChildNodes(parent) {
@@ -284,6 +321,7 @@ export class reglScatterCanvas {
       this.mountTimer = null;
     }
     this.updateSquarePanelLayout();
+    this.lifecycle.setMounting();
     this.createDeck();
     if (!this.resizeObserver) {
       this.resizeObserver = new ResizeObserver(() => {
@@ -309,25 +347,14 @@ export class reglScatterCanvas {
       return;
     }
     this.isResizeBlank = true;
-    const deckContainer = this.plotEl.querySelector("#deck-container");
-    if (deckContainer) {
-      deckContainer.style.opacity = "0";
-    }
-    const crosshair = this.plotEl.querySelector("#crosshair-underlay");
-    if (crosshair) {
-      crosshair.style.opacity = "0";
-    }
+    this.lifecycle.setResizing();
+    setResizeBlankVisibility(this.plotEl, true);
     this.clearHoverCrosshair();
     this.hoveredPoint = null;
     this.lastHoverKey = null;
     if (this.noteId) {
       reglScatterCanvas.hideNote(this.noteId);
     }
-    const lasso = this.plotEl.querySelector("#lasso-overlay");
-    if (lasso) {
-      lasso.style.opacity = "0";
-    }
-    this.setPanelOverlayVisibility(false);
   }
 
   endResizeBlank() {
@@ -335,97 +362,47 @@ export class reglScatterCanvas {
       return;
     }
     this.isResizeBlank = false;
-    const deckContainer = this.plotEl.querySelector("#deck-container");
-    if (deckContainer) {
-      deckContainer.style.opacity = "1";
-    }
-    const crosshair = this.plotEl.querySelector("#crosshair-underlay");
-    if (crosshair) {
-      crosshair.style.opacity = "1";
-    }
-    const lasso = this.plotEl.querySelector("#lasso-overlay");
-    if (lasso) {
-      lasso.style.opacity = "1";
-    }
-    this.setPanelOverlayVisibility(true);
+    this.lifecycle.setReady();
+    setResizeBlankVisibility(this.plotEl, false);
   }
 
   setLabelCanvasVisibility(isVisible) {
-    const opacity = isVisible ? "1" : "0";
-    this.plotEl.querySelectorAll(".label-canvas").forEach((canvas) => {
-      canvas.style.opacity = opacity;
-    });
+    setLabelCanvasVisibilityInDOM(this.plotEl, isVisible);
   }
 
   setPanelOverlayVisibility(isVisible) {
-    const opacity = isVisible ? "1" : "0";
-    const grid = this.plotEl.querySelector(".deck-overlay-grid");
-    if (grid) {
-      grid.style.opacity = opacity;
-    }
-    this.plotEl.querySelectorAll(".mainClusterPlotTitle").forEach((title) => {
-      title.style.opacity = opacity;
-    });
-    this.setLabelCanvasVisibility(isVisible);
+    setPanelOverlayVisibilityInDOM(this.plotEl, isVisible);
   }
 
-  relayoutDeck() {
-    if (!this.deck) {
-      return;
-    }
+  getDeckContainerAndSize() {
     const deckContainer = this.plotEl.querySelector("#deck-container");
-    this.updateSquarePanelLayout();
     if (!deckContainer || deckContainer.clientWidth < 10 || deckContainer.clientHeight < 10) {
-      return;
+      return null;
     }
-    const panelEls = Array.from(this.plotEl.querySelectorAll(".deck-panel"));
-    const deckWidth = Math.max(
+
+    const width = Math.max(
       1,
       Number.parseFloat(deckContainer.style.width) || deckContainer.clientWidth,
     );
-    const deckHeight = Math.max(
+    const height = Math.max(
       1,
       Number.parseFloat(deckContainer.style.height) || deckContainer.clientHeight,
     );
-    if (!deckWidth || !deckHeight) {
-      return;
-    }
-    const views = [];
-    let invalidPanelSize = false;
-    panelEls.forEach((panel, i) => {
-      const panelWidth = Math.max(1, panel.clientWidth);
-      const panelHeight = Math.max(1, panel.clientHeight);
-      if (panelWidth < 10 || panelHeight < 10) {
-        invalidPanelSize = true;
-      }
-      const viewId = `panel_${i}`;
-      this.viewStates[viewId] = this.computeViewStateForPanel(
-        i,
-        panelWidth,
-        panelHeight,
-      );
-      this.lastZoomByView[viewId] = this.viewStates[viewId].zoom;
 
-      views.push(
-        new OrthographicView({
-          id: viewId,
-          x: Math.max(0, panel.offsetLeft),
-          y: Math.max(0, panel.offsetTop),
-          width: panelWidth,
-          height: panelHeight,
-          controller: true,
-        }),
-      );
-    });
-    if (invalidPanelSize) {
-      if (!this.relayoutTimer) {
-        this.relayoutTimer = window.setTimeout(() => {
-          this.relayoutTimer = null;
-          this.relayoutDeck();
-        }, 120);
-      }
-      return;
+    if (!width || !height) {
+      return null;
     }
+
+    return { deckContainer, width, height };
+  }
+
+  computeRelayoutViews(panelEls, deckWidth, deckHeight) {
+    const viewRects = this.computeViewRectsForPanels(panelEls, deckWidth, deckHeight);
+    const views = this.buildViewsFromRects(viewRects);
+    return { viewRects, views };
+  }
+
+  applyRelayoutProps(deckWidth, deckHeight, views) {
     this.isRelayouting = true;
     this.deck.setProps({
       width: deckWidth,
@@ -434,12 +411,15 @@ export class reglScatterCanvas {
       viewState: { ...this.viewStates },
       layers: this.createAllLayers(),
     });
+
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
         this.isRelayouting = false;
       });
     });
+  }
 
+  finalizeRelayoutFrame() {
     window.requestAnimationFrame(() => {
       this.showCatLabel();
       this.clearHoverCrosshair();
@@ -452,11 +432,39 @@ export class reglScatterCanvas {
     });
   }
 
+  relayoutDeck() {
+    if (!this.deck) {
+      return;
+    }
+    this.updateSquarePanelLayout();
+    const deck = this.getDeckContainerAndSize();
+    if (!deck) {
+      return;
+    }
+    const { width: deckWidth, height: deckHeight } = deck;
+
+    const panelEls = Array.from(this.plotEl.querySelectorAll(".deck-panel"));
+    const { viewRects, views } = this.computeRelayoutViews(
+      panelEls,
+      deckWidth,
+      deckHeight,
+    );
+
+    if (hasInvalidPanelRects(viewRects)) {
+      this.scheduleRelayoutRetry();
+      return;
+    }
+
+    this.applyRelayoutProps(deckWidth, deckHeight, views);
+    this.finalizeRelayoutFrame();
+  }
+
   updateCanvas() {
     // Avoid visible "snap" when multi-panel layout settles from pre-mount to
     // viewport-sized dimensions.
     this.initialLayoutPending = this.plotMetaData.nPanels > 1;
     this.plotEl.style.opacity = this.initialLayoutPending ? "0" : "1";
+    this.lifecycle.setMounting();
 
     // append canvas elements, wrapped by an outter element with id "canvas-wrapper"
     this.createCanvas("canvas-wrapper");
@@ -473,8 +481,6 @@ export class reglScatterCanvas {
 
     this.noteId = "scatterPlotNote";
 
-    // keep compatibility with existing index.js usage
-    this.scatterplots = [];
   }
 
   updatePlotData() {
@@ -631,56 +637,26 @@ export class reglScatterCanvas {
       return;
     }
 
-    const minPanelSize = 400;
     const nPanels = Math.max(1, this.plotMetaData.nPanels || 1);
-    const nCols = nPanels >= 2 ? 2 : 1;
-    const nRows = Math.ceil(nPanels / nCols);
     const panels = Array.from(overlayGrid.querySelectorAll(".deck-panel"));
 
     const styles = window.getComputedStyle(overlayGrid);
     const gap = Number.parseFloat(styles.columnGap || styles.gap || "0") || 0;
-    const containerWidth = Math.max(1, canvasContainer.clientWidth);
+    const layout = computePanelLayout({
+      nPanels,
+      containerWidth: Math.max(1, canvasContainer.clientWidth),
+      containerHeight: Math.max(1, canvasContainer.clientHeight),
+      gap,
+      minPanelSize: 400,
+    });
 
-    // Required rule:
-    // - If viewport is wide enough for 2 * min panel width, each panel uses 1/2 viewport width
-    // - Otherwise each panel uses min width (scroll enabled by container overflow)
-    const halfViewportWidth = (containerWidth - gap * (nCols - 1)) / nCols;
-    const panelWidth = halfViewportWidth >= minPanelSize ? Math.floor(halfViewportWidth) : minPanelSize;
-    // For 1-2 panels, prioritize full viewport usage (no square constraint).
-    if (nPanels <= 2) {
-      const contentWidth = nCols * panelWidth + gap * (nCols - 1);
-      const contentHeight = Math.max(minPanelSize, canvasContainer.clientHeight);
-      overlayGrid.style.gridTemplateColumns = `repeat(${nCols}, ${panelWidth}px)`;
-      overlayGrid.style.gridTemplateRows = `repeat(${nRows}, minmax(${minPanelSize}px, 1fr))`;
-      overlayGrid.style.width = `${contentWidth}px`;
-      overlayGrid.style.height = `${contentHeight}px`;
-      overlayGrid.style.minHeight = "100%";
-      if (deckContainer) {
-        deckContainer.style.width = `${contentWidth}px`;
-        deckContainer.style.height = `${contentHeight}px`;
-      }
-      if (crosshairCanvas) {
-        crosshairCanvas.style.width = `${contentWidth}px`;
-        crosshairCanvas.style.height = `${contentHeight}px`;
-      }
-      if (lassoCanvas) {
-        lassoCanvas.style.width = `${contentWidth}px`;
-        lassoCanvas.style.height = `${contentHeight}px`;
-      }
-      panels.forEach((panel) => {
-        panel.style.aspectRatio = "auto";
-      });
-      return;
-    }
-
-    // For multi-row layouts (>2 panels), enforce square panels.
-    const panelSize = panelWidth;
-    overlayGrid.style.gridTemplateColumns = `repeat(${nCols}, ${panelSize}px)`;
-    overlayGrid.style.gridTemplateRows = `repeat(${nRows}, ${panelSize}px)`;
-    const contentWidth = nCols * panelSize + gap * (nCols - 1);
-    const contentHeight = nRows * panelSize + gap * (nRows - 1);
+    overlayGrid.style.gridTemplateColumns = layout.gridTemplateColumns;
+    overlayGrid.style.gridTemplateRows = layout.gridTemplateRows;
+    const contentWidth = layout.contentWidth;
+    const contentHeight = layout.contentHeight;
     overlayGrid.style.width = `${contentWidth}px`;
     overlayGrid.style.height = `${contentHeight}px`;
+    overlayGrid.style.minHeight = "100%";
     if (deckContainer) {
       deckContainer.style.width = `${contentWidth}px`;
       deckContainer.style.height = `${contentHeight}px`;
@@ -694,7 +670,7 @@ export class reglScatterCanvas {
       lassoCanvas.style.height = `${contentHeight}px`;
     }
     panels.forEach((panel) => {
-      panel.style.aspectRatio = "1 / 1";
+      panel.style.aspectRatio = layout.isSquare ? "1 / 1" : "auto";
     });
   }
 
@@ -729,8 +705,8 @@ export class reglScatterCanvas {
       if (!canvases[idx] || typeof viewport.project !== "function") {
         return;
       }
-      const xScale = (x) => this.projectToPanel(viewport, x, 0)[0];
-      const yScale = (y) => this.projectToPanel(viewport, 0, -y)[1];
+      const xScale = (x) => projectWorldToPanel(viewport, x, 0)[0];
+      const yScale = (y) => projectWorldToPanel(viewport, 0, -y)[1];
       if (typeof this.plotData.catLabelCoordinates[idx] !== "undefined") {
         this.constructor.fillLabelCanvas(
           this.plotData.catLabelCoordinates[idx],
@@ -782,7 +758,7 @@ export class reglScatterCanvas {
       this.clearHoverCrosshair();
       return;
     }
-    const canvasPos = this.projectToCanvas(viewport, target.worldX, target.worldY);
+    const canvasPos = projectWorldToCanvas(viewport, target.worldX, target.worldY);
     ScatterOverlay.drawCrosshair(canvas, {
       x: canvasPos[0],
       y: canvasPos[1],
@@ -791,26 +767,6 @@ export class reglScatterCanvas {
       right: viewport.x + viewport.width,
       bottom: viewport.y + viewport.height,
     });
-  }
-
-  projectToPanel(viewport, worldX, worldY) {
-    const [px, py] = viewport.project([worldX, worldY]);
-    const appearsLocal =
-      px >= -1 && px <= viewport.width + 1 && py >= -1 && py <= viewport.height + 1;
-    if (appearsLocal) {
-      return [px, py];
-    }
-    return [px - viewport.x, py - viewport.y];
-  }
-
-  projectToCanvas(viewport, worldX, worldY) {
-    const [px, py] = viewport.project([worldX, worldY]);
-    const appearsLocal =
-      px >= -1 && px <= viewport.width + 1 && py >= -1 && py <= viewport.height + 1;
-    if (appearsLocal) {
-      return [px + viewport.x, py + viewport.y];
-    }
-    return [px, py];
   }
 
   collectHoverCrosshairTarget(panelIdx, pointIdx) {
@@ -826,37 +782,18 @@ export class reglScatterCanvas {
   }
 
   createLabelSlider(ElId) {
-    const slider = document.createElement("div");
-    slider.id = ElId;
-    slider.classList.add("label-slider");
-    slider.style.position = "absolute";
-    slider.style.zIndex = "30";
-    slider.style.pointerEvents = "auto";
-    const sliderInput = document.createElement("input");
-    sliderInput.type = "range";
-    sliderInput.value = this.plotMetaData.labelSize;
-    sliderInput.min = 0;
-    sliderInput.max = 50;
-    sliderInput.style.opacity = 0.6;
-    sliderInput.style.width = "6rem";
-    slider.appendChild(sliderInput);
-
-    sliderInput.addEventListener("mouseover", () => {
-      sliderInput.style.opacity = 0.8;
+    createLabelSliderElement({
+      plotEl: this.plotEl,
+      id: ElId,
+      labelSize: this.plotMetaData.labelSize,
+      onInput: (value) => {
+        this.plotMetaData.labelSize = value;
+        this.showCatLabel();
+      },
+      onInit: () => {
+        this.scheduleLabelRedraw("panel_0");
+      },
     });
-    sliderInput.addEventListener("mouseout", () => {
-      sliderInput.style.opacity = 0.6;
-    });
-    // Add Eventlistener
-    sliderInput.addEventListener("input", (event) => {
-      this.plotMetaData.labelSize = event.target.value;
-      this.showCatLabel();
-    });
-
-    this.plotEl.appendChild(slider);
-
-    // Ensure labels are drawn with the initial slider value on first render.
-    this.scheduleLabelRedraw("panel_0");
   }
 
   static fillLabelCanvas(
@@ -896,6 +833,49 @@ export class reglScatterCanvas {
     }
   }
 
+  computeViewRectsForPanels(panelEls, containerWidth, containerHeight) {
+    const nPanels = Math.max(1, panelEls.length);
+    const nCols = nPanels >= 2 ? 2 : 1;
+    const nRows = Math.ceil(nPanels / nCols);
+    const fallbackPanelWidth = Math.max(1, containerWidth / nCols);
+    const fallbackPanelHeight = Math.max(1, containerHeight / nRows);
+    return getPanelViewRects({
+      panelEls,
+      nCols,
+      nRows,
+      fallbackPanelWidth,
+      fallbackPanelHeight,
+    });
+  }
+
+  buildViewsFromRects(viewRects) {
+    return viewRects.map((r) => {
+      this.viewStates[r.viewId] = this.computeViewStateForPanel(
+        r.panelIdx,
+        r.width,
+        r.height,
+      );
+      this.lastZoomByView[r.viewId] = this.viewStates[r.viewId].zoom;
+      return new OrthographicView({
+        id: r.viewId,
+        x: r.x,
+        y: r.y,
+        width: r.width,
+        height: r.height,
+        controller: true,
+      });
+    });
+  }
+
+  scheduleRelayoutRetry() {
+    if (!this.relayoutTimer) {
+      this.relayoutTimer = window.setTimeout(() => {
+        this.relayoutTimer = null;
+        this.relayoutDeck();
+      }, 120);
+    }
+  }
+
   createDeck() {
     const deckContainer = this.plotEl.querySelector("#deck-container");
     if (!deckContainer) {
@@ -905,9 +885,6 @@ export class reglScatterCanvas {
       return;
     }
     const panelEls = Array.from(this.plotEl.querySelectorAll(".deck-panel"));
-    const nPanels = Math.max(1, panelEls.length);
-    const nCols = nPanels >= 2 ? 2 : 1;
-    const nRows = Math.ceil(nPanels / nCols);
     const containerWidth = Math.max(
       1,
       Number.parseFloat(deckContainer.style.width) || deckContainer.clientWidth,
@@ -916,37 +893,16 @@ export class reglScatterCanvas {
       1,
       Number.parseFloat(deckContainer.style.height) || deckContainer.clientHeight,
     );
-    const fallbackPanelWidth = Math.max(1, containerWidth / nCols);
-    const fallbackPanelHeight = Math.max(1, containerHeight / nRows);
 
     this.panelBuffers = this.buildPanelBuffers();
-    this.globalBounds = this.getGlobalBounds();
+    this.globalBounds = getGlobalBoundsFromPanels(this.panelBuffers);
 
-    const views = [];
-    panelEls.forEach((panel, i) => {
-      const panelWidth = Math.max(1, panel.clientWidth);
-      const panelHeight = Math.max(1, panel.clientHeight);
-      const hasPanelRect = panelWidth > 0 && panelHeight > 0;
-      const row = Math.floor(i / nCols);
-      const col = i % nCols;
-      const x = hasPanelRect ? Math.max(0, panel.offsetLeft) : col * fallbackPanelWidth;
-      const y = hasPanelRect ? Math.max(0, panel.offsetTop) : row * fallbackPanelHeight;
-      const width = hasPanelRect ? panelWidth : fallbackPanelWidth;
-      const height = hasPanelRect ? panelHeight : fallbackPanelHeight;
-      const viewId = `panel_${i}`;
-      views.push(
-        new OrthographicView({
-          id: viewId,
-          x,
-          y,
-          width,
-          height,
-          controller: true,
-        }),
-      );
-      this.viewStates[viewId] = this.computeViewStateForPanel(i, width, height);
-      this.lastZoomByView[viewId] = this.viewStates[viewId].zoom;
-    });
+    const viewRects = this.computeViewRectsForPanels(
+      panelEls,
+      containerWidth,
+      containerHeight,
+    );
+    const views = this.buildViewsFromRects(viewRects);
 
     this.deck = this.renderer.create({
       parent: deckContainer,
@@ -961,91 +917,76 @@ export class reglScatterCanvas {
       getCursor: () => "default",
       layers: this.createAllLayers(),
       glOptions: { preserveDrawingBuffer: true },
-      onViewStateChange: ({ viewId, viewState, interactionState }) => {
-        if (viewId) {
-          const prevState = this.viewStates[viewId] || viewState;
-          const prevZoom = this.lastZoomByView[viewId] ?? prevState.zoom;
-          const isZooming = Boolean(interactionState && interactionState.isZooming);
-          const isDragging = Boolean(
-            interactionState && (interactionState.isDragging || interactionState.isPanning),
-          );
-
-          if (this.isRelayouting && !isZooming && !isDragging) {
-            return prevState;
-          }
-
-          const adjustedViewState = { ...viewState };
-
-          // Keep target stable unless user is actively panning.
-          if (!isDragging) {
-            adjustedViewState.target = prevState.target;
-          }
-
-          // Apply zoom damping only for active wheel-zoom interactions.
-          if (isZooming) {
-            const adjustedZoom =
-              prevState.zoom + (viewState.zoom - prevState.zoom) * this.zoomSensitivity;
-            adjustedViewState.zoom = Math.max(
-              viewState.minZoom ?? -10,
-              Math.min(viewState.maxZoom ?? 30, adjustedZoom),
-            );
-          } else {
-            adjustedViewState.zoom = prevState.zoom;
-          }
-
-          this.viewStates[viewId] = adjustedViewState;
-          this.deck.setProps({ viewState: { ...this.viewStates } });
-          this.scheduleLabelRedraw(viewId);
-          if (
-            !this.isResizeBlank &&
-            this.hoveredPoint &&
-            `panel_${this.hoveredPoint.panelIdx}` === viewId
-          ) {
-            const pointIdx = this.hoveredPoint.pointIdx;
-            const targets = this.collectHoverCrosshairTarget(
-              this.hoveredPoint.panelIdx,
-              pointIdx,
-            );
-            this.clearHoverCrosshair();
-            this.drawHoverCrosshair(targets);
-          }
-          if (Math.abs(adjustedViewState.zoom - prevZoom) > 0.03) {
-            this.lastZoomByView[viewId] = adjustedViewState.zoom;
-            this.updateLayersDebounced();
-          }
-        }
-      },
+      onViewStateChange: (args) => this.handleDeckViewStateChange(args),
       onHover: (info) => this.handleHover(info),
-      // Render each panel layer only in its matching viewport.
-      layerFilter: ({ layer, viewport }) => {
-        if (!layer || !viewport) {
-          return false;
-        }
-        if (!viewport.id) {
-          return true;
-        }
-        if (layer.props && layer.props.panelViewId) {
-          return layer.props.panelViewId === viewport.id;
-        }
-        const layerPanelId = layer.id.split("_").slice(0, 2).join("_");
-        return layerPanelId === viewport.id;
-      },
-      onLoad: () => {
-        // Wait until deck canvas and panel viewports settle, then render labels.
-        window.requestAnimationFrame(() => {
-          window.requestAnimationFrame(() => {
-            this.showCatLabel();
-            this.setPanelOverlayVisibility(true);
-            if (this.initialLayoutPending) {
-              this.plotEl.style.opacity = "1";
-              this.initialLayoutPending = false;
-            }
-            this.allowResizeBlank = true;
-          });
-        });
-      },
+      layerFilter: panelLayerFilter,
+      onLoad: () => this.handleDeckOnLoad(),
+    });
+    this.setupLassoBinding(deckContainer);
+    this.setupDoubleClickDeselect(deckContainer);
+  }
+
+  handleDeckViewStateChange({ viewId, viewState, interactionState }) {
+    if (!viewId) {
+      return;
+    }
+    const prevState = this.viewStates[viewId] || viewState;
+    const prevZoom = this.lastZoomByView[viewId] ?? prevState.zoom;
+    const { next: adjustedViewState, shouldApply } = resolveViewStateUpdate({
+      prevState,
+      nextState: viewState,
+      interactionState,
+      isRelayouting: this.isRelayouting,
+      zoomSensitivity: this.zoomSensitivity,
     });
 
+    if (!shouldApply) {
+      return prevState;
+    }
+
+    this.viewStates[viewId] = adjustedViewState;
+    this.deck.setProps({ viewState: { ...this.viewStates } });
+    this.scheduleLabelRedraw(viewId);
+
+    if (
+      !this.isResizeBlank &&
+      this.hoveredPoint &&
+      `panel_${this.hoveredPoint.panelIdx}` === viewId
+    ) {
+      const pointIdx = this.hoveredPoint.pointIdx;
+      const target = this.collectHoverCrosshairTarget(
+        this.hoveredPoint.panelIdx,
+        pointIdx,
+      );
+      this.clearHoverCrosshair();
+      this.drawHoverCrosshair(target);
+    }
+
+    if (Math.abs(adjustedViewState.zoom - prevZoom) > 0.03) {
+      this.lastZoomByView[viewId] = adjustedViewState.zoom;
+      this.updateLayersDebounced();
+    }
+
+    return adjustedViewState;
+  }
+
+  handleDeckOnLoad() {
+    // Wait until deck canvas and panel viewports settle, then render labels.
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        this.showCatLabel();
+        this.setPanelOverlayVisibility(true);
+        if (this.initialLayoutPending) {
+          this.plotEl.style.opacity = "1";
+          this.initialLayoutPending = false;
+        }
+        this.lifecycle.setReady();
+        this.allowResizeBlank = true;
+      });
+    });
+  }
+
+  setupLassoBinding(deckContainer) {
     const lassoCanvas = this.plotEl.querySelector("#lasso-overlay");
     this.interactions.destroyLasso();
     this.lassoTool = null;
@@ -1053,17 +994,20 @@ export class reglScatterCanvas {
       window.clearTimeout(this.mountTimer);
       this.mountTimer = null;
     }
-    if (lassoCanvas) {
-      this.lassoTool = this.interactions.bindLasso({
-        container: deckContainer,
-        overlayCanvas: lassoCanvas,
-        getViewports: () => (this.deck ? this.deck.getViewports() : []),
-        getPanelPositions: (panelIdx) => this.panelBuffers[panelIdx]?.positions,
-        onSelect: (viewId, indices) => this.handleLassoSelect(viewId, indices),
-        onDeselect: () => this.handleLassoDeselect(),
-      });
+    if (!lassoCanvas) {
+      return;
     }
+    this.lassoTool = this.interactions.bindLasso({
+      container: deckContainer,
+      overlayCanvas: lassoCanvas,
+      getViewports: () => (this.deck ? this.deck.getViewports() : []),
+      getPanelPositions: (panelIdx) => this.panelBuffers[panelIdx]?.positions,
+      onSelect: (viewId, indices) => this.handleLassoSelect(viewId, indices),
+      onDeselect: () => this.handleLassoDeselect(),
+    });
+  }
 
+  setupDoubleClickDeselect(deckContainer) {
     if (this.onPanelDoubleClick) {
       deckContainer.removeEventListener("dblclick", this.onPanelDoubleClick);
     }
@@ -1074,64 +1018,23 @@ export class reglScatterCanvas {
     deckContainer.addEventListener("dblclick", this.onPanelDoubleClick);
   }
 
-  getPanelBounds(positions) {
-    if (!positions || positions.length < 2) {
-      return { minX: -1, maxX: 1, minY: -1, maxY: 1 };
-    }
-    let minX = Infinity;
-    let maxX = -Infinity;
-    let minY = Infinity;
-    let maxY = -Infinity;
-    for (let i = 0; i < positions.length; i += 2) {
-      const x = positions[i];
-      const y = positions[i + 1];
-      if (x < minX) minX = x;
-      if (x > maxX) maxX = x;
-      if (y < minY) minY = y;
-      if (y > maxY) maxY = y;
-    }
-    return { minX, maxX, minY, maxY };
-  }
-
-  getGlobalBounds() {
-    if (!Array.isArray(this.panelBuffers) || this.panelBuffers.length === 0) {
-      return { minX: -1, maxX: 1, minY: -1, maxY: 1 };
-    }
-    let minX = Infinity;
-    let maxX = -Infinity;
-    let minY = Infinity;
-    let maxY = -Infinity;
-    this.panelBuffers.forEach((panel) => {
-      const bounds = this.getPanelBounds(panel?.positions);
-      if (bounds.minX < minX) minX = bounds.minX;
-      if (bounds.maxX > maxX) maxX = bounds.maxX;
-      if (bounds.minY < minY) minY = bounds.minY;
-      if (bounds.maxY > maxY) maxY = bounds.maxY;
-    });
-    if (!Number.isFinite(minX) || !Number.isFinite(maxX) || !Number.isFinite(minY) || !Number.isFinite(maxY)) {
-      return { minX: -1, maxX: 1, minY: -1, maxY: 1 };
-    }
-    return { minX, maxX, minY, maxY };
-  }
-
   computeViewStateForPanel(panelIdx, panelWidth, panelHeight) {
     const viewId = `panel_${panelIdx}`;
-    const bounds = this.globalBounds || this.getGlobalBounds();
-    const spanX = Math.max(1e-6, bounds.maxX - bounds.minX);
-    const spanY = Math.max(1e-6, bounds.maxY - bounds.minY);
-    const span = Math.max(spanX, spanY);
-    const targetX = (bounds.minX + bounds.maxX) / 2;
-    const targetY = (bounds.minY + bounds.maxY) / 2;
-    const minDim = Math.max(1, Math.min(panelWidth, panelHeight));
-    const baseZoom = Math.log2((minDim * 0.92) / span);
-
-    this.baseZoomByView[viewId] = baseZoom;
-
-    return {
-      target: [targetX, targetY, 0],
-      zoom: baseZoom,
+    const bounds = this.globalBounds || getGlobalBoundsFromPanels(this.panelBuffers);
+    const viewState = computeViewStateFromBounds({
+      bounds,
+      panelWidth,
+      panelHeight,
+      padding: 0.92,
       minZoom: -10,
       maxZoom: 30,
+    });
+    this.baseZoomByView[viewId] = viewState.baseZoom;
+    return {
+      target: viewState.target,
+      zoom: viewState.zoom,
+      minZoom: viewState.minZoom,
+      maxZoom: viewState.maxZoom,
     };
   }
 
@@ -1391,6 +1294,10 @@ export class reglScatterCanvas {
     if (!this.noteId) {
       return;
     }
+    if (!this.lifecycle.isReady()) {
+      this.clearHoverCrosshair();
+      return;
+    }
     if (this.isResizeBlank) {
       this.clearHoverCrosshair();
       return;
@@ -1445,31 +1352,7 @@ export class reglScatterCanvas {
   }
 
   getPanelIndexFromPickInfo(info) {
-    const panelFromLayerProp = info?.layer?.props?.panelViewId;
-    if (typeof panelFromLayerProp === "string") {
-      const idx = Number.parseInt(panelFromLayerProp.replace("panel_", ""), 10);
-      if (Number.isFinite(idx)) {
-        return idx;
-      }
-    }
-
-    const layerId = info?.layer?.id;
-    if (typeof layerId === "string") {
-      const m = /^panel_(\d+)_/.exec(layerId);
-      if (m) {
-        return Number.parseInt(m[1], 10);
-      }
-    }
-
-    const viewportId = info?.viewport?.id;
-    if (typeof viewportId === "string") {
-      const idx = Number.parseInt(viewportId.replace("panel_", ""), 10);
-      if (Number.isFinite(idx)) {
-        return idx;
-      }
-    }
-
-    return NaN;
+    return parsePanelIndexFromPickInfo(info);
   }
 
   applyHighlight() {
@@ -1546,261 +1429,53 @@ export class reglScatterCanvas {
   }
 
   generateNoteText(spIndex, pointId) {
-    let mode = this.plotMetaData.mode;
-    let group_by = this.plotMetaData.group_by;
-    let split_by = this.plotMetaData.split_by;
-    let metaData = this.origData.cellMetaData;
-    let expressionData = this.origData.expressionData;
-    let plotFeature = this.plotData.plotFeature;
-    let text = null;
-    let prefix = null;
-    let split_category = {};
-    let split_expr = {};
+    const mode = this.plotMetaData.mode;
+    const group_by = this.plotMetaData.group_by;
+    const split_by = this.plotMetaData.split_by;
+    const metaData = this.origData.cellMetaData;
+    const expressionData = this.origData.expressionData;
+    const plotFeature = this.plotData.plotFeature;
 
     const groupByArray = group_by ? expandMeta(metaData[group_by]) : [];
     const splitByArray = split_by ? expandMeta(metaData[split_by]) : [];
-    switch (mode) {
-      case "clusterOnly":
-        prefix = "Cat: ";
-        text = prefix.concat(groupByArray[pointId]);
-        break;
-      case "cluster+expr+noSplit":
-        if (spIndex == 0) {
-          prefix = "Cat: ";
-          text = prefix.concat(groupByArray[pointId]);
-        } else {
-          prefix = "Expr: ";
-          text = prefix.concat(
-            d3.format(".3f")(expressionData[plotFeature][pointId]),
-          );
-        }
-        break;
-      case "cluster+expr+twoSplit":
-        split_category = splitArrByMeta(groupByArray, splitByArray);
-        split_expr = splitArrByMeta(expressionData[plotFeature], splitByArray);
+    const exprValues = plotFeature ? expressionData[plotFeature] : [];
 
-        if (spIndex === 0) {
-          prefix = "Cat: ";
-          text = prefix.concat(
-            split_category[Object.keys(split_category)[0]][pointId],
-          );
-        } else if (spIndex === 1) {
-          prefix = "Expr: ";
-          text = prefix.concat(
-            d3.format(".3f")(split_expr[Object.keys(split_expr)[0]][pointId]),
-          );
-        } else if (spIndex === 2) {
-          prefix = "Cat: ";
-          text = prefix.concat(
-            split_category[Object.keys(split_category)[1]][pointId],
-          );
-        } else if (spIndex === 3) {
-          prefix = "Expr: ";
-          text = prefix.concat(
-            d3.format(".3f")(split_expr[Object.keys(split_expr)[1]][pointId]),
-          );
-        }
-        break;
-      case "cluster+multiSplit":
-        split_category = splitArrByMeta(groupByArray, splitByArray);
-        prefix = "Cat: ";
-        text = prefix.concat(
-          split_category[Object.keys(split_category)[spIndex]][pointId],
-        );
-        break;
-      case "cluster+expr+multiSplit":
-        split_expr = splitArrByMeta(expressionData[plotFeature], splitByArray);
-        prefix = "Expr: ";
-        text = prefix.concat(
-          d3.format(".3f")(
-            split_expr[Object.keys(split_expr)[spIndex]][pointId],
-          ),
-        );
-        break;
-    }
-    // empty the intermedia data
-    split_category = {};
-    split_expr = {};
-    return text;
-  }
-
-  populate_instance(noteId) {
-    this.noteId = noteId;
+    return buildHoverText({
+      mode,
+      panelIndex: spIndex,
+      pointIndex: pointId,
+      groupByValues: groupByArray,
+      splitByValues: splitByArray,
+      expressionValues: exprValues,
+      splitArrByMeta,
+      formatExpr: (v) => d3.format(".3f")(v),
+    });
   }
 
   createNote(noteId) {
-    let noteEl = document.createElement("div");
-    noteEl.id = noteId;
-    noteEl.classList.add("mainClusterPlotNote");
-    noteEl.classList.add("shadow");
-    noteEl.style.zIndex = "30";
-
-    this.plotEl.appendChild(noteEl);
+    createNoteElement(this.plotEl, noteId);
   }
 
   // note manipulation to mimic tooltips
   static showNote(noteId, text, color) {
-    let noteEl = document.getElementById(noteId);
-    noteEl.style.display = null;
-    noteEl.style.opacity = 0.8;
-    noteEl.style.background = color;
-    noteEl.textContent = text;
+    showNoteElement(noteId, text, color);
   }
 
   static hideNote(noteId) {
-    let noteEl = document.getElementById(noteId);
-    noteEl.style.display = "none";
+    hideNoteElement(noteId);
   }
 
   createInfoWidget(infoId) {
-    let infoEl = document.createElement("div");
-    infoEl.id = infoId;
-    infoEl.setAttribute("tabindex", "0");
-    infoEl.style.position = "absolute";
-    infoEl.style.zIndex = "30";
-    infoEl.style.pointerEvents = "auto";
-    let infoTitleEl = document.createElement("div");
-    infoTitleEl.id = "info-title";
-    let infoContentEl = document.createElement("div");
-    infoContentEl.id = "info-content";
-    let introduction = [
-      "Pan: Click and drag your mouse.",
-      "Zoom: Scroll vertically.",
-      // disable rotate, the label canvas will not synchronize
-      //`Rotate: While pressing <kbd>ALT</kbd>, click and drag your mouse.`,
-      `Lasso: Pressing <kbd>SHIFT</kbd> and drag your mouse.`,
-      "Change slider to adjust label size.",
-      "Click download icon to save the image.",
-    ];
-
-    for (let i = 0; i < introduction.length; ++i) {
-      let li = document.createElement("li");
-      li.innerHTML = introduction[i];
-      infoContentEl.appendChild(li);
-    }
-
-    infoEl.appendChild(infoContentEl);
-    infoEl.appendChild(infoTitleEl);
-    this.plotEl.appendChild(infoEl);
+    createInfoWidgetElement({ plotEl: this.plotEl, id: infoId });
   }
 
   createDownloadIcon(elId) {
-    const downloadEl = document.createElement("div");
-    downloadEl.id = elId;
-    downloadEl.style.width = "2rem";
-    downloadEl.style.height = "2rem";
-    downloadEl.style.position = "absolute";
-    downloadEl.style.zIndex = "30";
-    downloadEl.style.bottom = "1%";
-    downloadEl.style.left = "9.5rem";
-    downloadEl.style.padding = "0.2rem";
-    //downloadEl.style.backgroundColor = "rgba(var(--bs-secondary-rgb), 0.4)";
-    downloadEl.style.display = "flex";
-    downloadEl.style.justifyContent = "center";
-    downloadEl.style.alignItems = "center";
-    downloadEl.style.pointerEvents = "auto";
-    //downloadEl.style.overflow = "hidden;"
-    //downloadEl.style.transition = "background 0.15s cubic-bezier(0.25, 0.1, 0.25, 1)";
-
-    const ns = "http://www.w3.org/2000/svg";
-    const icon = document.createElementNS(ns, "svg");
-    icon.setAttribute("width", "100%");
-    icon.setAttribute("height", "100%");
-    icon.setAttribute("viewBox", "0 0 24 24");
-    //icon.style.background = "rgba(255,0,0,0.1)";
-    icon.style.overflow = "visible";
-    icon.style.width = "100%";
-    icon.style.height = "100%";
-
-    const path = document.createElementNS(ns, "path");
-    path.setAttribute("d", "M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z");
-    path.setAttribute("fill", "#fff");
-    path.setAttribute("stroke", "rgba(var(--bs-secondary-rgb), 0.4)"); // Red stroke
-    path.setAttribute("stroke-width", "1.5"); // Thin stroke
-    icon.appendChild(path);
-
-    downloadEl.appendChild(icon);
-
-    icon.addEventListener("mouseover", () => {
-      path.setAttribute("stroke", "rgba(var(--bs-secondary-rgb), 1)");
+    createDownloadIconElement({
+      plotEl: this.plotEl,
+      id: elId,
+      catLegendEl: this.catLegendEl,
+      expLegendEl: this.expLegendEl,
     });
-    icon.addEventListener("mouseout", () => {
-      path.setAttribute("stroke", "rgba(var(--bs-secondary-rgb), 0.4)");
-    });
-
-    downloadEl.addEventListener("click", () => {
-      const scatterCanvas = html2canvas(
-        this.plotEl.querySelector("#canvas-wrapper"),
-        {
-          backgroundColor: null,
-          scale: window.devicePixelRatio * 4,
-        },
-      );
-      scatterCanvas.then((canvas) => {
-        // create new div with the same dimension
-        const scatterWidth = parseFloat(this.plotEl.parentElement.scrollWidth);
-        const scatterHeight = parseFloat(
-          this.plotEl.parentElement.scrollHeight,
-        );
-
-        // clone catLegendEl
-        const catLegendClone = this.catLegendEl.cloneNode(true);
-        catLegendClone.style.width = "200px";
-
-        // clone expLegendEl
-        const expLegendClone = this.expLegendEl.cloneNode(true);
-        expLegendClone.style.width = "100%";
-        expLegendClone.style.marginLeft = "5px";
-        expLegendClone.style.marginRight = "5px";
-        expLegendClone.style.height = "10px";
-
-        const tempDiv = document.createElement("div");
-
-        tempDiv.style.width =
-          5 + 5 + scatterWidth + 5 + catLegendClone.style.width + 5 + "px";
-        tempDiv.style.height =
-          Math.max(scatterHeight, catLegendClone.style.height) + "px";
-
-        tempDiv.style.position = "absolute";
-        tempDiv.style.left = "-9999px"; // Move off-screen
-        tempDiv.style.display = "flex";
-        tempDiv.style.justifyContent = "space-between";
-        tempDiv.style.alignItems = "center";
-        tempDiv.style.overflow = "hidden";
-
-        const canvasColDiv = document.createElement("div");
-        canvasColDiv.style.margin = "5px";
-        canvasColDiv.style.padding = 0;
-        canvasColDiv.style.alignItems = "center";
-        canvasColDiv.style.justifyContent = "center";
-        canvasColDiv.appendChild(canvas);
-        tempDiv.appendChild(canvasColDiv);
-
-        const legendColDiv = document.createElement("div");
-        legendColDiv.style.display = "flex";
-        legendColDiv.style.flexDirection = "column";
-        legendColDiv.style.width = "200px";
-        legendColDiv.style.margin = "5px";
-        legendColDiv.style.padding = 0;
-        legendColDiv.style.alignItems = "center";
-        legendColDiv.style.justifyContent = "center";
-
-        legendColDiv.appendChild(catLegendClone);
-        legendColDiv.appendChild(expLegendClone);
-
-        tempDiv.appendChild(legendColDiv);
-
-        document.body.appendChild(tempDiv);
-        html2canvas(tempDiv, {
-          backgroundColor: null, // or 'transparent'
-          scale: window.devicePixelRatio * 4,
-        }).then((canvas) => {
-          downloadCanvasAsPNG(canvas, "scatter.png");
-          document.body.removeChild(tempDiv);
-        });
-      });
-    });
-    this.plotEl.appendChild(downloadEl);
   }
 
   updateCatLegend() {
@@ -1875,94 +1550,24 @@ export class reglScatterCanvas {
   }
 
   static createLegendEl(title, color, number) {
-    if (typeof title === "number") {
-      title = title.toString();
-    }
-    // legend style modified from broad single cell portal viewer
-    const scatterLegend = document.createElement("div");
-    scatterLegend.classList.add("scatter-legend");
-    // replace unsafe strings in title and use it as the legend element id
-    scatterLegend.id = "legend_" + title.replace(/[^a-zA-Z0-9-_]/g, "_");
-
-    const colorBlock = document.createElement("div");
-    colorBlock.classList.add("scatter-legend-icon");
-    colorBlock.style.backgroundColor = color;
-
-    const labelEl = document.createElement("span");
-    labelEl.classList.add("legend-label");
-    labelEl.title = title;
-    labelEl.innerHTML = title;
-
-    const numberEl = document.createElement("span");
-    numberEl.classList.add("num-points");
-    numberEl.title = number + " points in the group";
-    numberEl.innerHTML = number;
-
-    const entryEl = document.createElement("div");
-    entryEl.classList.add("scatter-legend-entry");
-    entryEl.appendChild(labelEl);
-    entryEl.appendChild(numberEl);
-
-    scatterLegend.appendChild(colorBlock);
-    scatterLegend.appendChild(entryEl);
-
-    return scatterLegend;
+    return createLegendEntryElement(title, color, number);
   }
 
   static findIndexes(arr, value) {
-    var indexes = [];
-    for (var i = 0; i < arr.length; i++) {
-      if (arr[i] === value) {
-        indexes.push(i);
-      }
-    }
-    return indexes;
+    return findLegendIndexes(arr, value);
   }
 
   highlight_index(selectedGroupBy) {
-    let mode = this.plotMetaData.mode;
-    let group_by = this.plotMetaData.group_by;
-    let metaData = this.origData.cellMetaData;
-    // return a array of highlight points index array
-    let pointsIndex = [];
-
-    let factorLevel = {};
-    let sortedUniqueArr = [...new Set(expandMeta(metaData[group_by]))].sort(
+    const mode = this.plotMetaData.mode;
+    const group_by = this.plotMetaData.group_by;
+    const groupByValues = expandMeta(this.origData.cellMetaData[group_by]);
+    return computeHighlightIndices({
+      mode,
+      pointsData: this.plotData.pointsData,
+      groupByValues,
+      selectedGroupBy,
       sortStringArray,
-    );
-    sortedUniqueArr.forEach((e, i) => {
-      factorLevel[e] = i;
     });
-
-    switch (mode) {
-      case "clusterOnly":
-        pointsIndex[0] = reglScatterCanvas.findIndexes(
-          this.plotData.pointsData[0].z,
-          factorLevel[selectedGroupBy],
-        );
-        break;
-      case "cluster+expr+noSplit":
-        pointsIndex[0] = reglScatterCanvas.findIndexes(
-          this.plotData.pointsData[0].z,
-          factorLevel[selectedGroupBy],
-        );
-        pointsIndex[1] = pointsIndex[0];
-        break;
-      case "cluster+expr+twoSplit":
-        for (let i = 0; i < this.plotData.pointsData.length; i = i + 2) {
-          pointsIndex[i] = reglScatterCanvas.findIndexes(
-            this.plotData.pointsData[i].z,
-            factorLevel[selectedGroupBy],
-          );
-          pointsIndex[i + 1] = pointsIndex[i];
-        }
-        break;
-      case "cluster+multiSplit":
-        pointsIndex = this.plotData.pointsData.map((e) =>
-          reglScatterCanvas.findIndexes(e.z, factorLevel[selectedGroupBy]),
-        );
-    }
-    return pointsIndex;
   }
 }
 
@@ -2230,29 +1835,6 @@ export function Legend(
 
   return svg.node();
 }
-
-const downloadCanvasAsPNG = (canvas, fileName = "canvas.png") => {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (!blob) {
-        reject(new Error("Canvas to Blob conversion failed"));
-        return;
-      }
-
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = fileName;
-
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-
-      URL.revokeObjectURL(url);
-      resolve();
-    }, "image/png");
-  });
-};
 
 export function hue_pal(
   n = 15,
