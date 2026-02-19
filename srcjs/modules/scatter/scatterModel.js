@@ -262,6 +262,7 @@ export class ScatterModel {
       case "cluster+expr+noSplit": {
         if (nPanels === 2) {
           const groupByArray = expandMeta(metaData[group_by]);
+          const cellsArray = expandMeta(metaData.cells);
           zData.point_Z_data[0] = convert_stringArr_to_integer(groupByArray);
           zData.point_Z_data[1] = this.scaleDataZ(expressionData);
           zData.panelTitles[0] = group_by;
@@ -270,8 +271,8 @@ export class ScatterModel {
           zData.colorData[1] = exprColorMap;
           zData.zType[0] = "category";
           zData.zType[1] = "expr";
-          zData.cells[0] = metaData.cells;
-          zData.cells[1] = metaData.cells;
+          zData.cells[0] = cellsArray;
+          zData.cells[1] = cellsArray;
         }
         break;
       }

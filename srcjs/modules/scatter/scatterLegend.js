@@ -15,12 +15,12 @@ export function createLegendEntryElement(title, color, number) {
   const labelEl = document.createElement("span");
   labelEl.classList.add("legend-label");
   labelEl.title = safeTitle;
-  labelEl.innerHTML = safeTitle;
+  labelEl.textContent = safeTitle;
 
   const numberEl = document.createElement("span");
   numberEl.classList.add("num-points");
   numberEl.title = number + " points in the group";
-  numberEl.innerHTML = number;
+  numberEl.textContent = String(number);
 
   const entryEl = document.createElement("div");
   entryEl.classList.add("scatter-legend-entry");

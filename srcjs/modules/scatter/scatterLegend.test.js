@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { JSDOM } from "jsdom";
 import {
+  createLegendEntryElement,
   findIndexes,
   computeHighlightIndices,
 } from "./scatterLegend.js";
@@ -7,6 +9,20 @@ import {
 const sortStringArray = (a, b) => String(a).localeCompare(String(b));
 
 describe("scatterLegend utilities", () => {
+  it("renders labels as text, not HTML", () => {
+    const dom = new JSDOM("<!doctype html><html><body></body></html>");
+    global.document = dom.window.document;
+    const entry = createLegendEntryElement("<img src=x onerror=alert(1)>", "#ff0000", 7);
+    const label = entry.querySelector(".legend-label");
+    const count = entry.querySelector(".num-points");
+
+    expect(label.innerHTML).toBe("&lt;img src=x onerror=alert(1)&gt;");
+    expect(label.textContent).toBe("<img src=x onerror=alert(1)>");
+    expect(count.textContent).toBe("7");
+
+    delete global.document;
+  });
+
   it("findIndexes returns matching indices", () => {
     expect(findIndexes([0, 1, 0, 2], 0)).toEqual([0, 2]);
     expect(findIndexes([1, 2, 3], 9)).toEqual([]);

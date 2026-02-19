@@ -135,6 +135,18 @@ describe("ScatterModel mode derivation", () => {
 });
 
 describe("ScatterModel panel data assembly", () => {
+  it("keeps cell ids indexable in no-split expression mode", () => {
+    const model = buildModel();
+    model.setConfig({ selectedFeatures: ["GeneA"], moduleScore: false });
+    model.derivePlotMetaData("group", null, false);
+    const plot = model.buildPlotData();
+
+    expect(plot.pointsData).toHaveLength(2);
+    expect(plot.cells[0]).toEqual(["c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8"]);
+    expect(plot.cells[1]).toEqual(plot.cells[0]);
+    expect(plot.cells[0][3]).toBe("c4");
+  });
+
   it("builds 2 split-by panels with grouped colors", () => {
     const model = buildModel();
     model.setConfig({ selectedFeatures: [], moduleScore: false });

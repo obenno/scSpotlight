@@ -576,7 +576,7 @@ export class reglScatterCanvas {
 
       const plotTitle = document.createElement("div");
       plotTitle.classList.add("mainClusterPlotTitle");
-      plotTitle.innerHTML = this.plotData.panelTitles[i];
+      plotTitle.textContent = this.plotData.panelTitles[i];
       panel.appendChild(plotTitle);
 
       const labelCanvas = document.createElement("canvas");
