@@ -26,7 +26,7 @@ mod_UpdateReduction_ui <- function(id){
 #'
 #' @noRd
 #'
-#' @importFrom qs qsave
+#' @importFrom qs2 qsave
 mod_UpdateReduction_server <- function(id,
                                        reductionUpdateIndicator,
                                        reductionProcessed){

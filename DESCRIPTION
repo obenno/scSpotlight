@@ -30,7 +30,7 @@ Imports:
     magrittr,
     plotly,
     promises,
-    qs,
+    qs2,
     readr,
     readxl,
     RhpcBLASctl,
@@ -50,4 +50,4 @@ RoxygenNote: 7.3.3
 Roxygen: list(markdown = TRUE)
 URL: https://obenno.github.io/scSpotlight/, https://github.com/obenno/scSpotlight
 BugReports: https://github.com/obenno/scSpotlight/issues
-Additional_repositories: https://satijalab.r-universe.dev, https://bnprks.r-universe.dev
+Additional_repositories: https://satijalab.r-universe.dev, https://bnprks.r-universe.dev, https://immunogenomics.r-universe.dev

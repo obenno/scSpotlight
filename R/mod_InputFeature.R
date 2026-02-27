@@ -96,7 +96,7 @@ mod_InputFeature_ui <- function(id){
 #' @import shiny
 #' @importFrom promises future_promise %...>% %...!%
 #' @importFrom cli hash_md5
-#' @importFrom qs qsave
+#' @importFrom qs2 qsave
 #' @noRd
 mod_InputFeature_server <- function(id,
                                     assay,
