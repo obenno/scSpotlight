@@ -1,15 +1,31 @@
 <urlset xmlns = 'http://www.sitemaps.org/schemas/sitemap/0.9'>
 <url><loc>https://obenno.github.io/scSpotlight/404.html</loc></url>
+<url><loc>https://obenno.github.io/scSpotlight/AGENTS.html</loc></url>
 <url><loc>https://obenno.github.io/scSpotlight/LICENSE-text.html</loc></url>
 <url><loc>https://obenno.github.io/scSpotlight/LICENSE.html</loc></url>
 <url><loc>https://obenno.github.io/scSpotlight/articles/index.html</loc></url>
 <url><loc>https://obenno.github.io/scSpotlight/articles/scSpotlight.html</loc></url>
 <url><loc>https://obenno.github.io/scSpotlight/authors.html</loc></url>
+<url><loc>https://obenno.github.io/scSpotlight/deckScatter_summary.html</loc></url>
 <url><loc>https://obenno.github.io/scSpotlight/index.html</loc></url>
 <url><loc>https://obenno.github.io/scSpotlight/news/index.html</loc></url>
+<url><loc>https://obenno.github.io/scSpotlight/reference/duckColMeans.html</loc></url>
+<url><loc>https://obenno.github.io/scSpotlight/reference/duckModuleScore.html</loc></url>
+<url><loc>https://obenno.github.io/scSpotlight/reference/duckRowMeans.html</loc></url>
 <url><loc>https://obenno.github.io/scSpotlight/reference/index.html</loc></url>
+<url><loc>https://obenno.github.io/scSpotlight/reference/listDuckReduction.html</loc></url>
 <url><loc>https://obenno.github.io/scSpotlight/reference/pipe.html</loc></url>
+<url><loc>https://obenno.github.io/scSpotlight/reference/queryDuckAssays.html</loc></url>
+<url><loc>https://obenno.github.io/scSpotlight/reference/queryDuckCells.html</loc></url>
+<url><loc>https://obenno.github.io/scSpotlight/reference/queryDuckExpr.html</loc></url>
+<url><loc>https://obenno.github.io/scSpotlight/reference/queryDuckFeatures.html</loc></url>
+<url><loc>https://obenno.github.io/scSpotlight/reference/queryDuckMeta.html</loc></url>
+<url><loc>https://obenno.github.io/scSpotlight/reference/queryDuckReduction.html</loc></url>
 <url><loc>https://obenno.github.io/scSpotlight/reference/run_app.html</loc></url>
 <url><loc>https://obenno.github.io/scSpotlight/reference/scSpotlight-package.html</loc></url>
+<url><loc>https://obenno.github.io/scSpotlight/reference/seurat2duckdb.html</loc></url>
+<url><loc>https://obenno.github.io/scSpotlight/reference/subsetDuckMatrix.html</loc></url>
+<url><loc>https://obenno.github.io/scSpotlight/reference/updateDuckMeta.html</loc></url>
+<url><loc>https://obenno.github.io/scSpotlight/reference/updateDuckReduction.html</loc></url>
 </urlset>
 

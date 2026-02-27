@@ -29,6 +29,17 @@ or a much faster installation with `pak`:
 pak::pkg_install("obenno/scSpotlight")
 ```
 
+## Dependency policy (dev + CI)
+
+- `DESCRIPTION` is the source of truth for package dependencies.
+- `renv.lock` is used for reproducible project environments (for example
+  pkgdown builds and deployment workflows).
+- Commit `renv.lock`, `renv/activate.R`, and `renv/settings.json`.
+- Do not commit `renv/library/` or other cache directories.
+- CI jobs can use both approaches: install from `DESCRIPTION` for
+  package checks, and run `renv::restore()` for reproducible docs/app
+  jobs.
+
 ## Docker
 
 To pull the latest image from the command line

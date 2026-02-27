@@ -35,7 +35,7 @@
 
     <a class="navbar-brand me-2" href="index.html">scSpotlight</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.5</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.5.9000</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -86,6 +86,19 @@
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># install.packages("pak")</span></span>
 <span><span class="fu">pak</span><span class="fu">::</span><span class="fu"><a href="https://pak.r-lib.org/reference/pkg_install.html" class="external-link">pkg_install</a></span><span class="op">(</span><span class="st">"obenno/scSpotlight"</span><span class="op">)</span></span></code></pre></div>
+</div>
+<div class="section level2">
+<h2 id="dependency-policy-dev--ci">Dependency policy (dev + CI)<a class="anchor" aria-label="anchor" href="#dependency-policy-dev--ci"></a>
+</h2>
+<ul>
+<li>
+<code>DESCRIPTION</code> is the source of truth for package dependencies.</li>
+<li>
+<code>renv.lock</code> is used for reproducible project environments (for example pkgdown builds and deployment workflows).</li>
+<li>Commit <code>renv.lock</code>, <code>renv/activate.R</code>, and <code>renv/settings.json</code>.</li>
+<li>Do not commit <code>renv/library/</code> or other cache directories.</li>
+<li>CI jobs can use both approaches: install from <code>DESCRIPTION</code> for package checks, and run <code>renv::restore()</code> for reproducible docs/app jobs.</li>
+</ul>
 </div>
 <div class="section level2">
 <h2 id="docker">Docker<a class="anchor" aria-label="anchor" href="#docker"></a>
