@@ -1,9 +1,9 @@
 pandoc: 3.1.11
-pkgdown: 2.1.0
+pkgdown: 2.2.0
 pkgdown_sha: ~
 articles:
   articles/scSpotlight: scSpotlight.html
-last_built: 2024-08-21T09:23Z
+last_built: 2026-02-27T06:12Z
 urls:
   reference: https://obenno.github.io/scSpotlight/reference
   article: https://obenno.github.io/scSpotlight/articles

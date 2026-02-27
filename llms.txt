@@ -1,0 +1,58 @@
+# scSpotlight
+
+The goal of scSpotlight is to simplify your single cell analysis and
+easily annotate your dataset with curated cell type markers.
+`scSpotlight` is built on [shiny](https://shiny.posit.co/),
+[Seurat](https://satijalab.org/seurat/) and
+[regl-scatterplot](https://github.com/flekschas/regl-scatterplot).
+Please refer to the documentation website for detailed instructions:
+
+- <https://obenno.github.io/scSpotlight/>
+- <https://scspotlight.netlify.app/> (EN, CN)
+
+![](https://raw.githubusercontent.com/obenno/scSpotlight/main/vignettes/articles/images/scSpotlight_landingFigure.png)
+
+## Installation
+
+You can install the development version of scSpotlight from
+[GitHub](https://github.com/) with:
+
+``` r
+# install.packages("devtools")
+devtools::install_github("obenno/scSpotlight")
+```
+
+or a much faster installation with `pak`:
+
+``` r
+# install.packages("pak")
+pak::pkg_install("obenno/scSpotlight")
+```
+
+## Docker
+
+To pull the latest image from the command line
+
+``` R
+docker pull registry-intl.cn-hangzhou.aliyuncs.com/thunderbio/scspotlight:0.0.3
+```
+
+To run the app on `port:8081`, please use the command below:
+
+``` R
+docker run -p 8081:8081 registry-intl.cn-hangzhou.aliyuncs.com/thunderbio/scspotlight:0.0.3 Rscript -e 'scSpotlight::run_app(options = list(port=8081, host="0.0.0.0", launch.browser = FALSE), runningMode="processing")'
+```
+
+# Package index
+
+## All functions
+
+- [`run_app()`](https://obenno.github.io/scSpotlight/reference/run_app.md)
+  : Run the scSpotlight App
+
+# Articles
+
+### All vignettes
+
+- [Introduction to
+  scSpotlight](https://obenno.github.io/scSpotlight/articles/scSpotlight.md):

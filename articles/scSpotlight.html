@@ -6,16 +6,15 @@
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 <title>Introduction to scSpotlight • scSpotlight</title>
-<!-- favicons --><link rel="icon" type="image/png" sizes="16x16" href="../favicon-16x16.png">
-<link rel="icon" type="image/png" sizes="32x32" href="../favicon-32x32.png">
-<link rel="apple-touch-icon" type="image/png" sizes="180x180" href="../apple-touch-icon.png">
-<link rel="apple-touch-icon" type="image/png" sizes="120x120" href="../apple-touch-icon-120x120.png">
-<link rel="apple-touch-icon" type="image/png" sizes="76x76" href="../apple-touch-icon-76x76.png">
-<link rel="apple-touch-icon" type="image/png" sizes="60x60" href="../apple-touch-icon-60x60.png">
+<!-- favicons --><link rel="icon" type="image/png" sizes="96x96" href="../favicon-96x96.png">
+<link rel="icon" type="”image/svg+xml”" href="../favicon.svg">
+<link rel="apple-touch-icon" sizes="180x180" href="../apple-touch-icon.png">
+<link rel="icon" sizes="any" href="../favicon.ico">
+<link rel="manifest" href="../site.webmanifest">
 <script src="../deps/jquery-3.6.0/jquery-3.6.0.min.js"></script><meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 <link href="../deps/bootstrap-5.3.1/bootstrap.min.css" rel="stylesheet">
-<script src="../deps/bootstrap-5.3.1/bootstrap.bundle.min.js"></script><link href="../deps/font-awesome-6.4.2/css/all.min.css" rel="stylesheet">
-<link href="../deps/font-awesome-6.4.2/css/v4-shims.min.css" rel="stylesheet">
+<script src="../deps/bootstrap-5.3.1/bootstrap.bundle.min.js"></script><link href="../deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
+<link href="../deps/font-awesome-6.5.2/css/v4-shims.min.css" rel="stylesheet">
 <script src="../deps/headroom-0.11.0/headroom.min.js"></script><script src="../deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="../deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="../deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="../deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="../deps/search-1.0.0/fuse.min.js"></script><script src="../deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="../pkgdown.js"></script><meta property="og:title" content="Introduction to scSpotlight">
 <!-- Google tag (gtag.js) --><script async src="https://www.googletagmanager.com/gtag/js?id=G-5NHQW8GD3W"></script><script>
   window.dataLayer = window.dataLayer || [];
@@ -66,7 +65,7 @@
       <img src="../logo.png" class="logo" alt=""><h1>Introduction to scSpotlight</h1>
             
       
-      <small class="dont-index">Source: <a href="https://github.com/obenno/scSpotlight/blob/v0.0.5/vignettes/articles/scSpotlight.Rmd" class="external-link"><code>vignettes/articles/scSpotlight.Rmd</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/obenno/scSpotlight/blob/main/vignettes/articles/scSpotlight.Rmd" class="external-link"><code>vignettes/articles/scSpotlight.Rmd</code></a></small>
       <div class="d-none name"><code>scSpotlight.Rmd</code></div>
     </div>
 
@@ -82,7 +81,7 @@ demonstration dataset used is a 2,700 Peripheral Blood Mononuclear Cells
 (PBMCs) sample made publicly available by 10X Genomics. The matrix could
 be downloaded <a href="https://cf.10xgenomics.com/samples/cell/pbmc3k/pbmc3k_filtered_gene_bc_matrices.tar.gz" class="external-link">here</a>.</p>
 <p>A typical seurat analysis workflow is like below:</p>
-<p><img src="images/seurat_standard_workflow.png" width="986"></p>
+<p><img src="images/seurat_standard_workflow.png" class="r-plt" alt="" width="986"></p>
 </div>
 <div class="section level2">
 <h2 id="invoke-app">Invoke App<a class="anchor" aria-label="anchor" href="#invoke-app"></a>
@@ -106,7 +105,7 @@ directly.</p>
 <h2 id="main-panel">Main Panel<a class="anchor" aria-label="anchor" href="#main-panel"></a>
 </h2>
 <p>Main panel of <code>scSpotlight</code> will be like:</p>
-<p><img src="images/main_panel.png" width="960"></p>
+<p><img src="images/main_panel.png" class="r-plt" alt="" width="960"></p>
 </div>
 <div class="section level2">
 <h2 id="input-files">Input Files<a class="anchor" aria-label="anchor" href="#input-files"></a>
@@ -138,17 +137,17 @@ by adjusting parameters in the “Cell Filtering” block. The filtration
 step will also update highly variable genes (HVGs), the dimension
 reduction and the cell clustering result.</p>
 <div class="figure">
-<img src="images/vlnplot_1.png" alt="VlnPlot summarizes nGene, nUMI, percent.mt and percent.rp distribution" width="1280"><p class="caption">
+<img src="images/vlnplot_1.png" class="r-plt" alt="VlnPlot summarizes nGene, nUMI, percent.mt and percent.rp distribution" width="1280"><p class="caption">
 VlnPlot summarizes nGene, nUMI, percent.mt and percent.rp distribution
 </p>
 </div>
 <div class="figure">
-<img src="images/vlnplot_2.png" alt="VlnPlot full screen" width="1280"><p class="caption">
+<img src="images/vlnplot_2.png" class="r-plt" alt="VlnPlot full screen" width="1280"><p class="caption">
 VlnPlot full screen
 </p>
 </div>
 <div class="figure">
-<img src="images/cellfilter.png" alt="Cell filtration block" width="1280"><p class="caption">
+<img src="images/cellfilter.png" class="r-plt" alt="Cell filtration block" width="1280"><p class="caption">
 Cell filtration block
 </p>
 </div>
@@ -159,7 +158,7 @@ Cell filtration block
 <p>User will be able to adjust highly variable gene selection method and
 parameters related to unsupervised clustering.</p>
 <div class="figure">
-<img src="images/updateCluster.png" alt="Clustering setting block" width="1280"><p class="caption">
+<img src="images/updateCluster.png" class="r-plt" alt="Clustering setting block" width="1280"><p class="caption">
 Clustering setting block
 </p>
 </div>
@@ -168,7 +167,7 @@ Clustering setting block
 <h2 id="cell-identity-groups-visualization">Cell identity (groups) visualization<a class="anchor" aria-label="anchor" href="#cell-identity-groups-visualization"></a>
 </h2>
 <div class="figure">
-<img src="images/group_by.png" alt="Select cell identity" width="1280"><p class="caption">
+<img src="images/group_by.png" class="r-plt" alt="Select cell identity" width="1280"><p class="caption">
 Select cell identity
 </p>
 </div>
@@ -179,20 +178,20 @@ Select cell identity
 <p>Input gene symbol to view its expression aside of the original
 cluster view</p>
 <div class="figure">
-<img src="images/single_gene_expression.png" alt="Single gene expression" width="1280"><p class="caption">
+<img src="images/single_gene_expression.png" class="r-plt" alt="Single gene expression" width="1280"><p class="caption">
 Single gene expression
 </p>
 </div>
 <p>Input multiple genes to view all of them via Seurat::FeaturePlot(),
 and click anyone of the subfigures to acitvate single gene view.</p>
 <div class="figure">
-<img src="images/multi_gene_expression.png" alt="Multiple gene expression" width="1280"><p class="caption">
+<img src="images/multi_gene_expression.png" class="r-plt" alt="Multiple gene expression" width="1280"><p class="caption">
 Multiple gene expression
 </p>
 </div>
 <p>Or view expression with Seurat::DotPlot():</p>
 <div class="figure">
-<img src="images/dotplot.png" alt="Gene expression DotPlot" width="1280"><p class="caption">
+<img src="images/dotplot.png" class="r-plt" alt="Gene expression DotPlot" width="1280"><p class="caption">
 Gene expression DotPlot
 </p>
 </div>
@@ -213,7 +212,7 @@ Gene expression DotPlot
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
 </div>
 
     </footer>
