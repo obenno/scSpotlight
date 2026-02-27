@@ -57,7 +57,7 @@ mod_UpdateMetaData_server <- function(id,
                     dirPath,
                     hash_md5("meta")
                 )
-                qsave(out, filePath, preset = "high")
+                qs_save(out, filePath, compress_level = 9L)
 
                 return(list(metaFile = basename(filePath)))
 

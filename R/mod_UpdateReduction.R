@@ -26,7 +26,7 @@ mod_UpdateReduction_ui <- function(id){
 #'
 #' @noRd
 #'
-#' @importFrom qs2 qsave
+#' @importFrom qs2 qs_save
 mod_UpdateReduction_server <- function(id,
                                        reductionUpdateIndicator,
                                        reductionProcessed){
@@ -71,8 +71,8 @@ mod_UpdateReduction_server <- function(id,
               }
               xFileName <- hash_md5("X")
               yFileName <- hash_md5("Y")
-              qsave(d$X, file.path(dirPath, xFileName), preset = "high")
-              qsave(d$Y, file.path(dirPath, yFileName), preset = "high")
+              qs_save(d$X, file.path(dirPath, xFileName), compress_level = 9L)
+              qs_save(d$Y, file.path(dirPath, yFileName), compress_level = 9L)
               return(list(xFile = xFileName, yFile = yFileName))
           })
 
