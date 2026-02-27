@@ -14,18 +14,18 @@ onStart <- function(maxSize = 20 * 1000 * 1024^2,
 #'
 #' @description set startup options
 #'
-#' @importFrom future plan availableCores
+#' @importFrom future plan availableCores multisession multicore sequential cluster
 #' 
 #' @noRd
 set_options <- function(maxSize = 20 * 1000 * 1024^2,
                         nCores = 2){
 
     options(shiny.maxRequestSize=20000*1024^2)
-    options(shiny.usecairo = TRUE)
+    ##options(shiny.usecairo = TRUE)
 
     options(future.globals.maxSize = maxSize)
     options(Seurat.object.assay.version = "v5")
-    plan("multicore", workers = nCores)
+    plan(multisession, workers = min(nCores, availableCores()))
 
     RhpcBLASctl::blas_set_num_threads(1) # https://github.com/satijalab/seurat/issues/3991
 

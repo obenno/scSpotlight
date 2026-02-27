@@ -8,6 +8,8 @@
 #'
 #' @importFrom shiny NS tagList fileInput
 #' @importFrom shinyWidgets prettySwitch
+#' @importFrom DBI dbConnect dbListTables
+#' @importFrom duckdb duckdb
 #'
 mod_dataInput_inputUI <- function(id){
     ns <- NS(id)
@@ -34,17 +36,7 @@ mod_dataInput_inputUI <- function(id){
                 selectize = TRUE,
                 width = NULL
             ) %>%
-            tagAppendAttributes(class = c("mb-1")),
-            span(
-                "Enable BPCells", style = "display: inline-block; margin-bottom: 0.5rem",
-                infoIcon("This will use BPCells as the backend to store sparse matrix in seurat object.", "right")
-            ),
-            switchInput(
-                inputId = ns("enableBPCells"),
-                label = NULL,
-                size = "mini",
-                value = FALSE
-            )
+            tagAppendAttributes(class = c("mb-1"))
         )
     }else{
         tagList(
@@ -54,12 +46,13 @@ mod_dataInput_inputUI <- function(id){
                         infoIcon("Please upload processed seuratObj (RDS), or compressed matrix directory (zip, tgz, tbz2)", "right")),
                 multiple = FALSE,
                 width = "100%",
-                accept = c(##".h5seurat", ".h5Seurat", ".H5Seurat", "H5seurat",
-                    ".rds",
-                    ".zip",
-                    ".tar.gz", ".tgz",
-                    ".tar.bz2", ".tbz2"
-                )
+              accept = c(
+                ".duckdb",
+                ".rds",
+                ".zip",
+                ".tar.gz", ".tgz",
+                ".tar.bz2", ".tbz2"
+              )
             ),
             selectInput(
                 ns("selectAssay"),
@@ -100,9 +93,9 @@ mod_dataInput_server <- function(id,
                                  hvgSelectMethod,
                                  clusterDims,
                                  clusterResolution,
-                                 scatterReductionIndicator,
-                                 scatterColorIndicator,
-                                 objIndicator){
+                                 geneUpdateIndicator,
+                                 metaUpdateIndicator,
+                                 reductionUpdateIndicator){
     moduleServer( id, function(input, output, session){
         ns <- session$ns
 
@@ -114,7 +107,7 @@ mod_dataInput_server <- function(id,
         if(runningMode == "processing"){
             supportedFileInputPattern <- paste0(rdsFormatPattern, "|", compressionFormatPattern)
         }else{
-            supportedFileInputPattern <- rdsFormatPattern
+            supportedFileInputPattern <- paste0(rdsFormatPattern, "|", "duckdb")
         }
         if(isTruthy(dataDir)){
             if(!file.exists(dataDir)){
@@ -133,19 +126,20 @@ mod_dataInput_server <- function(id,
                 updateSelectInput(
                     session,
                     inputId = "dataDirFile",
-                    choices = list.files(path = dataDir,
-                                         pattern = supportedFileInputPattern,
-                                         recursive = TRUE),
-                    selected = ""
+                  choices = list.files(
+                    path = dataDir,
+                    pattern = supportedFileInputPattern,
+                    recursive = TRUE
+                  ),
+                  selected = ""
                 )
             }
         }
 
         ## Check if BPCells was installed
         observe({
-            if(isTruthy(input$enableBPCells) &&
-               !isTruthy(rlang::is_installed("BPCells"))){
-
+            req(input$enableBPCells)
+            if(!isTruthy(rlang::is_installed("BPCells"))){
                 ## update switchInput to false and shoot a notification
                 updateSwitchInput(
                     session,
@@ -181,8 +175,13 @@ mod_dataInput_server <- function(id,
             }
         })
 
-        observeEvent(list(inputFilePath(), inputFileName()), {
-            req(isTruthy(input$dataInput) || isTruthy(input$dataDirFile))
+        observeEvent(list(
+            inputFilePath(),
+            inputFileName()
+        ), {
+            req(inputFilePath(), inputFileName())
+            message("inputFilePath() is ", isolate(inputFilePath()))
+            ##req(isTruthy(input$dataInput) || isTruthy(input$dataDirFile))
             waiter_show(html = waiting_screen(), color = "var(--bs-primary)")
             ## Init seuratObj
             seuratObj <- NULL
@@ -194,7 +193,8 @@ mod_dataInput_server <- function(id,
                 if(class(seuratObj[[assay]]) == "Assay"){
                     seuratObj[[assay]] <- as(seuratObj[[assay]], Class = "Assay5")
                 }
-                if(input$enableBPCells){
+                message("conversion finished...")
+                if(isTruthy(input$enableBPCells)){
                     ## converting counts and data layer to BPCells matrix
                     if("counts" %in% Layers(seuratObj) &&
                        class(seuratObj[[assay]]$counts) == "dgCMatrix"){
@@ -314,32 +314,71 @@ mod_dataInput_server <- function(id,
 
                     seuratObj <- standard_process_seurat(seuratObj, hvg_method = hvg_method,
                                                          ndims = clusterDims(), res = clusterResolution())
+
                 }
+            }else if(str_detect(inputFileName(), ".duckdb$")){
+                file.symlink(from = inputFilePath(), to = session$userData$duckdb)
+                con <- duckConnect(session)
+                duckdbAssays <- queryDuckAssays(con)
+                dbDisconnect(con)
+                updateSelectInput(
+                    session = session,
+                    inputId = "selectAssay",
+                    choices = duckdbAssays,
+                    selected = duckdbAssays[1]
+                )
             }else{
                 waiter_update(html = waiting_screen("Input format not supported, please reload the page..."))
                 stop("Input format not supported")
             }
 
             ## update assay list
-            updateSelectInput(
-                session = session,
-                inputId = "selectAssay",
-                choices = ifelse(isTruthy(seuratObj), Assays(seuratObj), ""),
-                selected = ifelse(isTruthy(seuratObj), DefaultAssay(seuratObj), NULL)
-            )
-            waiter_hide()
-            message("dataInput module increased scatter indicator")
-            scatterReductionIndicator(scatterReductionIndicator()+1)
-            scatterColorIndicator(scatterColorIndicator()+1)
-            obj(seuratObj)
+            if(isTruthy(seuratObj)){
+                updateSelectInput(
+                    session = session,
+                    inputId = "selectAssay",
+                    choices = ifelse(isTruthy(seuratObj), Assays(seuratObj), ""),
+                    selected = ifelse(isTruthy(seuratObj), DefaultAssay(seuratObj), NULL)
+                )
+                obj(seuratObj)
 
+                message("Converting seurat object to duckdb...")
+                selectedLayers <- intersect(c("counts", "data"), Layers(seuratObj))
+                seurat2duckdb(
+                    object = seuratObj,
+                    dbFile = session$userData$duckdb,
+                    assays = Assays(seuratObj),
+                    layers = selectedLayers
+                )
+                message("Finished convertion")
+            }
+
+
+            ## Update indicators
+            metaUpdateIndicator(metaUpdateIndicator()+1)
+            reductionUpdateIndicator(reductionUpdateIndicator()+1)
+            geneUpdateIndicator(geneUpdateIndicator()+1)
+            waiter_hide()
+        }, priority = 10)
+
+        observeEvent(input$selectAssay,{
+            ## Data of different assays were stored in the same metadata
+            ## reductions were "independent" with assay switch
+            geneUpdateIndicator(geneUpdateIndicator()+1)
         })
 
         selectedAssay <- reactive({
             input$selectAssay
         })
 
-        return(selectedAssay)
+        BPCells <- reactive({
+            input$enableBPCells
+        })
+
+        return(list(
+          selectedAssay = selectedAssay,
+          BPCells = BPCells
+        ))
 
     })
 }

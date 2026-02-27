@@ -21,7 +21,10 @@ mod_mainClusterPlot_ui <- function(id){
              height="600px",
              style = "position: relative",
              class = "align-items-center m-0 p-1",
-             mod_FeaturePlot_ui(ns("featurePlot"))
+           tags$canvas(
+                  id = "featurePlotCanvas",
+                  style = "display: none;")
+             ##mod_FeaturePlot_ui(ns("featurePlot"))
          )
      )
   )
@@ -33,185 +36,57 @@ mod_mainClusterPlot_ui <- function(id){
 #'
 #' @importFrom promises future_promise %...>% %...!%
 mod_mainClusterPlot_server <- function(id,
-                                       obj,
-                                       scatterReductionIndicator, scatterColorIndicator,
-                                       scatterReductionInput, scatterColorInput,
-                                       selectedReduction,
+                                       reductionProcessed,
+                                       metaProcessed,
+                                       scatterUpdateIndicator,
                                        group.by,
                                        split.by,
-                                       filteredInputFeatures,
-                                       moduleScore,
-                                       goBack){
+                                       moduleScore){
   moduleServer( id, function(input, output, session){
       ns <- session$ns
-      ## waiter spinner for mainClusterPlot
-      ##w <- Waiter$new(id = ns("clusterPlot"))
-      selectedFeature <- reactiveVal(NULL)
-      observeEvent(filteredInputFeatures(), {
-          ##req(filteredInputFeatures())
-          message("Filtered Input Features are: ", paste(filteredInputFeatures(), collapse=", "))
-          ## Reset selectedFeature() when filteredInputFeatures() changes
-          if(length(filteredInputFeatures())==1){
-              selectedFeature(filteredInputFeatures()[1])
-          }else if(!isTruthy(filteredInputFeatures())){
-              ## If filteredInputFeatures() was changed to NULL
-              ## reset selectedFeature also
-              selectedFeature(NULL)
-              ##if(isTruthy(goBack())){
-              ##    message("goBack button increased scatter indicator")
-              ##    scatterReductionIndicator(scatterReductionIndicator()+1)
-              ##    scatterColorIndicator(scatterColorIndicator()+1)
-              ##}
-          }else if(length(filteredInputFeatures())>1){
-              selectedFeature(NULL)
-          }
 
-      }, priority = 20, ignoreNULL = FALSE)
-
-      ## Extract gene expressions
-      observeEvent(selectedFeature(), {
-          req(obj())
-          if(isTruthy(selectedFeature())){
-              ## Transfer expressionData
-              showNotification(
-                  ui = div(div(class = c("spinner-border", "spinner-border-sm", "text-primary"),
-                               role = "status",
-                               span(class = "sr-only", "Loading...")),
-                           "Extracting expression values..."),
-                  action = NULL,
-                  duration = NULL,
-                  closeButton = FALSE,
-                  type = "default",
-                  id = "extract_expr_notification",
-                  session = session
-              )
-              if(isTruthy(moduleScore())){
-                  expr <- AddModuleScore(obj(), features = filteredInputFeatures()) %>% pull()
-              }else{
-                  expr <- FetchData(obj(), vars = selectedFeature()) %>% pull()
-              }
-              transfer_expression(expr, session)
-              removeNotification(id = "extract_expr_notification", session)
-              scatterColorIndicator(scatterColorIndicator()+1)
-              message("selectedFeature() changed colorIndicator: ", scatterColorIndicator())
-          }
-
-      }, priority = 10, ignoreNULL = FALSE) ## ignore shall be adjusted
-
-      plottingMode <- eventReactive(list(
-          filteredInputFeatures(),
-          split.by()
-      ), {
-          ##req(obj())
-          if(isTruthy(filteredInputFeatures()) && split.by() == "None"){
-              mode <- "cluster+expr+noSplit"
-          }else if(isTruthy(filteredInputFeatures()) &&
-                   split.by() != "None"){
-              split.by.length <- obj()[[split.by()]] %>%
-                  pull() %>%
-                  unique() %>%
-                  length()
-              if(split.by.length <= 2){
-                  mode <- "cluster+expr+twoSplit"
-              }else{
-                  mode <- "cluster+expr+multiSplit"
-              }
-          }else if(!isTruthy(filteredInputFeatures()) &&
-                   split.by() != "None"){
-              mode <- "cluster+multiSplit"
-          }else{
-              mode <- "clusterOnly"
-          }
-          message("Plotting mode => ", mode)
-          return(mode)
-      })
-
-      observeEvent(plottingMode(), {
-          message("Plotting mode changed and indicator increased")
-          scatterReductionIndicator(scatterReductionIndicator()+1)
-          scatterColorIndicator(scatterColorIndicator()+1)
-      }, priority = -10)
-
-      observeEvent(moduleScore(),{
-          message("moduleScore switch changed scatterColorIndicator")
-          scatterColorIndicator(scatterColorIndicator()+1)
-      }, ignoreInit = TRUE)
-
-      ## Update scatterColorInput only when scatterColorIndicator changes
-      observeEvent(scatterColorIndicator(), {
-          req(obj())
-          validate(
-              need(selectedReduction() %in% Reductions(obj()),
-                   paste0(selectedReduction(), " is not in object reductions"))
-          )
-          message("Updating scatterColorInput")
-          if(isTruthy(filteredInputFeatures()) &&
-             isTruthy(moduleScore())){
-              exprData <- AddModuleScore(obj(), features = filteredInputFeatures()) %>% pull()
-          }else{
-              exprData <- NULL
-          }
-
-          d <- prepare_scatterMeta(obj(),
-                                   group.by = group.by(),
-                                   mode = plottingMode(),
-                                   split.by = split.by(),
-                                   inputFeatures = filteredInputFeatures(),
-                                   selectedFeature = selectedFeature(),
-                                   moduleScore = moduleScore())
-
-          scatterColorInput(d)
-          message("Finished Updating scatterColorInput")
-      }, priority = -20)
-
-      ## input$goBack was set in javacript code
-      observeEvent(goBack(), {
-          message("goBack is ", goBack())
-          selectedFeature(NULL)
-          message("selectedFeature() is NULL")
-      }, ignoreNULL= TRUE, priority = 20)
-
-
-      ## Invoke multiFeaturePlot module
-      mod_FeaturePlot_server("featurePlot",
-                             obj,
-                             selectedReduction,
-                             split.by,
-                             selectedFeature,
-                             filteredInputFeatures)
-
+      ##observeEvent(moduleScore(),{
+      ##    message("moduleScore switch changed scatterColorIndicator")
+      ##    scatterColorIndicator(scatterColorIndicator()+1)
+      ##}, ignoreInit = TRUE)
 
       observeEvent(list(
-          ## Include trigger events
-          ##selectedReduction(),
-          ##group.by(),
-          ##split.by(),
-          ##selectedFeature(),
-          ##filteredInputFeatures(),
-          ##moduleScore()
-          ##goBack()
-          scatterReductionIndicator(),
-          scatterColorIndicator()
+          scatterUpdateIndicator(),
+          metaProcessed(),
+          reductionProcessed()
       ), {
           ## Update plots when group.by and split.by changes
-          req(group.by(), split.by())
-          message("indicators changed, plotting clusters...")
-          ##w$show()
-          if(isTruthy(filteredInputFeatures()) && length(filteredInputFeatures())>1){
-              if(!is.null(selectedFeature())){
-                  reglScatter_plot(scatterColorInput(), session)
-                  ## Add goBack button and goBack() value
-                  reglScatter_addGoBack(session)
-              }
-          }else{
-              reglScatter_plot(scatterColorInput(), session)
-          }
-          ##on.exit({
-          ##    w$hide()
-          ##})
-      }, priority = -100)
+          req(metaProcessed())
+          req(reductionProcessed())
+          req(group.by()!="None")
 
-      return(reactive(selectedFeature()))
+          message("-----")
+          message("Selected group.by is ", isolate(group.by()))
+          message("Selected split.by is ", isolate(split.by()))
+          message("Updating plotMetaData")
+          message("moduleScore is ", moduleScore())
+          message("-----")
+
+          if(group.by()=="None"){
+            group_by = NULL
+          }else{
+            group_by = group.by()
+          }
+          if(split.by()=="None"){
+            split_by = NULL
+          }else{
+            split_by = split.by()
+          }
+          d <- list(
+            group_by = group_by,
+            split_by = split_by,
+            moduleScore = moduleScore()
+          )
+          message("invoking regl")
+          reglScatter_plot(d, session)
+
+      }, priority = -1000, ignoreInit = TRUE)
+
   })
 }
 

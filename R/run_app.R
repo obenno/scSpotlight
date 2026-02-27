@@ -48,6 +48,8 @@ run_app <- function(
       enableBookmarking = enableBookmarking,
       uiPattern = uiPattern
     ),
-    golem_opts = list(dataDir = dataDir, runningMode = runningMode, ...)
+    golem_opts = list(dataDir = dataDir,
+                      runningMode = runningMode,
+                      nCores = nCores, ...)
   )
 }

@@ -1,8 +1,9 @@
-export const resize_infoBox = (mainPlotId, infoBoxId, targetHeight) => {
+export const resize_infoBox = (mainPlotEl, infoBoxEl, targetHeight) => {
     // This function is to set the height of infoBox
 
     // get main plotting area height
-    const mainEl = document.getElementById(infoBoxId).parentElement;
+    const mainEl = infoBoxEl.parentElement;
+
     const mainEl_height = parseFloat(mainEl.getBoundingClientRect().height);
     const marginTop = parseFloat(mainEl.style.marginTop || window.getComputedStyle(mainEl).marginTop);
     const marginBottom = parseFloat(mainEl.style.marginBottom || window.getComputedStyle(mainEl).marginBottom);
@@ -10,15 +11,13 @@ export const resize_infoBox = (mainPlotId, infoBoxId, targetHeight) => {
     const paddingBottom = parseFloat(mainEl.style.paddingBottom || window.getComputedStyle(mainEl).paddingBottom);
     const plotting_height = mainEl_height - marginTop - marginBottom - paddingTop -paddingBottom;
 
-    const mainClusterPlotEl = document.getElementById(mainPlotId);
-    const tabEl = document.getElementById(infoBoxId);
 
     //const mainClusterPlotEl_height = parseFloat(mainClusterPlotEl.style.height);
     //const tabEl_height = parseFloat(tabEl.style.height);
     //collapse infoBox, targetHeight = 56;
     //collapse infoBox, targetHeight = 250;
-    tabEl.style.height = (targetHeight/plotting_height*1000).toString() + "px";
-    mainClusterPlotEl.style.height = ((1-targetHeight/plotting_height)*1000).toString() + "px";
+    infoBoxEl.style.height = (targetHeight/plotting_height*1000).toString() + "px";
+    mainPlotEl.style.height = ((1-targetHeight/plotting_height)*1000).toString() + "px";
 };
 
 export const update_collapse_icon = (iconId) => {

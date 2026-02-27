@@ -213,7 +213,7 @@ right_sidebar_ui <- function(){
                 title = "Reduction",
                 value = "analysis_reduction",
                 icon = bsicons::bs_icon("signpost"),
-                mod_UpdateReduction_ui("reductionUpdate"),
+                mod_UpdateReduction_ui("updateReduction"),
                 class = "bg-light text-black"
             ),
             ## Category options
@@ -221,7 +221,7 @@ right_sidebar_ui <- function(){
                 title = "Category",
                 value = "analysis_category",
                 icon = bsicons::bs_icon("qr-code"),
-                mod_UpdateCategory_ui("categoryUpdate"),
+                mod_UpdateCategory_ui("updateCategory"),
                 class = "bg-light text-black"
             ),
             ## Input FeatureList
@@ -243,7 +243,7 @@ right_sidebar_ui <- function(){
                 title = "Reduction",
                 value = "analysis_reduction",
                 icon = bsicons::bs_icon("signpost"),
-                mod_UpdateReduction_ui("reductionUpdate"),
+                mod_UpdateReduction_ui("updateReduction"),
                 class = "bg-light text-black"
             ),
             ## Category options
@@ -251,7 +251,7 @@ right_sidebar_ui <- function(){
                 title = "Category",
                 value = "analysis_category",
                 icon = bsicons::bs_icon("qr-code"),
-                mod_UpdateCategory_ui("categoryUpdate"),
+                mod_UpdateCategory_ui("updateCategory"),
                 class = "bg-light text-black"
             ),
             ## Input FeatureList
@@ -304,16 +304,19 @@ infoBox_ui <- function(){
             ##title = "",
             nav_panel(
                 title = "VlnPlot",
-                mod_VlnPlot_ui("vlnPlot")
+                tags$canvas(id = "VlnPlot",
+                            style = "height: 100%;")
+                ##mod_VlnPlot_ui("vlnPlot")
             ),
             ## seurat5 VariableFeaturePlot() has bug on pulling data
             ##nav_panel(
             ##    title = "HVGPlot",
-            ##    plotOutput("HVGPlot") %>% withSpinner(fill_container = T)
+            ##    plotOutput("HVGPlot")
             ##),
             nav_panel(
                 title = "DotPlot",
-                mod_DotPlot_ui("dotPlot")
+                tags$canvas(id = "DotPlot",
+                            style = "height: 100%;")
             ),
             nav_spacer(),
             nav_item(
@@ -339,12 +342,13 @@ infoBox_ui <- function(){
             ##title = "",
             nav_panel(
                 title = "VlnPlot",
-                mod_VlnPlot_ui("vlnPlot")
+                tags$canvas(id = "VlnPlot",
+                            style = "height: 100%;")
             ),
             ## seurat5 VariableFeaturePlot() has bug on pulling data
             ##nav_panel(
             ##    title = "HVGPlot",
-            ##    plotOutput("HVGPlot") %>% withSpinner(fill_container = T)
+            ##    plotOutput("HVGPlot")
             ##),
             nav_panel(
                 title = "ElbowPlot",
@@ -352,12 +356,13 @@ infoBox_ui <- function(){
             ),
             nav_panel(
                 title = "DotPlot",
-                mod_DotPlot_ui("dotPlot")
+                tags$canvas(id = "DotPlot",
+                            style = "height: 100%;")
             ),
             ##nav_panel(
             ##    title = "DEG Heatmap",
             ##    tagList()
-            ##    ##plotOutut("DEG_heatmap") %>% withSpinner(fill_container = T)
+            ##    ##plotOutut("DEG_heatmap")
             ##),
             nav_panel(
                 title = "DEG List",

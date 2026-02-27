@@ -24,43 +24,64 @@ mod_UpdateReduction_ui <- function(id){
     
 #' UpdateReduction Server Functions
 #'
-#' @noRd 
+#' @noRd
+#'
+#' @importFrom qs2 qs_save
 mod_UpdateReduction_server <- function(id,
-                                       obj,
-                                       scatterReductionIndicator, scatterColorIndicator){
+                                       reductionUpdateIndicator,
+                                       reductionProcessed){
 
   moduleServer( id, function(input, output, session){
       ns <- session$ns
 
-      reduction_list <- reactive({
-          req(obj())
-          k <- Reductions(obj())
+      observeEvent(reductionUpdateIndicator(), {
+          req(file.exists(session$userData$duckdb))
+          con <- duckConnect(session)
+          on.exit(dbDisconnect(con))
+          k <- listDuckReduction(con)
           idx <- na.omit(match(c("umap", "tsne", "pca"), k))
           ordered_reduction <- k[c(idx, setdiff(1:length(k), idx))]
-          return(ordered_reduction)
-      })
-
-      observeEvent(reduction_list(),{
-          req(obj())
           ## update input list
           updateSelectInput(
             session = session,
             inputId = "reduction",
             label = "Choose reduction",
-            choices = reduction_list(),
+            choices = ordered_reduction,
             selected = NULL
           )
+      }, priority = -200)
+
+      ##observeEvent(input$reduction, {
+      ##   reductionUpdateIndicator(reductionUpdateIndicator()+1)
+      ##}, ignoreNULL = TRUE)
+
+      extract_reduction <- ExtendedTask$new(function(reduction, dirPath){
+          future_promise({
+
+              con <- duckConnect(session)
+              on.exit(DBI::dbDisconnect(con))
+
+              d <- queryDuckReduction(
+                  con = con,
+                  reduction = reduction
+              )
+              colnames(d) <- c("X", "Y")
+              if(!file.exists(dirPath)){
+                  stop(paste0(dirPath, " does not exist."))
+              }
+              xFileName <- hash_md5("X")
+              yFileName <- hash_md5("Y")
+              qs_save(d$X, file.path(dirPath, xFileName), compress_level = 9L)
+              qs_save(d$Y, file.path(dirPath, yFileName), compress_level = 9L)
+              return(list(xFile = xFileName, yFile = yFileName))
+          })
 
       })
 
-      observeEvent(list(obj(), input$reduction), {
-          req(obj())
+      observeEvent(input$reduction, {
+          req(file.exists(session$userData$duckdb))
           req(input$reduction!="None")
-          message("UpdateReduction module increased scatter indicator")
-          scatterReductionIndicator(scatterReductionIndicator()+1)
-          scatterColorIndicator(scatterColorIndicator()+1)
-          d <- Embeddings(obj()[[input$reduction]]) %>% as.data.frame()
-          colnames(d) <- c("X", "Y")
+
           showNotification(
               ui = div(div(class = c("spinner-border", "spinner-border-sm", "text-primary"),
                            role = "status",
@@ -73,16 +94,28 @@ mod_UpdateReduction_server <- function(id,
               id = "update_reduction_notification",
               session = session
           )
-          transfer_reduction(d, session)
-          removeNotification(id = "update_reduction_notification", session)
-      }, priority = -10)
+          message("Transferring reductionData...")
+          reductionProcessed(FALSE)
+          promise_reduction <- input$reduction
+          promise_dirPath <- file.path(session$userData$tempDir, "reduction")
+          extract_reduction$invoke(reduction = promise_reduction,
+                                   dirPath = promise_dirPath)
 
-      selectedReduction <- reactive({
-          req(obj())
-          input$reduction
-      })
+      }, priority = -500)
 
-      return(selectedReduction)
+      observeEvent(extract_reduction$status(), {
+          if(extract_reduction$status() == "success"){
+              removeNotification(id = "update_reduction_notification", session)
+              session$sendCustomMessage(type = "reduction_ready", extract_reduction$result())
+          }else{
+              message("extract_reduction error: ", extract_reduction$result())
+          }
+      }, ignoreNULL = FALSE)
+
+      ##selectedReduction <- reactive({
+      ##  input$reduction
+      ##})
+
   })
 }
 

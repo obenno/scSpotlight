@@ -23,7 +23,7 @@ mod_SubsetCells_ui <- function(id){
 #'
 #' @noRd
 mod_SubsetCells_server <- function(id,
-                                   seuratObj,
+                                   ducdbConnection,
                                    seuratObj_orig,
                                    selectedCells,
                                    scatterReductionIndicator,

@@ -56,12 +56,15 @@ mod_ClusterSetting_ui <- function(id){
 #' ClusterSetting Server Functions
 #'
 #' @importFrom SeuratObject Graphs
+#' @importFrom tibble rownames_to_column
 #'
 #' @noRd 
 mod_ClusterSetting_server <- function(id,
                                       seuratObj,
-                                      scatterReductionIndicator,
-                                      scatterColorIndicator){
+                                      selectedAssay,
+                                      metaUpdateIndicator,
+                                      reductionUpdateIndicator){
+
   moduleServer( id, function(input, output, session){
     ns <- session$ns
     ## Update UMAP/TSNE reduction
@@ -89,9 +92,35 @@ mod_ClusterSetting_server <- function(id,
                 obj <- FindNeighbors(obj, dims = 1:input$cluster_dims)
                 obj <- FindClusters(obj, resolution = input$cluster_resolution)
 
-                message("ClusterSetting module increased scatter indicator")
-                scatterReductionIndicator(scatterReductionIndicator()+1)
-                scatterColorIndicator(scatterColorIndicator()+1)
+                ## update duckdb
+                con <- duckConnect(session, read_only = FALSE)
+                on.exit(dbDisconnect(con))
+
+                reductionData = list()
+                objReductions <- Reductions(obj)
+                for(i in seq_along(objReductions)){
+                  dr <- objReductions[i]
+                  d <- Embeddings(obj[[dr]])[,1:2] %>%
+                    as.data.frame() %>%
+                    rownames_to_column("cell")
+                  reductionData[[i]] <- d
+                }
+                names(reductionData) <- Reductions(obj)
+                updateDuckReduction(
+                  con,
+                  reductions = Reductions(obj),
+                  data = reductionData
+                )
+                message("Finished updating reduction")
+                updateDuckMeta(
+                  con,
+                  assay = selectedAssay(),
+                  data = rownames_to_column(obj[[]], "cell")
+                )
+
+                message("ClusterSetting module increased meta and reduction indicator")
+                metaUpdateIndicator(metaUpdateIndicator()+1)
+                reductionUpdateIndicator(reductionUpdateIndicator()+1)
 
             }else if(input$updateClusterOpt == "Update nDim Only"){
                 incProgress(0, message = paste("Updating UMAP...", "0/2"))
@@ -101,9 +130,34 @@ mod_ClusterSetting_server <- function(id,
                 obj <- FindNeighbors(obj, dims = 1:input$cluster_dims)
                 obj <- FindClusters(obj, resolution = input$cluster_resolution)
 
-                message("ClusterSetting module increased scatter indicator")
-                scatterReductionIndicator(scatterReductionIndicator()+1)
-                scatterColorIndicator(scatterColorIndicator()+1)
+                ## update duckdb
+                con <- duckConnect(session, read_only = FALSE)
+                on.exit(dbDisconnect(con))
+
+                reductionData = list()
+                objReductions <- Reductions(obj)
+                for(i in seq_along(objReductions)){
+                    dr <- objReductions[i]
+                    d <- Embeddings(obj[[dr]])[,1:2] %>%
+                        as.data.frame() %>%
+                        rownames_to_column("cell")
+                    reductionData[[i]] <- d
+                }
+                names(reductionData) <- Reductions(obj)
+                updateDuckReduction(
+                    con,
+                    reductions = Reductions(obj),
+                    data = reductionData
+                )
+                updateDuckMeta(
+                    con,
+                    assay = selectedAssay(),
+                    data = rownames_to_column(obj[[]], "cell")
+                )
+
+                message("ClusterSetting module increased meta and reduction indicator")
+                metaUpdateIndicator(metaUpdateIndicator()+1)
+                reductionUpdateIndicator(reductionUpdateIndicator()+1)
 
             }else{
                 obj <- seuratObj()
@@ -118,9 +172,19 @@ mod_ClusterSetting_server <- function(id,
                     incProgress(1/2, message = paste("Updating Cluster...", "1/2"))
                     obj <- FindClusters(obj, resolution = input$cluster_resolution)
                 }
+                ## update duckdb
+                con <- duckConnect(session, read_only = FALSE)
+                on.exit(dbDisconnect(con))
+                message("selectedAssay(): ", isolate(selectedAssay()))
+                updateDuckMeta(
+                    con,
+                    assay = selectedAssay(),
+                    data = rownames_to_column(obj[[]], "cell")
+                )
 
-                message("ClusterSetting module increased scatterColorIndicator()")
-                scatterColorIndicator(scatterColorIndicator()+1)
+                message("ClusterSetting module increased meta and reduction indicator")
+                metaUpdateIndicator(metaUpdateIndicator()+1)
+
             }
             seuratObj(obj)
 

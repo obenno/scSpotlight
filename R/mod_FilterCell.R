@@ -59,35 +59,79 @@ mod_FilterCell_ui <- function(id){
 #' FilterCell Server Functions
 #'
 #' @importFrom scales label_comma
+#' @importFrom SeuratObject Cells Features Reductions
+#' @importFrom DBI dbConnect dbDisconnect
+#' @importFrom tibble rownames_to_column
 #' 
 #' @noRd 
 mod_FilterCell_server <- function(id,
                                   seuratObj,
+                                  selectedAssay,
                                   hvgSelectMethod,
                                   clusterDims,
                                   clusterResolution,
-                                  scatterReductionIndicator,
-                                  scatterColorIndicator){
+                                  geneUpdateIndicator,
+                                  metaUpdateIndicator,
+                                  reductionUpdateIndicator){
     moduleServer( id, function(input, output, session){
         ns <- session$ns
         observeEvent(input$filter_cell, {
             req(seuratObj())
+            req(file.exists(session$userData$duckdb))
             withProgress(
                 message = "Filtering Cells & Updating Reductions...",
                 {
+                    nGeneColName <- paste0("nFeature_", selectedAssay())
+                    selectedCells <- seuratObj()[[]] %>%
+                        filter(!!as.symbol(nGeneColName) > input$nFeature_min,
+                               !!as.symbol(nGeneColName) < input$nFeature_max,
+                               percent.mt < input$percent.mt_max) %>%
+                        rownames()
                     obj <- subset(seuratObj(),
-                                  subset = nFeature_RNA > input$nFeature_min &
-                                      nFeature_RNA < input$nFeature_max &
-                                      percent.mt < input$percent.mt_max)
+                                  cells = selectedCells)
                     obj <- standard_process_seurat(obj, normalization = FALSE,
                                                    hvg_method = hvgSelectMethod(),
                                                    ndims = clusterDims(),
                                                    res = clusterResolution())
                     seuratObj(obj)
+
+                    ## Update the duckdb database
+                    ## open new duckdbconnection
+                    con <- duckConnect(session, read_only = FALSE)
+                    on.exit(dbDisconnect(con))
+                    subsetDuckMatrix(
+                      con,
+                      assay = selectedAssay(),
+                      cells = Cells(seuratObj()),
+                      features = Features(seuratObj())
+                    )
+                    reductionData = list()
+                    objReductions <- Reductions(seuratObj())
+                    for(i in seq_along(objReductions)){
+                        dr <- objReductions[i]
+                        d <- Embeddings(seuratObj()[[dr]])[,1:2] %>%
+                            as.data.frame() %>%
+                            rownames_to_column("cell")
+                        reductionData[[i]] <- d
+                    }
+                    names(reductionData) <- Reductions(seuratObj())
+                    updateDuckReduction(
+                        con,
+                        reductions = Reductions(seuratObj()),
+                        data = reductionData
+                    )
+                    updateDuckMeta(
+                        con,
+                        assay = selectedAssay(),
+                        data = rownames_to_column(seuratObj()[[]], "cell")
+                    )
+
                 }
             )
 
-            nCells <- length(Cells(obj))
+            con <- duckConnect(session)
+            nCells <- length(queryDuckCells(con, assay = selectedAssay()))
+            dbDisconnect(con)
             showNotification(
                 ui = paste0(scales::label_comma()(nCells), " Cells Left."),
                 action = NULL,
@@ -97,10 +141,10 @@ mod_FilterCell_server <- function(id,
                 session = session
             )
 
-            message("FilterCell module increased scatter indicator")
-            scatterReductionIndicator(scatterReductionIndicator()+1)
-            scatterColorIndicator(scatterColorIndicator()+1)
-
+            message("FilterCell module updated metadata and reduction")
+            geneUpdateIndicator(geneUpdateIndicator()+1)
+            metaUpdateIndicator(metaUpdateIndicator()+1)
+            reductionUpdateIndicator(reductionUpdateIndicator()+1)
         })
 
     })
