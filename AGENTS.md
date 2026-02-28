@@ -9,8 +9,8 @@ built with the [golem](https://thinkr-open.github.io/golem/) framework.
 All code contributions must consider performance implications for large datasets (1M+ cells).
 
 ### Tech Stack
-- **Backend**: R, Shiny, Seurat (v5), DuckDB (on-disk queries), qs (fast serialization)
-- **Frontend**: JavaScript (ES6), regl-scatterplot (WebGL), D3.js, webR
+- **Backend**: R, Shiny, Seurat (v5), DuckDB (on-disk queries), qs2 (fast serialization)
+- **Frontend**: JavaScript (ES6), deck.gl (WebGL), D3.js, webR
 - **Build**: Use [packer](https://packer.john-coene.com/#/) package for JavaScript bundling
 
 ---
@@ -60,26 +60,58 @@ docker run -p 8081:8081 scspotlight \
 
 ---
 
+## Git Workflow Policy (Solo Dev: `dev` -> `main`)
+
+### Branch Roles
+- `main` is the production branch and must always remain deployable.
+- `dev` is the integration/staging branch for ongoing feature work.
+- `feature/*` branches are short-lived and should be created from `dev`.
+
+### PR Flow
+1. Create `feature/*` from `dev`.
+2. Open PR from `feature/*` -> `dev`.
+3. Address review feedback in the same branch, push new commits, and keep the PR updated.
+4. Merge to `dev` only after checks pass.
+5. Promote tested changes via PR from `dev` -> `main`.
+
+### Review Feedback Handling
+- Reply to each review thread with one of: fixed, partially fixed, or not changed.
+- When fixed, reference commit SHA or file path.
+- When not changed, provide a short rationale (scope, risk, compatibility, or performance).
+- Resolve review threads only after posting a clear reply.
+
+### Merge and Rollback Rules
+- Prefer squash merge for feature PRs unless preserving commit history is important.
+- Delete merged `feature/*` branches.
+- If a change in `dev` is problematic, revert it in `dev` before promoting.
+- If a change reaches `main` and must be undone, revert the merge commit on `main`.
+
+### Sync Rules
+- Keep `dev` synchronized with `main` after each release merge to avoid drift.
+- Keep active feature branches rebased/merged with `dev` regularly to reduce conflicts.
+
+---
+
 ## Performance Requirements (CRITICAL)
 
 **This app MUST handle 1M+ cells efficiently. Always consider performance impact.**
 
-### Rendering Thresholds (regl-scatterplot)
-Adjust rendering parameters based on cell count (see `srcjs/modules/reglScatter.js:644-663`):
+### Rendering Thresholds (deck.gl)
+Adjust rendering parameters based on cell count (see `srcjs/modules/deckScatter.js:1041-1067`):
 
-| Cell Count   | Point Size | Opacity | Performance Mode |
-|--------------|------------|---------|------------------|
-| < 15,000     | 3          | 0.8     | false            |
-| 15K - 50K    | 3          | 0.6     | false            |
-| 50K - 500K   | 1          | 0.6     | false            |
-| 500K - 1M    | 0.5        | 0.4     | true             |
-| 1M - 2M      | 0.2        | 0.4     | true             |
-| > 2M         | 0.2        | 0.2     | true             |
+| Cell Count   | Point Size | Opacity | Pickable |
+|--------------|------------|---------|----------|
+| < 15,000     | 4          | 0.8     | true     |
+| 15K - 50K    | 3          | 0.7     | true     |
+| 50K - 500K   | 2          | 0.6     | true     |
+| 500K - 1M    | 1          | 0.5     | true     |
+| 1M - 2M      | 0.5        | 0.4     | true     |
+| > 2M         | 0.2        | 0.2     | false    |
 
 ### Performance Best Practices
 
 **JavaScript:**
-- Use `regl-scatterplot` for WebGL-accelerated main scatter plots (NOT canvas/SVG)
+- Use `deck.gl` for WebGL-accelerated main scatter plots (NOT canvas/SVG)
 - Use **TypedArrays** (`Float32Array`, `Int32Array`, `Int16Array`) for large numeric data
 - Store categorical data as **index arrays** with level lookup, not string arrays
 - **Debounce** resize handlers (250ms) to prevent excessive redraws
@@ -88,7 +120,7 @@ Adjust rendering parameters based on cell count (see `srcjs/modules/reglScatter.
 
 **R:**
 - Use **DuckDB** for on-disk expression matrix queries (avoid loading full matrix)
-- Use **qs** package for fast binary serialization (`qsave`/`qread_url`)
+- Use **qs2** package for fast binary serialization (`qs_save`)
 - Use **ExtendedTask** + `future_promise` for non-blocking async operations
 - Use `scattermore::geom_scattermost()` for R-generated plots when cells > 30K
 - Consider **BPCells** for very large sparse matrices
@@ -158,7 +190,7 @@ export class MyClass { ... }
 
 ### Naming Conventions
 - Variables/functions: `camelCase`
-- Classes: `PascalCase` (e.g., `reglScatterCanvas`)
+- Classes: `PascalCase` (e.g., `ScatterDeckController`)
 - Constants: `camelCase` or `UPPER_SNAKE_CASE` for true constants
 - DOM element IDs: `camelCase`
 
@@ -195,7 +227,8 @@ scSpotlight/
 ├── srcjs/                  # JavaScript source (bundled via packer)
 │   ├── index.js            # Main entry point
 │   ├── modules/            # JS modules
-│   │   ├── reglScatter.js  # Main scatter plot (WebGL)
+│   │   ├── deckScatter.js  # Main scatter plot (WebGL, deck.gl)
+│   │   ├── scatter/         # deck.gl scatter support modules
 │   │   ├── webr.js         # webR integration
 │   │   └── ...
 │   └── config/             # Webpack config JSON files
@@ -210,9 +243,9 @@ scSpotlight/
 ## Key Patterns
 
 ### R ↔ JavaScript Data Transfer
-1. **R saves data** using `qs::qsave()` to temp directory
+1. **R saves data** using `qs2::qs_save()` to temp directory
 2. **R notifies JS** via `session$sendCustomMessage()`
-3. **JS fetches data** using `qs::qread_url()` through webR
+3. **JS fetches data** through webR reader utilities
 4. Data converted to TypedArrays for efficiency
 
 ### Reactive Update Flow
