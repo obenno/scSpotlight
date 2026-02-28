@@ -25,7 +25,7 @@ import {
   reglScatterCanvas,
   expandMeta,
   sortStringArray,
-} from "./modules/reglScatter.js";
+} from "./modules/deckScatter.js";
 
 import {
   initShelter,
@@ -489,7 +489,7 @@ Shiny.addCustomMessageHandler("addNewMeta", (msg) => {
     { priority: "event" },
   );
   // deselct points
-  reglElementData.scatterplots.forEach((e) => e.deselect());
+  reglElementData.deselectAll();
   // reset selectedCells
   Shiny.setInputValue("categorySelectedCells", null, { priority: "event" });
 });
@@ -546,6 +546,8 @@ Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
   console.log("reglElementData :", reglElementData);
   // update legend elements
   parentDiv.appendChild(reglElementData.plotEl);
+  // create deck instance after plot element is mounted in DOM
+  reglElementData.mountDeck();
   const accordions = document.querySelectorAll(".accordion-item");
   const category_accordion = [...accordions].filter((e) => {
     if (e.dataset.value == "analysis_category") {
@@ -558,30 +560,16 @@ Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
   category_accordion_body.appendChild(reglElementData.expLegendEl);
 
   // return selected points to server side
-  reglElementData.scatterplots.forEach((sp, idx) => {
-    sp.subscribe("select", ({ points: selectedPoints }) => {
-      const hoveredLegends = Array.from(
-        document.querySelectorAll("#" + mainPlotElId + " :hover"),
-      );
-
-      // ensure the legend was not hovered
-      if (hoveredLegends.length > 0) {
-        let selectedCells = selectedPoints.map(
-          (i) => reglElementData.plotData.cells[idx][i],
-        );
-        console.log("selectedCells: ", selectedCells);
-        reglElementData.plotData.selectedCells = selectedCells;
-        Shiny.setInputValue("selectedPoints", selectedCells, {
-          priority: "event",
-        });
-      }
-    });
-  });
-  reglElementData.scatterplots.forEach((sp, _) => {
-    sp.subscribe("deselect", () => {
-      reglElementData.plotData.selectedCells = [];
+  reglElementData.setSelectionHandlers({
+    onSelect: ({ selectedCells }) => {
+      console.log("selectedCells: ", selectedCells);
+      Shiny.setInputValue("selectedPoints", selectedCells, {
+        priority: "event",
+      });
+    },
+    onDeselect: () => {
       Shiny.setInputValue("selectedPoints", null);
-    });
+    },
   });
 
   if (
@@ -669,9 +657,7 @@ const updateFeaturePlot = (canvas) => {
 
 Shiny.addCustomMessageHandler("reglScatter_deselect", (msg) => {
   console.log("Deselect points...");
-  reglElementData.scatterplots.forEach((sp, i) => {
-    sp.deselect();
-  });
+  reglElementData.deselectAll();
 });
 
 function getPadding(element) {

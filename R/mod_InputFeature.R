@@ -96,7 +96,7 @@ mod_InputFeature_ui <- function(id){
 #' @import shiny
 #' @importFrom promises future_promise %...>% %...!%
 #' @importFrom cli hash_md5
-#' @importFrom qs qsave
+#' @importFrom qs2 qs_save
 #' @noRd
 mod_InputFeature_server <- function(id,
                                     assay,
@@ -211,7 +211,7 @@ mod_InputFeature_server <- function(id,
               if(file.exists(filePath)){
                   file.remove(filePath)
               }
-              qsave(expr[[features]], filePath, preset = "high")
+              qs_save(expr[[features]], filePath, compress_level = 9L)
               return(list(geneName = features, exprFile = basename(filePath)))
           })
       })
