@@ -32,7 +32,7 @@ export async function initWebRInstance() {
   //
   //await webR.FS.mount("WORKERFS", options, "/library");
   const vfsSourceUrl = new URL(
-    "www/webr/vfs/library.data.gz",
+    "www/webr/vfs/library.data",
     window.location.href,
   ).toString();
   await webR.evalR(
