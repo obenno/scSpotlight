@@ -1,6 +1,9 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+  define: {
+    global: 'globalThis',
+  },
   build: {
     lib: {
       entry: 'srcjs/index.js',
@@ -15,6 +18,7 @@ export default defineConfig({
     rollupOptions: {
       external: ['shiny', 'jquery', 'waiter'],
       output: {
+        intro: 'globalThis.process = globalThis.process || { env: {} }; globalThis.process.env = globalThis.process.env || {}; globalThis.process.env.NODE_ENV = globalThis.process.env.NODE_ENV || "production"; var process = globalThis.process; var global = globalThis;',
         globals: {
           shiny: 'Shiny',
           jquery: 'jQuery',
