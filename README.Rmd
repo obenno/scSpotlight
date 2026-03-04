@@ -51,11 +51,22 @@ pak::pkg_install("obenno/scSpotlight")
 
 ## Dependency policy (dev + CI)
 
-- `DESCRIPTION` is the source of truth for package dependencies.
-- `renv.lock` is used for reproducible project environments (for example pkgdown builds and deployment workflows).
-- Commit `renv.lock`, `renv/activate.R`, and `renv/settings.json`.
-- Do not commit `renv/library/` or other cache directories.
-- CI jobs can use both approaches: install from `DESCRIPTION` for package checks, and run `renv::restore()` for reproducible docs/app jobs.
+- `pixi.toml` is the source of truth for the development and CI environment.
+- `DESCRIPTION` remains the source of truth for R package runtime dependencies.
+- Run `pixi install` to materialize the lockfile-backed environment.
+- Run `pixi run setup` to install conda-first R dependencies, install pak fallbacks for missing packages, install `scSpotlight`, and install JavaScript dependencies.
+- Run `pixi run doctor-env` to verify `scSpotlight` is installed, `.libPaths()` points to Pixi, and no required package is missing.
+- Commit `pixi.toml` and `pixi.lock`; do not commit `.pixi/`.
+
+### Quickstart with pixi
+
+```bash
+# install pixi once: https://pixi.prefix.dev/latest/
+pixi install
+pixi run setup
+pixi run doctor-env
+pixi run run-app-processing
+```
 
 ## Docker
 

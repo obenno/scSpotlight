@@ -17,6 +17,14 @@ All code contributions must consider performance implications for large datasets
 
 ## Build / Lint / Test Commands
 
+### Environment Management (Pixi)
+```bash
+pixi install                     # Create/update the locked project environment
+pixi run setup                  # Install conda R deps, pak fallbacks, local package, and JS deps
+pixi run run-app                # Start app in viewer mode
+pixi run run-app-processing     # Start app in processing mode
+```
+
 ### R Package Commands
 ```r
 devtools::document()            # Generate roxygen2 documentation
@@ -27,12 +35,12 @@ golem::document_and_reload()    # Quick reload during development (recommended)
 
 ### JavaScript Commands (Vite)
 ```bash
-npm run build                   # Production build (minified, optimized)
-npm run dev                     # Development server with HMR (hot module replacement)
-npm run preview                 # Preview production build locally
-npm test                        # Run tests (vitest, single run)
-npm run test:watch              # Run tests in watch mode
-npm run test:scatter-model      # Run specific test file
+pixi run build-js              # Production build (minified, optimized)
+pixi run dev                   # Development server with HMR (hot module replacement)
+pixi run npm run preview       # Preview production build locally
+pixi run test-js               # Run tests (vitest, single run)
+pixi run npm run test:watch    # Run tests in watch mode
+pixi run npm run test:scatter-model  # Run specific test file
 ```
 
 ### webR VFS Library Rebuild (qs2 + plotting stack)
@@ -53,7 +61,7 @@ cp /tmp/scspotlight-webrbuild/vfs/library.data.gz inst/app/www/webr/vfs/library.
 cp /tmp/scspotlight-webrbuild/vfs/library.js.metadata inst/app/www/webr/vfs/library.js.metadata
 
 # Rebuild JS bundle after VFS update
-npm run build
+pixi run build-js
 ```
 
 Notes:
@@ -293,7 +301,7 @@ metaUpdateIndicator(metaUpdateIndicator() + 1)
 
 1. **New Shiny Module**: Use `golem::add_module(name = "ModuleName")`
 2. **New JS Module**: Create in `srcjs/modules/`, import in `index.js`
-3. **Rebuild JS**: Run `npm run build` for production or `npm run dev` for development
+3. **Rebuild JS**: Run `pixi run build-js` for production or `pixi run dev` for development
 4. **Always test** with datasets of varying sizes (1K, 100K, 1M+ cells)
 5. **Profile performance** for large datasets before merging
 
@@ -304,7 +312,7 @@ metaUpdateIndicator(metaUpdateIndicator() + 1)
 ### Local Development
 ```bash
 # Terminal 1: Start Vite dev server with HMR
-npm run dev
+pixi run dev
 
 # Terminal 2: Start R development
 # In R console:
@@ -315,22 +323,22 @@ run_app()
 ### Production Build
 ```bash
 # Build optimized bundle
-npm run build
+pixi run build-js
 
 # Verify bundle
-npm run preview
+pixi run npm run preview
 ```
 
 ### Testing
 ```bash
 # Run all tests
-npm test
+pixi run test-js
 
 # Watch mode for development
-npm run test:watch
+pixi run npm run test:watch
 
 # Run specific test
-npm run test:scatter-model
+pixi run npm run test:scatter-model
 ```
 
 ---

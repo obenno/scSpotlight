@@ -1,0 +1,73 @@
+[workspace]
+name = "scspotlight"
+channels = ["conda-forge"]
+platforms = ["linux-64", "osx-64", "osx-arm64", "win-64"]
+description = "scSpotlight unified development environment"
+requires-pixi = ">=0.40"
+
+[dependencies]
+r-base = ">=4.5,<4.6"
+r-shiny = "*"
+r-seurat = "*"
+r-seuratobject = "*"
+r-pak = "*"
+r-devtools = "*"
+r-pkgdown = "*"
+r-roxygen2 = "*"
+r-bslib = "*"
+r-cli = "*"
+r-config = "*"
+r-dbplyr = "*"
+r-dplyr = "*"
+r-dt = "*"
+r-future = "*"
+r-ggplot2 = "*"
+r-golem = "*"
+r-htmltools = "*"
+r-magrittr = "*"
+r-plotly = "*"
+r-promises = "*"
+r-rhpcblasctl = "*"
+r-readr = "*"
+r-readxl = "*"
+r-rlang = "*"
+r-scales = "*"
+r-shinyjs = "*"
+r-shinywidgets = "*"
+r-stringr = "*"
+r-tibble = "*"
+r-waiter = "*"
+r-arrow = "*"
+nodejs = ">=20,<23"
+git = "*"
+make = "*"
+pkg-config = "*"
+cxx-compiler = "*"
+hdf5 = "*"
+pandoc = "*"
+zlib = "*"
+xz = "*"
+
+[target.linux-64.dependencies]
+r-duckdb = "*"
+r-qs2 = "*"
+
+[target.osx-64.dependencies]
+r-qs2 = "*"
+
+[target.win-64.dependencies]
+r-qs2 = "*"
+
+[tasks]
+bootstrap-r = "env -u CONDA_PREFIX -u CONDA_DEFAULT_ENV -u CMAKE_PREFIX_PATH -u PKG_CONFIG_PATH -u LIBRARY_PATH -u CPATH -u C_INCLUDE_PATH -u CPLUS_INCLUDE_PATH -u LD_LIBRARY_PATH R_LIBS_USER= R_LIBS_SITE= Rscript dev/bootstrap_r_deps.R"
+install-js = "npm install"
+setup = { depends-on = ["install-local", "install-js"] }
+install-local = { cmd = "R CMD INSTALL .", depends-on = ["bootstrap-r"] }
+dev = "npm run dev"
+build-js = "npm run build"
+test-js = "npm test"
+r-check = "Rscript -e \"devtools::check()\""
+build-pkgdown = "Rscript -e \"pkgdown::build_site_github_pages(new_process = FALSE, install = FALSE)\""
+run-app = "Rscript -e \"scSpotlight::run_app()\""
+run-app-processing = "Rscript -e \"scSpotlight::run_app(runningMode = 'processing')\""
+doctor-env = "R_LIBS_USER= R_LIBS_SITE= Rscript dev/doctor_env.R"
