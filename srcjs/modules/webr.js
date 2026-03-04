@@ -31,23 +31,29 @@ export async function initWebRInstance() {
   //};
   //
   //await webR.FS.mount("WORKERFS", options, "/library");
-  const currentPageUrl = window.location.href;
+  const vfsSourceUrl = `${window.location.origin}/www/webr/vfs/library.data.gz`;
   await webR.evalR(
     `
-webr::mount("/library", paste0(domainURL, "www/webr/vfs/library.data"))
+webr::mount("/library", sourceURL)
 .libPaths(c(.libPaths(), "/library"))
+if (!requireNamespace("qs2", quietly = TRUE)) {
+  webr::install("qs2", repos = "https://repo.r-wasm.org/")
+}
+if (!requireNamespace("qs2", quietly = TRUE)) {
+  stop("Package 'qs2' is required in the webR mounted library and runtime install failed.")
+}
 library(ggplot2)
 library(scales)
 library(scattermore)
 library(dplyr)
 library(patchwork)
 library(cowplot)
-library(qs)
+library(qs2)
 options(device=webr::canvas)
 `,
     {
       env: {
-        domainURL: currentPageUrl,
+        sourceURL: vfsSourceUrl,
       },
     },
   );
@@ -83,7 +89,7 @@ options(device=webr::canvas)
 //webr::mount("/library", paste0(domainURL, "www/webr/vfs/library.data"))
 //.libPaths(c(.libPaths(), "/library"))
 //library(dplyr)
-//library(qs)
+//library(qs2)
 //options(device=webr::canvas)
 //`,
 //    {
@@ -216,7 +222,7 @@ export async function readQS(webR, buffer) {
 
   let res = await webR.evalR(
     `
-d <- qs::qread(qsFile, use_alt_rep=TRUE) %>%
+d <- qs2::qs_read(qsFile) %>%
     as.data.frame(check.names = FALSE)
 ## convert factor column to character ones
 for(i in 1:ncol(d)){
@@ -278,6 +284,35 @@ as.list(d)
   return df;
 }
 
+export async function qs2ReadFromUrl(webR, shelter, url, ext = ".qs2") {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch ${url}: ${response.status} ${response.statusText}`);
+  }
+
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  const tempPath = `/${Math.random().toString(36).slice(2, 10)}${ext}`;
+  await webR.FS.writeFile(tempPath, bytes);
+
+  try {
+    return await shelter.evalR(
+      `qs2::qs_read(path)`,
+      {
+        env: { path: tempPath },
+        withAutoprint: false,
+        captureStreams: true,
+        captureConditions: true,
+      },
+    );
+  } finally {
+    try {
+      await webR.FS.unlink(tempPath);
+    } catch (_) {
+      // ignore cleanup errors
+    }
+  }
+}
+
 export async function qsReadNumVector(shelter, url) {
   let now = new Date();
   console.log(`start qs reading: ${now.toLocaleTimeString()}`);
@@ -288,7 +323,12 @@ export async function qsReadNumVector(shelter, url) {
 
   let res = await shelter.evalR(
     `
-d <- qs::qread_url(url, use_alt_rep=TRUE)
+d <- local({
+  tf <- tempfile(fileext = ".qs2")
+  on.exit(unlink(tf), add = TRUE)
+  utils::download.file(url, tf, mode = "wb", quiet = TRUE)
+  qs2::qs_read(tf)
+})
 d
 `,
     {
@@ -316,7 +356,12 @@ export async function qsReadList(shelter, url) {
 
   let res = await shelter.evalR(
     `
-d <- qs::qread_url(url, use_alt_rep=TRUE)
+d <- local({
+  tf <- tempfile(fileext = ".qs2")
+  on.exit(unlink(tf), add = TRUE)
+  utils::download.file(url, tf, mode = "wb", quiet = TRUE)
+  qs2::qs_read(tf)
+})
 d
 `,
     {
@@ -376,7 +421,10 @@ export async function qsRead(shelter) {
   let fn = await shelter.evalR(
     `
 function(url){
-    qs::qread_url(url, use_alt_rep=TRUE)
+    tf <- tempfile(fileext = ".qs2")
+    on.exit(unlink(tf), add = TRUE)
+    utils::download.file(url, tf, mode = "wb", quiet = TRUE)
+    qs2::qs_read(tf)
 }
 `,
     {
