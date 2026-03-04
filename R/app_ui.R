@@ -16,33 +16,15 @@ app_ui <- function(request) {
 
     sca_mainUI <- scaffold_sca_mainUI()
 
-    sca_navPanel <- nav_panel(
-        title = "Main Panel", sca_mainUI, icon = icon("binoculars")
+    ui <- page_fillable(
+        title = app_title,
+        theme = global_theme(),
+        class = "p-0",
+        sca_mainUI,
+        useShinyjs()
     )
 
-    ui <- page_navbar(
-        id = "navbar",
-        title = app_title,
-        window_title = app_title,
-        bg = NULL,
-        collapsible = TRUE,
-        ##fluid = TRUE,
-        theme = global_theme(),
-        inverse  = FALSE,
-        fillable = TRUE,
-        selected = "Main Panel",
-        nav_panel(title = "Home", "Landing Page", icon = icon("house")),
-        sca_navPanel,
-        ##nav_panel(title = "Recluster", "Here for reclustering the subset cells of your data", icon = icon("compress-alt")),
-        ##tags$link(rel = "stylesheet", type = "text/css", href = "www/css/fira-sans.css"),
-        ##tags$link(rel = "stylesheet", type = "text/css", href = "www/css/app.css"),
-        useShinyjs()##,
-        ##useWaiter()
-        ##use_waitress(),
-        ##tags$script(src = "www/js/myscript.js") # custom javascript code here
-    )
     ## modify some elements' attributes
-    ui <- tagAppendAttributes(ui, .cssSelector = ".navbar", class = c("pt-1", "pb-1"))
     ##ui <- tagAppendAttributes(ui, .cssSelector = ".selectize-control", class = "mb-0")
     ## code above not working, maybe .selectize elements were added by js after generating shiny ui, use css instead
     ui <- tagAppendAttributes(ui, .cssSelector = ".shiny-input-container", class = "mb-2")
@@ -105,8 +87,9 @@ scaffold_sca_mainUI <- function(){
                 right_sidebar_ui(),
                 fill = TRUE,
                 fillable = TRUE,
+                width = 300,
                 position = "right",
-                open = FALSE,
+                open = TRUE,
                 class = "bg-primary"
             ),
             class = "align-items-center",
@@ -115,9 +98,12 @@ scaffold_sca_mainUI <- function(){
             ##border_color = "black",
             fillable = TRUE,
             fill = TRUE,
-            class = "p-2",
-            mainPlots_ui(),
-            infoBox_ui()
+            class = "p-0",
+            div(
+                style = "position: relative; width: 100%; height: 100%;",
+                mainPlots_ui(),
+                infoBox_ui()
+            )
         ),
         border_radius = FALSE,
         border = FALSE,
@@ -137,6 +123,19 @@ scaffold_sca_mainUI <- function(){
 #' @importFrom bslib accordion_panel
 #' @noRd
 left_sidebar_ui <- function(){
+
+    brand_header <- div(
+        class = "d-flex align-items-center gap-2 px-2 py-2 mb-2 border-bottom border-light",
+        tags$img(
+            src = "www/favicon.ico",
+            alt = "scSpotlight",
+            style = "width: 48px; height: 48px;"
+        ),
+        tags$span(
+            "scSpotlight",
+            style = "font-size: 1.2rem; font-weight: 700; color: #fff; line-height: 1;"
+        )
+    )
 
     ## accodion for left side bar
     runningMode <- golem::get_golem_options("runningMode")
@@ -193,7 +192,7 @@ left_sidebar_ui <- function(){
     }else{
         stop("runningMode not supported")
     }
-    return(combined_settings)
+    return(tagList(brand_header, combined_settings))
 }
 
 
@@ -329,7 +328,7 @@ infoBox_ui <- function(){
                          `data-bs-target` = "#infoBox_content",
                          `aria-expanded` = "false",
                          `aria-controls` = "infoBox_content",
-                         bsicons::bs_icon("arrows-angle-expand")
+                         tags$i(class = "bi bi-arrows-angle-expand")
                      )
             ),
             wrapper = function(...) {card_body(..., class = "p-2") }
@@ -379,7 +378,7 @@ infoBox_ui <- function(){
                          `data-bs-target` = "#infoBox_content",
                          `aria-expanded` = "false",
                          `aria-controls` = "infoBox_content",
-                         bsicons::bs_icon("arrows-angle-expand")
+                         tags$i(class = "bi bi-arrows-angle-expand")
                      )
             ),
             wrapper = function(...) {card_body(..., class = "p-2") }
@@ -399,6 +398,18 @@ infoBox_ui <- function(){
                                       class = c("border", "border-2",
                                                 "border-primary", "shadow"))
     bottom_box <- tagAppendAttributes(bottom_box,
-                                      style = "resize:both; width:100%")
+                                      style = paste(
+                                          "position: absolute;",
+                                          "bottom: 0.5rem;",
+                                          "left: 0.5rem;",
+                                          "z-index: 10;",
+                                          "resize: none;",
+                                          "width: calc(100% - 1rem);",
+                                          "min-height: 56px;",
+                                          "min-width: 320px;",
+                                          "max-width: calc(100% - 1rem);",
+                                          "max-height: calc(100% - 1rem);",
+                                          sep = " "
+                                      ))
 
 }

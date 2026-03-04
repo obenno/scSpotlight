@@ -99,27 +99,93 @@ document.addEventListener(
     mainPlotSpinner = addOverlaySpinner(mainPlotElId);
 
     // Get infoBoxId
-    const infoBoxEl =
-      document.getElementById("bottom_box").parentElement.parentElement;
+    const infoBoxEl = document
+      .getElementById("bottom_box")
+      .closest(".card");
     const mainPlotEl = document.getElementById(mainPlotElId);
+    const infoBoxContentEl = document.getElementById(infoBoxContentId);
+    const infoBoxTopRightResizeHandle = setupInfoBoxTopRightResize(infoBoxEl);
+    let infoBoxExpandedHeight = 250;
+    let infoBoxExpandedWidth = null;
+    const collapsedHeight = 56;
+    const collapsedWidth = "calc(100% - 1rem)";
+    const isInfoBoxCollapsed = () =>
+      !infoBoxContentEl || !infoBoxContentEl.classList.contains("show");
+    const setInfoBoxResizable = (resizable) => {
+      infoBoxEl.style.resize = resizable ? "both" : "none";
+      if (infoBoxTopRightResizeHandle) {
+        infoBoxTopRightResizeHandle.style.display = resizable ? "block" : "none";
+      }
+    };
+
     // init infoBox size to shrinked
-    resize_infoBox(mainPlotEl, infoBoxEl, 56);
+    resize_infoBox(mainPlotEl, infoBoxEl, collapsedHeight);
+    infoBoxEl.style.width = collapsedWidth;
+    setInfoBoxResizable(false);
     infoBoxEl.querySelector(".bslib-full-screen-enter").style.display = "none";
-    // Add event listener to infoBox collapsing icon
-    const collapsing_icon = document.getElementById("infoBox_show");
-    collapsing_icon.addEventListener("click", function () {
-      update_collapse_icon(this.id);
-      if (collapsing_icon.classList.contains("collapsed")) {
-        resize_infoBox(mainPlotEl, infoBoxEl, 56);
-        // hide full screen button
+
+    if (infoBoxContentEl) {
+      infoBoxContentEl.addEventListener("show.bs.collapse", () => {
+        resize_infoBox(mainPlotEl, infoBoxEl, infoBoxExpandedHeight);
+        if (Number.isFinite(infoBoxExpandedWidth) && infoBoxExpandedWidth > 0) {
+          infoBoxEl.style.width = `${infoBoxExpandedWidth}px`;
+        }
+      });
+
+      infoBoxContentEl.addEventListener("shown.bs.collapse", () => {
+        setInfoBoxResizable(true);
+        infoBoxEl.querySelector(".bslib-full-screen-enter").style.display = "";
+        update_collapse_icon("infoBox_show");
+      });
+
+      infoBoxContentEl.addEventListener("hide.bs.collapse", () => {
+        setInfoBoxResizable(false);
+        const currentHeight = Math.round(infoBoxEl.getBoundingClientRect().height);
+        const currentWidth = Math.round(infoBoxEl.getBoundingClientRect().width);
+        if (currentHeight > collapsedHeight) {
+          infoBoxExpandedHeight = currentHeight;
+        }
+        if (currentWidth > 0) {
+          infoBoxExpandedWidth = currentWidth;
+        }
+      });
+
+      infoBoxContentEl.addEventListener("hidden.bs.collapse", () => {
+        resize_infoBox(mainPlotEl, infoBoxEl, collapsedHeight);
+        infoBoxEl.style.width = collapsedWidth;
         infoBoxEl.querySelector(".bslib-full-screen-enter").style.display =
           "none";
-      } else {
-        resize_infoBox(mainPlotEl, infoBoxEl, 250);
-        // show full screen button
-        infoBoxEl.querySelector(".bslib-full-screen-enter").style.display = "";
-      }
-    });
+        update_collapse_icon("infoBox_show");
+      });
+    }
+
+    const infoBoxContainerResizeObserver = new ResizeObserver(
+      debounce(() => {
+        if (isInfoBoxCollapsed()) {
+          infoBoxEl.style.width = collapsedWidth;
+        }
+      }, 50),
+    );
+    if (infoBoxEl.parentElement) {
+      infoBoxContainerResizeObserver.observe(infoBoxEl.parentElement);
+    }
+
+    const infoBoxResizeObserver = new ResizeObserver(
+      debounce(() => {
+        if (isInfoBoxCollapsed()) {
+          return;
+        }
+        const currentHeight = Math.round(infoBoxEl.getBoundingClientRect().height);
+        const currentWidth = Math.round(infoBoxEl.getBoundingClientRect().width);
+        if (currentHeight > collapsedHeight) {
+          infoBoxExpandedHeight = currentHeight;
+        }
+        if (currentWidth > 0) {
+          infoBoxExpandedWidth = currentWidth;
+        }
+      }, 100),
+    );
+    infoBoxResizeObserver.observe(infoBoxEl);
 
     // add select widget to vlnplot box
     const vlnDropDown = createVlnDropend(vlnDropDownId);
@@ -850,6 +916,83 @@ function debounce(func, wait) {
     timeout = setTimeout(later, wait);
   };
 }
+
+const setupInfoBoxTopRightResize = (infoBoxEl) => {
+  if (!infoBoxEl) return null;
+
+  const handle = document.createElement("div");
+  handle.id = "infoBoxTopRightResize";
+  handle.style.position = "absolute";
+  handle.style.top = "0";
+  handle.style.right = "0";
+  handle.style.width = "16px";
+  handle.style.height = "16px";
+  handle.style.cursor = "nesw-resize";
+  handle.style.zIndex = "1101";
+  handle.style.borderTop = "1px solid rgba(0, 0, 0, 0.2)";
+  handle.style.borderLeft = "1px solid rgba(0, 0, 0, 0.2)";
+  handle.style.borderTopLeftRadius = "2px";
+  handle.style.background =
+    "repeating-linear-gradient(135deg, rgba(0,0,0,0.38) 0 1px, transparent 1px 4px)";
+  handle.style.backgroundPosition = "1px 1px";
+
+  infoBoxEl.appendChild(handle);
+
+  let isResizing = false;
+  let startX = 0;
+  let startY = 0;
+  let startWidth = 0;
+  let startHeight = 0;
+
+  const minWidth = 320;
+  const minHeight = 56;
+
+  const onMouseMove = (e) => {
+    if (!isResizing) return;
+
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+
+    const parentRect = infoBoxEl.parentElement.getBoundingClientRect();
+    const sideGapPx = 8;
+    const maxWidth = Math.max(minWidth, parentRect.width - sideGapPx * 2);
+    const maxHeight = Math.max(minHeight, parentRect.height - sideGapPx * 2);
+
+    const newWidth = Math.min(maxWidth, Math.max(minWidth, startWidth + dx));
+    const newHeight = Math.min(
+      maxHeight,
+      Math.max(minHeight, startHeight - dy),
+    );
+
+    infoBoxEl.style.width = `${newWidth}px`;
+    infoBoxEl.style.height = `${newHeight}px`;
+  };
+
+  const onMouseUp = () => {
+    isResizing = false;
+    document.body.style.userSelect = "";
+    document.removeEventListener("mousemove", onMouseMove);
+    document.removeEventListener("mouseup", onMouseUp);
+  };
+
+  handle.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    isResizing = true;
+    startX = e.clientX;
+    startY = e.clientY;
+
+    const rect = infoBoxEl.getBoundingClientRect();
+    startWidth = rect.width;
+    startHeight = rect.height;
+
+    document.body.style.userSelect = "none";
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  });
+
+  return handle;
+};
 
 // function to check if the infoBox panel is selected/active
 const panelSelected = (el) => {
