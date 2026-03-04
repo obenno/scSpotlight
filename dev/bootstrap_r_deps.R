@@ -1,21 +1,9 @@
 #!/usr/bin/env Rscript
 
-parse_pkg_field <- function(field_value) {
-    if (is.na(field_value) || !nzchar(field_value)) {
-        return(character())
-    }
+source("dev/r_dep_utils.R")
 
-    pkgs <- unlist(strsplit(field_value, ",", fixed = TRUE), use.names = FALSE)
-    pkgs <- trimws(gsub("\\s*\\(.*\\)", "", pkgs))
-    pkgs[nzchar(pkgs)]
-}
-
-desc <- read.dcf("DESCRIPTION")[1, ]
-required <- unique(c(
-    parse_pkg_field(desc[["Depends"]]),
-    parse_pkg_field(desc[["Imports"]])
-))
-required <- setdiff(required, "R")
+include_suggests <- identical(Sys.getenv("SCSPOTLIGHT_INSTALL_SUGGESTS"), "true")
+required <- required_description_packages(include_suggests = include_suggests)
 
 fallback <- required
 if (identical(Sys.info()[["sysname"]], "Linux")) {
@@ -28,6 +16,8 @@ if (!length(missing)) {
     message("All fallback packages already available.")
     quit(save = "no", status = 0)
 }
+
+message("Installing fallback R packages: ", paste(missing, collapse = ", "))
 
 pak::repo_add(
     satijalab = "https://satijalab.r-universe.dev",
