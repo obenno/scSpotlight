@@ -31,16 +31,16 @@ export async function initWebRInstance() {
   //};
   //
   //await webR.FS.mount("WORKERFS", options, "/library");
-  const vfsSourceUrl = new URL(
-    "www/webr/vfs/library.data",
-    window.location.href,
-  ).toString();
+  const vfsSourceUrl = `${window.location.origin}/www/webr/vfs/library.data`;
   await webR.evalR(
     `
 webr::mount("/library", sourceURL)
 .libPaths(c(.libPaths(), "/library"))
 if (!requireNamespace("qs2", quietly = TRUE)) {
-  stop("Package 'qs2' is required in the webR mounted library.")
+  webr::install("qs2", repos = "https://repo.r-wasm.org/")
+}
+if (!requireNamespace("qs2", quietly = TRUE)) {
+  stop("Package 'qs2' is required in the webR mounted library and runtime install failed.")
 }
 library(ggplot2)
 library(scales)
