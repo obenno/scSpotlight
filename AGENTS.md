@@ -11,7 +11,7 @@ All code contributions must consider performance implications for large datasets
 ### Tech Stack
 - **Backend**: R, Shiny, Seurat (v5), DuckDB (on-disk queries), qs2 (fast serialization)
 - **Frontend**: JavaScript (ES6), deck.gl (WebGL), D3.js, webR
-- **Build**: Use [packer](https://packer.john-coene.com/#/) package for JavaScript bundling
+- **Build**: [Vite](https://vitejs.dev/) for JavaScript bundling (native ES modules, fast HMR)
 
 ---
 
@@ -25,17 +25,14 @@ devtools::load_all()            # Load package for development
 golem::document_and_reload()    # Quick reload during development (recommended)
 ```
 
-### JavaScript Commands (packer - preferred)
-```r
-packer::bundle()                # Production bundle (minified)
-packer::bundle_dev()            # Development bundle with source maps
-```
-
-### JavaScript Commands (npm - alternative)
+### JavaScript Commands (Vite)
 ```bash
-npm run production              # webpack --config webpack.prod.js
-npm run development             # webpack --config webpack.dev.js
-npm run watch                   # Development with file watching
+npm run build                   # Production build (minified, optimized)
+npm run dev                     # Development server with HMR (hot module replacement)
+npm run preview                 # Preview production build locally
+npm test                        # Run tests (vitest, single run)
+npm run test:watch              # Run tests in watch mode
+npm run test:scatter-model      # Run specific test file
 ```
 
 ### Running the Application
@@ -178,7 +175,7 @@ mod_ModuleName_server <- function(id, reactive_args) {
 ## JavaScript Code Style Guidelines
 
 ### Module System
-Use ES6 modules with packer/webpack bundling:
+Use ES6 modules with Vite bundling:
 ```javascript
 // Imports at top
 import { functionName } from "./modules/moduleName.js";
@@ -224,14 +221,15 @@ scSpotlight/
 │   ├── mod_*.R             # Shiny modules
 │   ├── fct_*.R             # Feature functions
 │   └── utils_*.R           # Utilities
-├── srcjs/                  # JavaScript source (bundled via packer)
+├── srcjs/                  # JavaScript source (bundled via Vite)
 │   ├── index.js            # Main entry point
-│   ├── modules/            # JS modules
-│   │   ├── deckScatter.js  # Main scatter plot (WebGL, deck.gl)
-│   │   ├── scatter/         # deck.gl scatter support modules
-│   │   ├── webr.js         # webR integration
-│   │   └── ...
-│   └── config/             # Webpack config JSON files
+│   └── modules/            # JS modules
+│       ├── deckScatter.js  # Main scatter plot (WebGL, deck.gl)
+│       ├── scatter/        # deck.gl scatter support modules
+│       ├── webr.js         # webR integration
+│       └── ...
+├── vite.config.js          # Vite configuration
+├── vitest.config.js        # Vitest configuration
 ├── inst/app/www/           # Static assets & bundled JS output
 ├── dev/                    # Development scripts (golem)
 ├── man/                    # Generated documentation
@@ -269,6 +267,58 @@ metaUpdateIndicator(metaUpdateIndicator() + 1)
 
 1. **New Shiny Module**: Use `golem::add_module(name = "ModuleName")`
 2. **New JS Module**: Create in `srcjs/modules/`, import in `index.js`
-3. **Rebuild JS**: Run `packer::bundle()` or `npm run production`
+3. **Rebuild JS**: Run `npm run build` for production or `npm run dev` for development
 4. **Always test** with datasets of varying sizes (1K, 100K, 1M+ cells)
 5. **Profile performance** for large datasets before merging
+
+---
+
+## Development Workflow
+
+### Local Development
+```bash
+# Terminal 1: Start Vite dev server with HMR
+npm run dev
+
+# Terminal 2: Start R development
+# In R console:
+golem::document_and_reload()
+run_app()
+```
+
+### Production Build
+```bash
+# Build optimized bundle
+npm run build
+
+# Verify bundle
+npm run preview
+```
+
+### Testing
+```bash
+# Run all tests
+npm test
+
+# Watch mode for development
+npm run test:watch
+
+# Run specific test
+npm run test:scatter-model
+```
+
+---
+
+## Vite Configuration Details
+
+**vite.config.js** handles:
+- Entry point: `srcjs/index.js`
+- Output: `inst/app/www/index.js` (UMD format)
+- Externals: Shiny, jQuery, waiter (R-provided globals)
+- Source maps: Enabled for debugging
+- Minification: Terser for production
+
+**vitest.config.js** handles:
+- Test environment: jsdom (browser-like)
+- Global test utilities: describe, it, expect
+- Module resolution: Same as Vite config
