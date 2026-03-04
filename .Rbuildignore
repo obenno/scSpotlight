@@ -1,5 +1,8 @@
 ^renv$
 ^renv\.lock$
+^pixi\.toml$
+^pixi\.lock$
+^\.pixi$
 ^.*\.Rproj$
 ^\.Rproj\.user$
 ^data-raw$
