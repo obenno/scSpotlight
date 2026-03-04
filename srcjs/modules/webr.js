@@ -31,10 +31,13 @@ export async function initWebRInstance() {
   //};
   //
   //await webR.FS.mount("WORKERFS", options, "/library");
-  const currentPageUrl = `${window.location.origin}/`;
+  const vfsSourceUrl = new URL(
+    "www/webr/vfs/library.data.gz",
+    window.location.href,
+  ).toString();
   await webR.evalR(
     `
-webr::mount("/library", paste0(domainURL, "webr/vfs/library.data.gz"))
+webr::mount("/library", sourceURL)
 .libPaths(c(.libPaths(), "/library"))
 if (!requireNamespace("qs2", quietly = TRUE)) {
   stop("Package 'qs2' is required in the webR mounted library.")
@@ -50,7 +53,7 @@ options(device=webr::canvas)
 `,
     {
       env: {
-        domainURL: currentPageUrl,
+        sourceURL: vfsSourceUrl,
       },
     },
   );
