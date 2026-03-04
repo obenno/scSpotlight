@@ -9,6 +9,7 @@ export default defineConfig({
       fileName: () => 'index.js',
     },
     outDir: 'inst/app/www',
+    emptyOutDir: false,
     sourcemap: true,
     minify: 'terser',
     rollupOptions: {
