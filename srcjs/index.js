@@ -33,6 +33,7 @@ import {
   vlnPlot,
   dotPlot,
   initWebRInstance,
+  qs2ReadFromUrl,
   isIntegerArray,
 } from "./modules/webr.js";
 
@@ -225,13 +226,10 @@ Shiny.addCustomMessageHandler("reduction_ready", (msg) => {
         mainPlotSpinner.style.display = "flex";
       }
 
-      const fn = await shelter.evalR(
-        "function (url) { qs::qread_url(url, use_alt_rep=TRUE) }",
-      );
       const df = {};
-      const xRes = await fn.exec(xFileURL);
+      const xRes = await qs2ReadFromUrl(webR, shelter, xFileURL);
       df["X"] = new Float32Array(await xRes.toTypedArray());
-      const yRes = await fn.exec(yFileURL);
+      const yRes = await qs2ReadFromUrl(webR, shelter, yFileURL);
       df["Y"] = new Float32Array(await yRes.toTypedArray());
       reglElementData.updateReductionData(df);
       await shelter.purge();
@@ -254,10 +252,7 @@ Shiny.addCustomMessageHandler("meta_ready", (msg) => {
       if (mainPlotSpinner.style.display === "none") {
         mainPlotSpinner.style.display = "flex";
       }
-      const fn = await shelter.evalR(
-        "function (url) { qs::qread_url(url, use_alt_rep=TRUE) }",
-      );
-      const res = await fn.exec(metaURL);
+      const res = await qs2ReadFromUrl(webR, shelter, metaURL);
       const out = {};
       const loadedData = await res.toObject({ depth: 1 });
       console.log(loadedData);
@@ -320,11 +315,8 @@ Shiny.addCustomMessageHandler("expr_ready", (msg) => {
   try {
     const exprURL = window.location.origin + "/data/expr/" + msg.exprFile;
     (async () => {
-      const fn = await shelter.evalR(
-        "function (url) { qs::qread_url(url, use_alt_rep=TRUE) }",
-      );
       const expr = {};
-      const res = await fn.exec(exprURL);
+      const res = await qs2ReadFromUrl(webR, shelter, exprURL);
       expr[msg.geneName] = new Float32Array(await res.toTypedArray());
       await shelter.purge();
       reglElementData.updateExpressionData(expr);
