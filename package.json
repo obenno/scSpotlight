@@ -23,13 +23,13 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
+    "@deck.gl/core": "^9.0.0",
+    "@deck.gl/layers": "^9.0.0",
     "apache-arrow": "^18.1.0",
     "bootstrap-icons": "^1.11.3",
     "d3": "^7.8.5",
     "html2canvas": "^1.4.1",
     "jquery-sparkline": "^2.4.0",
-    "@deck.gl/core": "^9.0.0",
-    "@deck.gl/layers": "^9.0.0",
-    "webr": "^0.4.1"
+    "webr": "^0.5.8"
   }
 }

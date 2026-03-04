@@ -35,6 +35,32 @@ npm run test:watch              # Run tests in watch mode
 npm run test:scatter-model      # Run specific test file
 ```
 
+### webR VFS Library Rebuild (qs2 + plotting stack)
+Use this when webR package availability changes (e.g. `qs2`) or when refreshing browser-side R libraries.
+
+```bash
+# Build package repo + VFS image in a clean toolchain container
+mkdir -p /tmp/scspotlight-webrbuild
+docker run --rm -v "/tmp/scspotlight-webrbuild:/output" -w /output ghcr.io/r-wasm/webr:main \
+  Rscript -e "install.packages('pak', repos='https://cloud.r-project.org'); \
+              pak::pak('r-wasm/rwasm'); \
+              library(rwasm); \
+              add_pkg(c('qs2','ggplot2','scales','scattermore','dplyr','patchwork','cowplot'), dependencies = NA); \
+              make_vfs_library(compress = TRUE)"
+
+# Deploy VFS files into app static assets
+cp /tmp/scspotlight-webrbuild/vfs/library.data.gz inst/app/www/webr/vfs/library.data.gz
+cp /tmp/scspotlight-webrbuild/vfs/library.js.metadata inst/app/www/webr/vfs/library.js.metadata
+
+# Rebuild JS bundle after VFS update
+npm run build
+```
+
+Notes:
+- `dependencies = NA` is the recommended `add_pkg()` setting for hard dependencies.
+- If `compress = TRUE`, mount `www/webr/vfs/library.data.gz` and ensure `library.js.metadata` contains `"gzip": true`.
+- If compression causes issues, fall back to `make_vfs_library(compress = FALSE)` and mount `www/webr/vfs/library.data`.
+
 ### Running the Application
 ```r
 # Viewer mode (read-only, for exploring processed data)
