@@ -13,13 +13,10 @@ import {
   addOverlaySpinner,
 } from "./modules/spinner.js";
 
+import { initFloatingPlots } from "./modules/floatingPlots.js";
+
 //import bootstrap-icons
 import "bootstrap-icons/font/bootstrap-icons.css";
-
-import {
-  resize_infoBox,
-  update_collapse_icon,
-} from "./modules/collapse_infoBox.js";
 
 import {
   reglScatterCanvas,
@@ -49,8 +46,6 @@ import {
 
 // id of the mainClusterPlot parent div
 const mainPlotElId = "mainClusterPlot-clusterPlot";
-// id of the infobox panel
-const btmBoxListId = "bottom_box";
 // featurePlot canvas id
 const featurePlotElId = "featurePlotCanvas";
 // vlnSelect widget id
@@ -63,8 +58,6 @@ const dotPlotElId = "DotPlot";
 // R waiter package spinners
 // keep the style exactly the same with R function
 
-var infoBoxContentId = "infoBox_content";
-
 var reglElementData = new reglScatterCanvas("reglScatter");
 
 // init webR instance for reading reduction and expr data
@@ -73,8 +66,9 @@ var reglElementData = new reglScatterCanvas("reglScatter");
 let webR;
 let shelter;
 
-// two global variables to store spinners
-let infoBoxSpinner;
+// global variables to store spinners
+let vlnPlotSpinner;
+let dotPlotSpinner;
 let mainPlotSpinner;
 
 // init normal shelter for webR to gain better control of the r objects
@@ -93,99 +87,30 @@ document.addEventListener(
       removeFullScreenSpinner();
     })();
 
-    // Add info box spinner
-    infoBoxSpinner = addOverlaySpinner(infoBoxContentId);
+    // Add floating plot spinners
+    vlnPlotSpinner = addOverlaySpinner("floatingVlnPlotBody");
+    dotPlotSpinner = addOverlaySpinner("floatingDotPlotBody");
     // Add main plot spinner
     mainPlotSpinner = addOverlaySpinner(mainPlotElId);
 
-    // Get infoBoxId
-    const infoBoxEl = document
-      .getElementById("bottom_box")
-      .closest(".card");
-    const mainPlotEl = document.getElementById(mainPlotElId);
-    const infoBoxContentEl = document.getElementById(infoBoxContentId);
-    const infoBoxTopRightResizeHandle = setupInfoBoxTopRightResize(infoBoxEl);
-    let infoBoxExpandedHeight = 250;
-    let infoBoxExpandedWidth = null;
-    const collapsedHeight = 56;
-    const collapsedWidth = "calc(100% - 1rem)";
-    const isInfoBoxCollapsed = () =>
-      !infoBoxContentEl || !infoBoxContentEl.classList.contains("show");
-    const setInfoBoxResizable = (resizable) => {
-      infoBoxEl.style.resize = resizable ? "both" : "none";
-      if (infoBoxTopRightResizeHandle) {
-        infoBoxTopRightResizeHandle.style.display = resizable ? "block" : "none";
-      }
-    };
-
-    // init infoBox size to shrinked
-    resize_infoBox(mainPlotEl, infoBoxEl, collapsedHeight);
-    infoBoxEl.style.width = collapsedWidth;
-    setInfoBoxResizable(false);
-    infoBoxEl.querySelector(".bslib-full-screen-enter").style.display = "none";
-
-    if (infoBoxContentEl) {
-      infoBoxContentEl.addEventListener("show.bs.collapse", () => {
-        resize_infoBox(mainPlotEl, infoBoxEl, infoBoxExpandedHeight);
-        if (Number.isFinite(infoBoxExpandedWidth) && infoBoxExpandedWidth > 0) {
-          infoBoxEl.style.width = `${infoBoxExpandedWidth}px`;
+    initFloatingPlots({
+      hostId: "plotFloatingHost",
+      railId: "plotRail",
+      leftSidebarId: "leftSidebar",
+      leftSidebarRailId: "leftSidebarRail",
+      mainBoundsId: mainPlotElId,
+      refreshPanelPlot: (panelId) => {
+        if (panelId === "floatingVlnPlot") {
+          const canvas = document.getElementById(vlnPlotElId);
+          if (canvas) updateVlnPlot(canvas);
         }
-      });
-
-      infoBoxContentEl.addEventListener("shown.bs.collapse", () => {
-        setInfoBoxResizable(true);
-        infoBoxEl.querySelector(".bslib-full-screen-enter").style.display = "";
-        update_collapse_icon("infoBox_show");
-      });
-
-      infoBoxContentEl.addEventListener("hide.bs.collapse", () => {
-        setInfoBoxResizable(false);
-        const currentHeight = Math.round(infoBoxEl.getBoundingClientRect().height);
-        const currentWidth = Math.round(infoBoxEl.getBoundingClientRect().width);
-        if (currentHeight > collapsedHeight) {
-          infoBoxExpandedHeight = currentHeight;
+        if (panelId === "floatingDotPlot") {
+          const canvas = document.getElementById(dotPlotElId);
+          if (canvas) updateDotPlot(canvas);
         }
-        if (currentWidth > 0) {
-          infoBoxExpandedWidth = currentWidth;
-        }
-      });
-
-      infoBoxContentEl.addEventListener("hidden.bs.collapse", () => {
-        resize_infoBox(mainPlotEl, infoBoxEl, collapsedHeight);
-        infoBoxEl.style.width = collapsedWidth;
-        infoBoxEl.querySelector(".bslib-full-screen-enter").style.display =
-          "none";
-        update_collapse_icon("infoBox_show");
-      });
-    }
-
-    const infoBoxContainerResizeObserver = new ResizeObserver(
-      debounce(() => {
-        if (isInfoBoxCollapsed()) {
-          infoBoxEl.style.width = collapsedWidth;
-        }
-      }, 50),
-    );
-    if (infoBoxEl.parentElement) {
-      infoBoxContainerResizeObserver.observe(infoBoxEl.parentElement);
-    }
-
-    const infoBoxResizeObserver = new ResizeObserver(
-      debounce(() => {
-        if (isInfoBoxCollapsed()) {
-          return;
-        }
-        const currentHeight = Math.round(infoBoxEl.getBoundingClientRect().height);
-        const currentWidth = Math.round(infoBoxEl.getBoundingClientRect().width);
-        if (currentHeight > collapsedHeight) {
-          infoBoxExpandedHeight = currentHeight;
-        }
-        if (currentWidth > 0) {
-          infoBoxExpandedWidth = currentWidth;
-        }
-      }, 100),
-    );
-    infoBoxResizeObserver.observe(infoBoxEl);
+      },
+      debounce,
+    });
 
     // add select widget to vlnplot box
     const vlnDropDown = createVlnDropend(vlnDropDownId);
@@ -229,7 +154,7 @@ document.addEventListener(
             Object.keys(reglElementData.origData.cellMetaData).length > 0
           ) {
             // ensure shelter was initiated and reglElementData was populated
-            if (entry.target === vlnPlotCanvas && panelSelected(entry.target)) {
+            if (entry.target === vlnPlotCanvas && isElementVisible(entry.target)) {
               if (
                 !document
                   .getElementById(vlnDropDownId)
@@ -240,7 +165,7 @@ document.addEventListener(
                 updateVlnPlot(vlnPlotCanvas);
               }
             }
-            if (entry.target === dotPlotCanvas && panelSelected(entry.target)) {
+            if (entry.target === dotPlotCanvas && isElementVisible(entry.target)) {
               console.log("resized dotplot...");
               updateDotPlot(dotPlotCanvas);
             }
@@ -303,9 +228,13 @@ Shiny.addCustomMessageHandler("reduction_ready", (msg) => {
       console.log("reduction", df);
 
       // do not hide the spinner, since it will trigger the reglScatter_plot immediately
-    })();
+    })().catch((error) => {
+      console.error("There was a problem:", error);
+      mainPlotSpinner.style.display = "none";
+    });
   } catch (error) {
     console.error("There was a problem:", error);
+    mainPlotSpinner.style.display = "none";
   }
 });
 
@@ -371,9 +300,13 @@ Shiny.addCustomMessageHandler("meta_ready", (msg) => {
       await shelter.purge();
 
       // do not hide the spinner, since it will trigger the reglScatter_plot immediately
-    })();
+    })().catch((error) => {
+      console.error("There was a problem:", error);
+      mainPlotSpinner.style.display = "none";
+    });
   } catch (error) {
     console.error("There was a problem:", error);
+    mainPlotSpinner.style.display = "none";
   }
 });
 
@@ -732,16 +665,20 @@ const updateVlnPlot = (canvas) => {
   // ensure the infobox panel selected vlnplot
   // id was defined in R's nav_panel() title argument
   //if(infoPanelActive(btmBoxListId) !== "VlnPlot") return false
-  // Firstly check the spinners
-  try {
-    infoBoxSpinner.style.display = "none";
-  } catch (error) {
-    console.error("error: ", error);
-  }
-  // show spinner
-  infoBoxSpinner.style.display = "flex";
+  if (!canvas || !vlnPlotSpinner) return;
+
+  const hideSpinner = () => {
+    vlnPlotSpinner.style.display = "none";
+  };
+  const showSpinner = () => {
+    vlnPlotSpinner.style.display = "flex";
+  };
 
   const container = canvas.parentElement;
+  if (!container) {
+    hideSpinner();
+    return;
+  }
   const rect = container.getBoundingClientRect();
   const containerPadding = getPadding(container);
   const canvasWidth =
@@ -753,83 +690,110 @@ const updateVlnPlot = (canvas) => {
   canvas.style.width = "100%";
   canvas.style.height = "100%";
 
-  if (canvasWidth > 0 && canvasHeight > 0) {
-    console.log("Updating vlnplot...");
-    // It seems that webR does not support typedArray
-    const expressionInput = {};
-    const metaInput = {};
-    let expr = false;
-    // vlnPlot only illustrates expression of the first selected genes
-    if (reglElementData.plotMetaData.selectedFeatures.length > 0) {
-      const f = reglElementData.plotMetaData.selectedFeatures[0];
-      expressionInput[f] = Array.from(
-        reglElementData.origData.expressionData[f],
-      );
-      expr = f;
-    } else {
-      const numericCols = getNumericCols(reglElementData);
+  const ctx = canvas.getContext("2d");
+  if (canvasWidth <= 0 || canvasHeight <= 0) {
+    hideSpinner();
+    return;
+  }
 
-      const selectedMetaCol =
-        reglElementData.plotMetaData.selectedMeta || numericCols[0];
-      metaInput[selectedMetaCol] = expandMeta(
-        reglElementData.origData.cellMetaData[selectedMetaCol],
-      );
+  const groupBy = reglElementData.plotMetaData.group_by;
+  const groupMeta = groupBy
+    ? reglElementData.origData.cellMetaData[groupBy]
+    : null;
+
+  if (!groupMeta) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    hideSpinner();
+    return;
+  }
+
+  console.log("Updating vlnplot...");
+  showSpinner();
+
+  // It seems that webR does not support typedArray
+  const expressionInput = {};
+  const metaInput = {};
+  let expr = false;
+
+  // vlnPlot only illustrates expression of the first selected genes
+  if (reglElementData.plotMetaData.selectedFeatures.length > 0) {
+    const f = reglElementData.plotMetaData.selectedFeatures[0];
+    const exprVec = reglElementData.origData.expressionData[f];
+    if (!exprVec) {
+      hideSpinner();
+      return;
     }
-    const groupInput = {};
-    groupInput[reglElementData.plotMetaData.group_by] = expandMeta(
-      reglElementData.origData.cellMetaData[
-        reglElementData.plotMetaData.group_by
-      ],
-    );
-    const groupOrder = [
-      ...new Set(groupInput[reglElementData.plotMetaData.group_by]),
-    ].sort(sortStringArray);
-    const dfInput = { ...groupInput, ...metaInput, ...expressionInput };
-    for (const k of Object.keys(dfInput)) {
-      // webr dataframe convertion doesn't support typed array
-      dfInput[k] = Array.from(dfInput[k]);
+    expressionInput[f] = Array.from(exprVec);
+    expr = f;
+  } else {
+    const numericCols = getNumericCols(reglElementData);
+    if (numericCols.length === 0) {
+      hideSpinner();
+      return;
     }
-    console.log(
-      "vlnPlot inputs: ",
-      dfInput,
-      reglElementData.plotMetaData.group_by,
-      groupOrder,
-      expr,
+
+    const selectedMetaCol = reglElementData.plotMetaData.selectedMeta || numericCols[0];
+    if (!reglElementData.origData.cellMetaData[selectedMetaCol]) {
+      hideSpinner();
+      return;
+    }
+    metaInput[selectedMetaCol] = expandMeta(
+      reglElementData.origData.cellMetaData[selectedMetaCol],
     );
-    vlnPlot(
-      shelter,
-      canvasWidth,
-      canvasHeight,
-      dfInput,
-      reglElementData.plotMetaData.group_by,
-      groupOrder,
-      (expr = expr),
-      reglElementData.plotMetaData.catColors,
-    ).then((res) => {
-      const ctx = canvas.getContext("2d");
+  }
+
+  const groupInput = {};
+  groupInput[groupBy] = expandMeta(groupMeta);
+  const groupOrder = [...new Set(groupInput[groupBy])].sort(sortStringArray);
+  const dfInput = { ...groupInput, ...metaInput, ...expressionInput };
+  for (const k of Object.keys(dfInput)) {
+    // webr dataframe convertion doesn't support typed array
+    dfInput[k] = Array.from(dfInput[k]);
+  }
+  console.log("vlnPlot inputs: ", dfInput, groupBy, groupOrder, expr);
+  vlnPlot(
+    shelter,
+    canvasWidth,
+    canvasHeight,
+    dfInput,
+    groupBy,
+    groupOrder,
+    (expr = expr),
+    reglElementData.plotMetaData.catColors,
+  )
+    .then((res) => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      let img = res.images[0];
+      const img = res.images[0];
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      // hide spinner
-      infoBoxSpinner.style.display = "none";
+    })
+    .catch((error) => {
+      console.error("Failed to update vlnPlot:", error);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    })
+    .finally(() => {
+      hideSpinner();
       shelter.purge();
     });
-  }
 };
 
 const updateDotPlot = (canvas) => {
   // ensure the infobox panel selected vlnplot
   // id was defined in R's nav_panel() title argument
   //if(infoPanelActive(btmBoxListId) !== "DotPlot") return false
-  // Firstly check the spinners
-  try {
-    infoBoxSpinner.style.display = "none";
-  } catch (error) {
-    console.error("error: ", error);
-  }
-  // show spinner
-  infoBoxSpinner.style.display = "flex";
+  if (!canvas || !dotPlotSpinner) return;
+
+  const hideSpinner = () => {
+    dotPlotSpinner.style.display = "none";
+  };
+  const showSpinner = () => {
+    dotPlotSpinner.style.display = "flex";
+  };
+
   const container = canvas.parentElement;
+  if (!container) {
+    hideSpinner();
+    return;
+  }
   const rect = container.getBoundingClientRect();
   const containerPadding = getPadding(container);
   const canvasWidth =
@@ -841,66 +805,69 @@ const updateDotPlot = (canvas) => {
   canvas.style.width = "100%";
   canvas.style.height = "100%";
 
-  if (canvasWidth > 0 && canvasHeight > 0) {
-    // It seems that webR does not support typedArray
-    const expressionInput = {};
-    // dotPlot only be rendered when there are more than one selected genes
-    if (reglElementData.plotMetaData.selectedFeatures.length > 1) {
-      for (let f of reglElementData.plotMetaData.selectedFeatures) {
-        expressionInput[f] = Array.from(
-          reglElementData.origData.expressionData[f],
-        );
-      }
+  const ctx = canvas.getContext("2d");
+  if (canvasWidth <= 0 || canvasHeight <= 0) {
+    hideSpinner();
+    return;
+  }
 
-      const groupInput = {};
-      groupInput[reglElementData.plotMetaData.group_by] = expandMeta(
-        reglElementData.origData.cellMetaData[
-          reglElementData.plotMetaData.group_by
-        ],
-      );
+  // It seems that webR does not support typedArray
+  const expressionInput = {};
+  const features = reglElementData.plotMetaData.selectedFeatures || [];
+  // dotPlot only be rendered when there are more than one selected genes
+  if (features.length > 1) {
+    const missingExpr = features.some(
+      (f) => !reglElementData.origData.expressionData[f],
+    );
+    if (missingExpr) {
+      hideSpinner();
+      return;
+    }
 
-      const dfInput = { ...groupInput, ...expressionInput };
+    for (const f of features) {
+      expressionInput[f] = Array.from(reglElementData.origData.expressionData[f]);
+    }
 
-      //for (const k of Object.keys(dfInput)) {
-      //  // webr dataframe convertion doesn't support typed array
-      //  dfInput[k] = Array.from(dfInput[k]);
-      //}
+    const groupBy = reglElementData.plotMetaData.group_by;
+    const groupMeta = groupBy
+      ? reglElementData.origData.cellMetaData[groupBy]
+      : null;
+    if (!groupMeta) {
+      hideSpinner();
+      return;
+    }
 
-      dotPlot(
-        shelter,
-        canvasWidth,
-        canvasHeight,
-        dfInput,
-        reglElementData.plotMetaData.group_by,
-      ).then((res) => {
-        const ctx = canvas.getContext("2d");
+    const groupInput = {};
+    groupInput[groupBy] = expandMeta(groupMeta);
+
+    const dfInput = { ...groupInput, ...expressionInput };
+
+    showSpinner();
+    dotPlot(shelter, canvasWidth, canvasHeight, dfInput, groupBy)
+      .then((res) => {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        let img = res.images[0];
+        const img = res.images[0];
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        // hide spinner
-        infoBoxSpinner.style.display = "none";
-        // purge R objects
+      })
+      .catch((error) => {
+        console.error("Failed to update dotPlot:", error);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      })
+      .finally(() => {
+        hideSpinner();
         shelter.purge();
       });
-    } else {
-      const ctx = canvas.getContext("2d");
-      // Set text properties
-      //const bodyFontSize = getComputedStyle(document.documentElement)
-      //      .getPropertyValue('--bs-body-font-size')
-      //      .trim();
-      //const bodyFontFamily = getComputedStyle(document.documentElement)
-      //      .getPropertyValue('--bs-body-font-family')
-      //      .trim();
-      ctx.font = "30px Arial"; // Font size and family
-      ctx.fillStyle = "#636363"; // Text color
-      ctx.textAlign = "left"; // Text alignment
-      ctx.textBaseline = "top"; // Vertical alignment
+  } else {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // Set text properties
+    ctx.font = "30px Arial";
+    ctx.fillStyle = "#636363";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
 
-      // Draw filled text
-      ctx.fillText("Please select at least two features", 10, 10); // Text, x, y
-      // hide spinner
-      infoBoxSpinner.style.display = "none";
-    }
+    // Draw filled text
+    ctx.fillText("Please select at least two features", 10, 10);
+    hideSpinner();
   }
 };
 
@@ -917,94 +884,7 @@ function debounce(func, wait) {
   };
 }
 
-const setupInfoBoxTopRightResize = (infoBoxEl) => {
-  if (!infoBoxEl) return null;
-
-  const handle = document.createElement("div");
-  handle.id = "infoBoxTopRightResize";
-  handle.style.position = "absolute";
-  handle.style.top = "0";
-  handle.style.right = "0";
-  handle.style.width = "16px";
-  handle.style.height = "16px";
-  handle.style.cursor = "nesw-resize";
-  handle.style.zIndex = "1101";
-  handle.style.borderTop = "1px solid rgba(0, 0, 0, 0.2)";
-  handle.style.borderLeft = "1px solid rgba(0, 0, 0, 0.2)";
-  handle.style.borderTopLeftRadius = "2px";
-  handle.style.background =
-    "repeating-linear-gradient(135deg, rgba(0,0,0,0.38) 0 1px, transparent 1px 4px)";
-  handle.style.backgroundPosition = "1px 1px";
-
-  infoBoxEl.appendChild(handle);
-
-  let isResizing = false;
-  let startX = 0;
-  let startY = 0;
-  let startWidth = 0;
-  let startHeight = 0;
-
-  const minWidth = 320;
-  const minHeight = 56;
-
-  const onMouseMove = (e) => {
-    if (!isResizing) return;
-
-    const dx = e.clientX - startX;
-    const dy = e.clientY - startY;
-
-    const parentRect = infoBoxEl.parentElement.getBoundingClientRect();
-    const sideGapPx = 8;
-    const maxWidth = Math.max(minWidth, parentRect.width - sideGapPx * 2);
-    const maxHeight = Math.max(minHeight, parentRect.height - sideGapPx * 2);
-
-    const newWidth = Math.min(maxWidth, Math.max(minWidth, startWidth + dx));
-    const newHeight = Math.min(
-      maxHeight,
-      Math.max(minHeight, startHeight - dy),
-    );
-
-    infoBoxEl.style.width = `${newWidth}px`;
-    infoBoxEl.style.height = `${newHeight}px`;
-  };
-
-  const onMouseUp = () => {
-    isResizing = false;
-    document.body.style.userSelect = "";
-    document.removeEventListener("mousemove", onMouseMove);
-    document.removeEventListener("mouseup", onMouseUp);
-  };
-
-  handle.addEventListener("mousedown", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    isResizing = true;
-    startX = e.clientX;
-    startY = e.clientY;
-
-    const rect = infoBoxEl.getBoundingClientRect();
-    startWidth = rect.width;
-    startHeight = rect.height;
-
-    document.body.style.userSelect = "none";
-    document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("mouseup", onMouseUp);
-  });
-
-  return handle;
-};
-
-// function to check if the infoBox panel is selected/active
-const panelSelected = (el) => {
-  let parent = el.parentElement;
-  while (parent) {
-    if (parent.dataset.value === el.id) {
-      break;
-    }
-    parent = parent.parentElement;
-  }
-  return parent && parent.classList.contains("active");
-};
+const isElementVisible = (el) => !!(el && el.offsetParent !== null);
 
 // function to replace column with new Vector to simulate mutate operation
 // if colName already exists in the table, the child/column will be

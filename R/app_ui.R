@@ -75,41 +75,48 @@ golem_add_external_resources <- function() {
 scaffold_sca_mainUI <- function(){
 
     ## main ui skeleton
-    sca_view <-  layout_sidebar(
-        sidebar = sidebar(
-            left_sidebar_ui(),
-            ##bg = "#1E1E1E",
-            class = "bg-primary",
-            width = 300
-        ),
+    sca_view <- div(
+        class = "sca-root-layout",
+        style = "position: relative; width: 100%; height: 100vh; overflow: hidden;",
         layout_sidebar(
             sidebar = sidebar(
-                right_sidebar_ui(),
-                fill = TRUE,
-                fillable = TRUE,
-                width = 300,
-                position = "right",
-                open = TRUE,
-                class = "bg-primary"
+                id = "leftSidebar",
+                left_sidebar_ui(),
+                ##bg = "#1E1E1E",
+                class = "bg-primary",
+                width = 300
             ),
-            class = "align-items-center",
-            border = FALSE,
+            layout_sidebar(
+                sidebar = sidebar(
+                    right_sidebar_ui(),
+                    fill = TRUE,
+                    fillable = TRUE,
+                    width = 300,
+                    position = "right",
+                    open = TRUE,
+                    class = "bg-primary"
+                ),
+                class = "align-items-center",
+                border = FALSE,
+                border_radius = FALSE,
+                ##border_color = "black",
+                fillable = TRUE,
+                fill = TRUE,
+                class = c("p-0", "sca-main-layout"),
+                div(
+                    class = "sca-main-stack",
+                    style = "position: relative; width: 100%; height: 100%;",
+                    mainPlots_ui(),
+                    infoBox_ui()
+                )
+            ),
             border_radius = FALSE,
+            border = FALSE,
             ##border_color = "black",
             fillable = TRUE,
-            fill = TRUE,
-            class = "p-0",
-            div(
-                style = "position: relative; width: 100%; height: 100%;",
-                mainPlots_ui(),
-                infoBox_ui()
-            )
+            class = c("p-0", "sca-outer-layout")
         ),
-        border_radius = FALSE,
-        border = FALSE,
-        ##border_color = "black",
-        fillable = TRUE,
-        class = "p-0"
+        left_sidebar_rail_ui()
     )
 
     sca_view <- tagAppendAttributes(sca_view, .cssSelector = ".accordion-item", class = c("bg-dark"))
@@ -125,15 +132,44 @@ scaffold_sca_mainUI <- function(){
 left_sidebar_ui <- function(){
 
     brand_header <- div(
-        class = "d-flex align-items-center gap-2 px-2 py-2 mb-2 border-bottom border-light",
+        class = "d-flex align-items-center gap-2 px-2 py-1 mb-1",
+        style = "border-bottom: 1px solid rgba(255,255,255,0.35);",
         tags$img(
             src = "www/favicon.ico",
             alt = "scSpotlight",
-            style = "width: 48px; height: 48px;"
+            style = paste(
+                "width: 42px;",
+                "height: 42px;",
+                "border-radius: 0.4rem;",
+                "background: rgba(255,255,255,0.16);",
+                "padding: 0.2rem;",
+                sep = " "
+            )
         ),
-        tags$span(
-            "scSpotlight",
-            style = "font-size: 1.2rem; font-weight: 700; color: #fff; line-height: 1;"
+        div(
+            tags$span(
+                "scSpotlight",
+                style = paste(
+                    "display: block;",
+                    "font-size: 1.15rem;",
+                    "font-weight: 700;",
+                    "color: #fff;",
+                    "line-height: 1;",
+                    "letter-spacing: 0.015rem;",
+                    sep = " "
+                )
+            ),
+            tags$span(
+                "Single-cell RNA-seq explorer",
+                style = paste(
+                    "display: block;",
+                    "font-size: 0.72rem;",
+                    "color: rgba(255,255,255,0.85);",
+                    "line-height: 1.1;",
+                    "margin-top: 0.15rem;",
+                    sep = " "
+                )
+            )
         )
     )
 
@@ -193,6 +229,39 @@ left_sidebar_ui <- function(){
         stop("runningMode not supported")
     }
     return(tagList(brand_header, combined_settings))
+}
+
+#' Left sidebar icon rail when collapsed
+#'
+#' @noRd
+left_sidebar_rail_ui <- function(){
+    runningMode <- golem::get_golem_options("runningMode")
+
+    rail_buttons <- list(
+        tags$button(
+            type = "button",
+            class = "left-sidebar-rail-btn",
+            title = "File Input",
+            `data-panel-index` = "0",
+            bsicons::bs_icon("file-earmark-arrow-up")
+        )
+    )
+
+    if(runningMode == "processing"){
+        rail_buttons <- append(rail_buttons, list(
+            tags$button(type = "button", class = "left-sidebar-rail-btn", title = "Cell Filtering", `data-panel-index` = "1", bsicons::bs_icon("filter")),
+            tags$button(type = "button", class = "left-sidebar-rail-btn", title = "Clustering Settings", `data-panel-index` = "2", bsicons::bs_icon("sliders")),
+            tags$button(type = "button", class = "left-sidebar-rail-btn", title = "Cell Cycling", `data-panel-index` = "3", bsicons::bs_icon("clock-history")),
+            tags$button(type = "button", class = "left-sidebar-rail-btn", title = "Find Markers", `data-panel-index` = "4", bsicons::bs_icon("bar-chart-steps")),
+            tags$button(type = "button", class = "left-sidebar-rail-btn", title = "Download Result", `data-panel-index` = "5", bsicons::bs_icon("cloud-download"))
+        ))
+    }
+
+    tags$div(
+        id = "leftSidebarRail",
+        class = "left-sidebar-rail",
+        do.call(tagList, rail_buttons)
+    )
 }
 
 
@@ -286,7 +355,7 @@ mainPlots_ui <- function(){
     mod_mainClusterPlot_ui("mainClusterPlot")
 }
 
-#' Function for bottom info box ui
+#' Function for floating plot windows ui
 #'
 #' @noRd
 #'
@@ -294,122 +363,134 @@ mainPlots_ui <- function(){
 infoBox_ui <- function(){
 
     runningMode <- golem::get_golem_options("runningMode")
+    rail_buttons <- list(
+        tags$button(
+            type = "button",
+            class = "plot-rail-btn",
+            `data-target` = "floatingVlnPlot",
+            title = "Open VlnPlot",
+            tags$i(class = "bi bi-bar-chart")
+        ),
+        tags$button(
+            type = "button",
+            class = "plot-rail-btn",
+            `data-target` = "floatingDotPlot",
+            title = "Open DotPlot",
+            tags$i(class = "bi bi-grid-3x3-gap")
+        )
+    )
 
-    if(runningMode == "viewer"){
-        bottom_box <- navset_card_pill(
-            id = "bottom_box",
-            full_screen = TRUE,
-            height = "200px",
-            ##title = "",
-            nav_panel(
-                title = "VlnPlot",
-                tags$canvas(id = "VlnPlot",
-                            style = "height: 100%;")
-                ##mod_VlnPlot_ui("vlnPlot")
-            ),
-            ## seurat5 VariableFeaturePlot() has bug on pulling data
-            ##nav_panel(
-            ##    title = "HVGPlot",
-            ##    plotOutput("HVGPlot")
-            ##),
-            nav_panel(
-                title = "DotPlot",
-                tags$canvas(id = "DotPlot",
-                            style = "height: 100%;")
-            ),
-            nav_spacer(),
-            nav_item(
+    floating_panels <- list(
+        tags$div(
+            id = "floatingVlnPlot",
+            class = "plot-floating-panel",
+            style = "display:none;",
+            tags$div(
+                class = "plot-floating-header",
+                tags$span("VlnPlot"),
                 tags$button(
-                         id = "infoBox_show",
-                         type = "button",
-                         class = "border-0",
-                         style = "background-color: rgba(255,255,255,0)",
-                         `data-bs-toggle` = "collapse",
-                         `data-bs-target` = "#infoBox_content",
-                         `aria-expanded` = "false",
-                         `aria-controls` = "infoBox_content",
-                         tags$i(class = "bi bi-arrows-angle-expand")
-                     )
+                    type = "button",
+                    class = "plot-floating-close",
+                    `data-close-target` = "floatingVlnPlot",
+                    tags$i(class = "bi bi-x-lg")
+                )
             ),
-            wrapper = function(...) {card_body(..., class = "p-2") }
-        )
-    }else if(runningMode == "processing"){
-        bottom_box <- navset_card_pill(
-            id = "bottom_box",
-            full_screen = TRUE,
-            height = "200px",
-            ##title = "",
-            nav_panel(
-                title = "VlnPlot",
-                tags$canvas(id = "VlnPlot",
-                            style = "height: 100%;")
-            ),
-            ## seurat5 VariableFeaturePlot() has bug on pulling data
-            ##nav_panel(
-            ##    title = "HVGPlot",
-            ##    plotOutput("HVGPlot")
-            ##),
-            nav_panel(
-                title = "ElbowPlot",
-                mod_ElbowPlot_ui("elbowPlot")
-            ),
-            nav_panel(
-                title = "DotPlot",
-                tags$canvas(id = "DotPlot",
-                            style = "height: 100%;")
-            ),
-            ##nav_panel(
-            ##    title = "DEG Heatmap",
-            ##    tagList()
-            ##    ##plotOutut("DEG_heatmap")
-            ##),
-            nav_panel(
-                title = "DEG List",
-                mod_DEG_Table_ui("DEGList")
-            ),
-            nav_spacer(),
-            nav_item(
+            tags$div(
+                id = "floatingVlnPlotBody",
+                class = "plot-floating-body",
+                tags$canvas(id = "VlnPlot", style = "height: 100%;")
+            )
+        ),
+        tags$div(
+            id = "floatingDotPlot",
+            class = "plot-floating-panel",
+            style = "display:none;",
+            tags$div(
+                class = "plot-floating-header",
+                tags$span("DotPlot"),
                 tags$button(
-                         id = "infoBox_show",
-                         type = "button",
-                         class = "border-0",
-                         style = "background-color: rgba(255,255,255,0)",
-                         `data-bs-toggle` = "collapse",
-                         `data-bs-target` = "#infoBox_content",
-                         `aria-expanded` = "false",
-                         `aria-controls` = "infoBox_content",
-                         tags$i(class = "bi bi-arrows-angle-expand")
-                     )
+                    type = "button",
+                    class = "plot-floating-close",
+                    `data-close-target` = "floatingDotPlot",
+                    tags$i(class = "bi bi-x-lg")
+                )
             ),
-            wrapper = function(...) {card_body(..., class = "p-2") }
+            tags$div(
+                id = "floatingDotPlotBody",
+                class = "plot-floating-body",
+                tags$canvas(id = "DotPlot", style = "height: 100%;")
+            )
         )
-    }else{
-        stop("runningMode is not supported")
+    )
+
+    if(runningMode == "processing"){
+        rail_buttons <- append(rail_buttons, list(
+            tags$button(
+                type = "button",
+                class = "plot-rail-btn",
+                `data-target` = "floatingElbowPlot",
+                title = "Open ElbowPlot",
+                tags$i(class = "bi bi-graph-up")
+            ),
+            tags$button(
+                type = "button",
+                class = "plot-rail-btn",
+                `data-target` = "floatingDEGList",
+                title = "Open DEG List",
+                tags$i(class = "bi bi-table")
+            )
+        ))
+
+        floating_panels <- append(floating_panels, list(
+            tags$div(
+                id = "floatingElbowPlot",
+                class = "plot-floating-panel",
+                style = "display:none;",
+                tags$div(
+                    class = "plot-floating-header",
+                    tags$span("ElbowPlot"),
+                    tags$button(
+                        type = "button",
+                        class = "plot-floating-close",
+                        `data-close-target` = "floatingElbowPlot",
+                        tags$i(class = "bi bi-x-lg")
+                    )
+                ),
+                tags$div(
+                    class = "plot-floating-body",
+                    mod_ElbowPlot_ui("elbowPlot")
+                )
+            ),
+            tags$div(
+                id = "floatingDEGList",
+                class = "plot-floating-panel",
+                style = "display:none;",
+                tags$div(
+                    class = "plot-floating-header",
+                    tags$span("DEG List"),
+                    tags$button(
+                        type = "button",
+                        class = "plot-floating-close",
+                        `data-close-target` = "floatingDEGList",
+                        tags$i(class = "bi bi-x-lg")
+                    )
+                ),
+                tags$div(
+                    class = "plot-floating-body",
+                    mod_DEG_Table_ui("DEGList")
+                )
+            )
+        ))
     }
 
-    ## Add collapse class to tab-content
-    bottom_box <- tagAppendAttributes(bottom_box,
-                                      .cssSelector = ".tab-content",
-                                      id = "infoBox_content",
-                                      class = "collapse",
-                                      style = "position: relative") # Add relative position to ensure that waiter spinner overlay works properly
-
-    bottom_box <- tagAppendAttributes(bottom_box,
-                                      class = c("border", "border-2",
-                                                "border-primary", "shadow"))
-    bottom_box <- tagAppendAttributes(bottom_box,
-                                      style = paste(
-                                          "position: absolute;",
-                                          "bottom: 0.5rem;",
-                                          "left: 0.5rem;",
-                                          "z-index: 10;",
-                                          "resize: none;",
-                                          "width: calc(100% - 1rem);",
-                                          "min-height: 56px;",
-                                          "min-width: 320px;",
-                                          "max-width: calc(100% - 1rem);",
-                                          "max-height: calc(100% - 1rem);",
-                                          sep = " "
-                                      ))
-
+    tags$div(
+        id = "plotFloatingHost",
+        class = "plot-floating-host",
+        tags$div(
+            id = "plotRail",
+            class = "plot-rail",
+            do.call(tagList, rail_buttons)
+        ),
+        do.call(tagList, floating_panels)
+    )
 }

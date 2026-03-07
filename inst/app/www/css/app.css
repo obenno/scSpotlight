@@ -159,6 +159,215 @@ hr.setting {
     gap: 0;
 }
 
+/* Keep nested bslib sidebar layouts at viewport height */
+.sca-root-layout > .bslib-sidebar-layout,
+.sca-root-layout .sca-outer-layout,
+.sca-root-layout .sca-main-layout,
+.sca-root-layout .sca-main-stack,
+.sca-root-layout .main {
+    height: 100%;
+    min-height: 0;
+}
+
+/* Left sidebar collapsed icon rail (bslib-compatible) */
+.left-sidebar-rail {
+    position: absolute;
+    top: 2.7rem;
+    left: 0.35rem;
+    z-index: 25;
+    width: 2.5rem;
+    padding: 0.35rem 0.2rem;
+    border-radius: 0.6rem;
+    background: rgba(var(--bs-secondary-rgb), 0.9);
+    border: 1px solid rgba(var(--bs-secondary-rgb), 1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.3rem;
+    opacity: 0;
+    transform: translateX(-8px);
+    pointer-events: none;
+    transition: opacity 0.22s ease, transform 0.22s ease;
+}
+
+.left-sidebar-rail.visible {
+    opacity: 1;
+    transform: translateX(0);
+    pointer-events: auto;
+}
+
+/* Avoid extra vertical overflow from bslib default layout spacing */
+.bslib-sidebar-layout.bslib-mb-spacing {
+    margin-bottom: 0 !important;
+}
+
+.left-sidebar-rail-btn {
+    width: 2rem;
+    height: 2rem;
+    border: 0;
+    border-radius: 0.45rem;
+    background: rgba(255, 255, 255, 0.18);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
+.left-sidebar-rail-btn:hover,
+.left-sidebar-rail-btn:focus {
+    background: rgba(255, 255, 255, 0.3);
+    outline: none;
+}
+
+.left-sidebar-rail-btn svg {
+    width: 1rem;
+    height: 1rem;
+}
+
+/* Floating plot rail and windows */
+.plot-floating-host {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1500;
+}
+
+.plot-rail {
+    position: fixed;
+    z-index: 1510;
+    width: 2.3rem;
+    padding: 0.35rem 0.15rem;
+    border-radius: 0.6rem;
+    background: rgba(var(--bs-secondary-rgb), 0.9);
+    border: 1px solid rgba(var(--bs-secondary-rgb), 1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.3rem;
+    pointer-events: auto;
+    transition: top 0.22s ease, left 0.22s ease;
+}
+
+.plot-rail-btn {
+    width: 1.9rem;
+    height: 1.9rem;
+    border: 0;
+    border-radius: 0.45rem;
+    background: rgba(255, 255, 255, 0.18);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
+.plot-rail-btn:hover,
+.plot-rail-btn:focus {
+    background: rgba(255, 255, 255, 0.3);
+    outline: none;
+}
+
+.plot-rail-btn.active {
+    background: rgba(255, 255, 255, 0.36);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45);
+}
+
+.plot-floating-panel {
+    position: fixed;
+    z-index: 1520;
+    width: min(420px, calc(100vw - 1rem));
+    height: 300px;
+    min-width: min(320px, calc(100vw - 1rem));
+    min-height: min(180px, calc(100vh - 1rem));
+    max-width: calc(100vw - 1rem);
+    max-height: calc(100vh - 1rem);
+    border: 2px solid var(--bs-primary);
+    border-radius: 0.5rem;
+    background: #fff;
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.25);
+    overflow: hidden;
+    resize: both;
+    pointer-events: auto;
+}
+
+.plot-floating-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.35rem 0.55rem;
+    background: rgba(var(--bs-primary-rgb), 0.1);
+    border-bottom: 1px solid rgba(var(--bs-primary-rgb), 0.25);
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: move;
+}
+
+.plot-floating-close {
+    border: 0;
+    background: transparent;
+    color: rgba(0, 0, 0, 0.7);
+    padding: 0.1rem 0.2rem;
+    line-height: 1;
+}
+
+.plot-floating-close:hover,
+.plot-floating-close:focus {
+    color: #000;
+}
+
+.plot-floating-body {
+    position: relative;
+    width: 100%;
+    height: calc(100% - 2rem);
+    padding: 0.4rem;
+}
+
+.plot-floating-body canvas {
+    width: 100%;
+    height: 100%;
+}
+
+.plot-floating-top-resize {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 12px;
+    height: 12px;
+    cursor: nesw-resize;
+    z-index: 5;
+    border-radius: 2px;
+    background: linear-gradient(45deg, transparent 46%, rgba(120, 120, 120, 0.75) 46% 51%, transparent 51% 66%, rgba(120, 120, 120, 0.75) 66% 71%, transparent 71%);
+}
+
+/* Keep left sidebar scrollable in vertical direction */
+#leftSidebar,
+#leftSidebar .sidebar-content {
+    overflow-y: auto;
+}
+
+/* Remove empty bslib sidebar header spacer in left sidebar */
+#leftSidebar .sidebar-header {
+    display: none;
+}
+
+/* Tighten top spacing for branding block */
+#leftSidebar .sidebar-content {
+    padding-top: 0.25rem !important;
+}
+
+/* Move left sidebar vertical scrollbar to the left edge */
+#leftSidebar {
+    direction: rtl;
+}
+
+#leftSidebar .sidebar-content {
+    direction: ltr;
+}
+
 
 /* scatter plot legend css */
 /* modified from broad single cell portal */
