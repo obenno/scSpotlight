@@ -108,7 +108,14 @@ export async function initShelter(webR) {
   return shelter;
 }
 
-export async function featurePlot(shelter, figWidth, figHeight, dr, expr) {
+export async function featurePlot(
+  shelter,
+  figWidth,
+  figHeight,
+  dr,
+  expr,
+  ncol = null,
+) {
   let result = await shelter.captureR(
     `
 mapColor <- function(x, low = "#E5E4E2", high = "#800080"){
@@ -185,10 +192,14 @@ for(i in seq_along(features)){
     }
     pList[[i]] <- plotFeature(df, raster = raster)
 }
-if(length(pList) >=3){
-    ncol <- 3
+if(is.null(panelNcol)){
+  if(length(pList) >=3){
+      ncol <- 3
+  }else{
+      ncol <- length(pList)
+  }
 }else{
-    ncol <- length(pList)
+  ncol <- max(1, min(as.integer(panelNcol), length(pList)))
 }
 wrap_plots(pList, ncol=ncol)
 `,
@@ -196,6 +207,7 @@ wrap_plots(pList, ncol=ncol)
       env: {
         exprList: expr,
         reduction: dr,
+        panelNcol: ncol,
       },
       captureGraphics: {
         width: figWidth,
@@ -522,7 +534,14 @@ wrap_plots(pList, ncol=ncol)
   return result;
 }
 
-export async function dotPlot(shelter, figWidth, figHeight, df, group) {
+export async function dotPlot(
+  shelter,
+  figWidth,
+  figHeight,
+  df,
+  group,
+  groupOrder = null,
+) {
   let result = await shelter.captureR(
     `
 summarize_expr <- function(df, group, feature){
@@ -551,6 +570,13 @@ d <- do.call(
     })
 )
 
+if(!is.null(groupOrder)){
+    observed_groups <- unique(as.character(d[[group]]))
+    normalized_levels <- intersect(as.character(groupOrder), observed_groups)
+    normalized_levels <- c(normalized_levels, setdiff(observed_groups, normalized_levels))
+    d[[group]] <- factor(as.character(d[[group]]), levels = normalized_levels)
+}
+
 p <- ggplot(d, aes(x = features.plot, y= !!as.symbol(group),
                    fill = avg.exp.scaled, size = pct.exp))+
     geom_point(shape=21, color = "black")+
@@ -573,6 +599,7 @@ print(p)
       env: {
         group: group,
         df: df,
+        groupOrder: groupOrder,
       },
       captureGraphics: {
         width: figWidth,

@@ -6,6 +6,7 @@ const RAIL_MIN_TOP_PX = 56;
 const LEFT_RAIL_SYNC_DELAY_MS = 140;
 const LEFT_RAIL_PANEL_DELAY_MS = 120;
 const WINDOW_RESIZE_DEBOUNCE_MS = 100;
+const FLOATING_PLOTS_REFRESH_EVENT = "scspotlight:floatingPlotsRefresh";
 
 const getFloatingPanelLimits = (boundsRect, margin = PANEL_MARGIN_PX) => {
   const availableWidth = Math.max(1, boundsRect.width - margin * 2);
@@ -33,9 +34,69 @@ const setPanelRect = ({ panelEl, width, height, left, top }) => {
   if (Number.isFinite(top)) panelEl.style.top = `${Math.round(top)}px`;
 };
 
-const getPanelById = (panelId) => {
-  if (!panelId) return null;
-  return document.getElementById(panelId);
+const noop = () => {};
+
+const getPanelConfigsById = (panelConfigs = []) => {
+  return new Map(
+    panelConfigs
+      .filter((config) => config && typeof config.id === "string" && config.id)
+      .map((config) => [
+        config.id,
+        {
+          ...config,
+          refresh:
+            typeof config.refresh === "function" ? config.refresh : noop,
+        },
+      ]),
+  );
+};
+
+const buildPanelEntries = ({ host, rail, panelConfigs = [] }) => {
+  const panelConfigsById = getPanelConfigsById(panelConfigs);
+  const panelElements = [...host.querySelectorAll(".plot-floating-panel")];
+  const railButtons = [...rail.querySelectorAll(".plot-rail-btn")];
+  const railButtonsById = new Map(
+    railButtons
+      .map((button) => [button.dataset.target, button])
+      .filter(([panelId]) => Boolean(panelId)),
+  );
+
+  const panelEntries = panelElements
+    .map((panelEl, idx) => {
+      const panelId = panelEl.id;
+      if (!panelId) return null;
+
+      const panelConfig = panelConfigsById.get(panelId) || {
+        id: panelId,
+        refresh: noop,
+      };
+
+      return {
+        ...panelConfig,
+        panelEl,
+        buttonEl: railButtonsById.get(panelId) || null,
+        initialLeft: 340 + idx * 24,
+        initialTop: 120 + idx * 20,
+      };
+    })
+    .filter(Boolean);
+
+  return {
+    panelEntries,
+    panelEntriesById: new Map(panelEntries.map((entry) => [entry.id, entry])),
+  };
+};
+
+const normalizePanelIds = (panelIds, panelEntries) => {
+  if (typeof panelIds === "string") {
+    return panelIds ? [panelIds] : [];
+  }
+
+  if (!Array.isArray(panelIds) || panelIds.length === 0) {
+    return panelEntries.map((entry) => entry.id).filter(Boolean);
+  }
+
+  return panelIds.filter(Boolean);
 };
 
 const attachTopRightResizeHandle = (panelEl, getBoundsRect) => {
@@ -131,16 +192,27 @@ const initFloatingPlotWindows = ({
   rail,
   leftSidebar,
   getMainBoundsRect,
-  refreshPanelPlot,
+  panelConfigs,
   debounce,
 }) => {
   if (!host || !rail || !leftSidebar) return;
   if (host.dataset.floatingPlotsInitialized === "true") return;
   host.dataset.floatingPlotsInitialized = "true";
 
-  const floatingPanels = [...host.querySelectorAll(".plot-floating-panel")];
-  const railButtons = [...rail.querySelectorAll(".plot-rail-btn")];
+  const { panelEntries, panelEntriesById } = buildPanelEntries({
+    host,
+    rail,
+    panelConfigs,
+  });
   let zIndexSeed = 1600;
+
+  const getPanelEntry = (panelId) => panelEntriesById.get(panelId) || null;
+
+  const runPanelRefresh = (panelId) => {
+    const panelEntry = getPanelEntry(panelId);
+    if (!panelEntry) return;
+    panelEntry.refresh({ panelId, panelEl: panelEntry.panelEl });
+  };
 
   const clampPanelToBounds = (panel) => {
     if (!panel || panel.style.display === "none") return;
@@ -169,6 +241,16 @@ const initFloatingPlotWindows = ({
     panel.style.zIndex = String(zIndexSeed);
   };
 
+  const refreshOpenPanels = (panelIds = []) => {
+    normalizePanelIds(panelIds, panelEntries).forEach((panelId) => {
+      const panel = getPanelEntry(panelId)?.panelEl || null;
+      if (!panel || panel.style.display === "none") return;
+
+      clampPanelToBounds(panel);
+      runPanelRefresh(panelId);
+    });
+  };
+
   const setRailPosition = () => {
     const mainRect = getMainBoundsRect();
     const railRect = rail.getBoundingClientRect();
@@ -180,12 +262,12 @@ const initFloatingPlotWindows = ({
   };
 
   const syncRailButtonState = () => {
-    railButtons.forEach((button) => {
-      const panelId = button.dataset.target;
-      const panel = getPanelById(panelId);
+    panelEntries.forEach(({ id: panelId, panelEl, buttonEl }) => {
+      if (!buttonEl) return;
+      const panel = panelEl;
       const isOpen = panel && panel.style.display !== "none";
-      button.classList.toggle("active", Boolean(isOpen));
-      button.setAttribute("aria-pressed", isOpen ? "true" : "false");
+      buttonEl.classList.toggle("active", Boolean(isOpen));
+      buttonEl.setAttribute("aria-pressed", isOpen ? "true" : "false");
     });
   };
 
@@ -230,9 +312,11 @@ const initFloatingPlotWindows = ({
     }
   }
 
-  floatingPanels.forEach((panel, idx) => {
-    panel.style.left = `${340 + idx * 24}px`;
-    panel.style.top = `${120 + idx * 20}px`;
+  panelEntries.forEach((panelEntry) => {
+    const { panelEl: panel, initialLeft, initialTop } = panelEntry;
+
+    panel.style.left = `${initialLeft}px`;
+    panel.style.top = `${initialTop}px`;
 
     attachTopRightResizeHandle(panel, getMainBoundsRect);
 
@@ -275,7 +359,12 @@ const initFloatingPlotWindows = ({
 
     if (header) {
       header.addEventListener("mousedown", (event) => {
-        if (event.target.closest(".plot-floating-close")) return;
+        if (
+          event.target.closest(".plot-floating-close") ||
+          event.target.closest(".plot-floating-action")
+        ) {
+          return;
+        }
         dragging = true;
         focusPanel(panel);
         const rect = panel.getBoundingClientRect();
@@ -301,7 +390,7 @@ const initFloatingPlotWindows = ({
     const button = event.target.closest(".plot-rail-btn");
     if (!button) return;
     const panelId = button.dataset.target;
-    const panel = getPanelById(panelId);
+    const panel = getPanelEntry(panelId)?.panelEl || null;
     if (!panel) return;
 
     const isOpen = panel.style.display !== "none";
@@ -315,14 +404,19 @@ const initFloatingPlotWindows = ({
     focusPanel(panel);
     clampPanelToBounds(panel);
     syncRailButtonState();
-    refreshPanelPlot(panelId);
+    runPanelRefresh(panelId);
+  });
+
+  window.addEventListener(FLOATING_PLOTS_REFRESH_EVENT, (event) => {
+    const panelIds = event.detail?.panelIds;
+    refreshOpenPanels(panelIds);
   });
 
   host.addEventListener("click", (event) => {
     const closeButton = event.target.closest(".plot-floating-close");
     if (!closeButton) return;
     const panelId = closeButton.dataset.closeTarget;
-    const panel = getPanelById(panelId);
+    const panel = getPanelEntry(panelId)?.panelEl || null;
     if (panel) {
       panel.style.display = "none";
       syncRailButtonState();
@@ -332,7 +426,7 @@ const initFloatingPlotWindows = ({
   window.addEventListener(
     "resize",
     debounce(() => {
-      floatingPanels.forEach((panel) => clampPanelToBounds(panel));
+      panelEntries.forEach(({ panelEl }) => clampPanelToBounds(panelEl));
       setRailPosition();
     }, WINDOW_RESIZE_DEBOUNCE_MS),
   );
@@ -405,15 +499,12 @@ export const initFloatingPlots = ({
   leftSidebarId,
   leftSidebarRailId,
   mainBoundsId,
-  refreshPanelPlot,
+  panelConfigs,
   debounce,
 }) => {
-  if (
-    typeof debounce !== "function" ||
-    typeof refreshPanelPlot !== "function"
-  ) {
+  if (typeof debounce !== "function") {
     throw new TypeError(
-      "initFloatingPlots requires debounce and refreshPanelPlot functions",
+      "initFloatingPlots requires a debounce function",
     );
   }
 
@@ -443,7 +534,15 @@ export const initFloatingPlots = ({
     rail,
     leftSidebar,
     getMainBoundsRect,
-    refreshPanelPlot,
+    panelConfigs,
     debounce,
   });
+};
+
+export const requestFloatingPlotRefresh = (panelIds = []) => {
+  window.dispatchEvent(
+    new CustomEvent(FLOATING_PLOTS_REFRESH_EVENT, {
+      detail: { panelIds },
+    }),
+  );
 };

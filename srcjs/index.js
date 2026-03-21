@@ -13,7 +13,10 @@ import {
   addOverlaySpinner,
 } from "./modules/spinner.js";
 
-import { initFloatingPlots } from "./modules/floatingPlots.js";
+import {
+  initFloatingPlots,
+  requestFloatingPlotRefresh,
+} from "./modules/floatingPlots.js";
 
 //import bootstrap-icons
 import "bootstrap-icons/font/bootstrap-icons.css";
@@ -54,6 +57,15 @@ const vlnDropDownId = "vlnDropDown";
 const vlnPlotElId = "VlnPlot";
 // dotPlot canvas id
 const dotPlotElId = "DotPlot";
+const vlnPlotStatusId = "floatingVlnPlotStatus";
+const dotPlotActionId = "floatingDotPlotAction";
+const dotPlotStatusId = "floatingDotPlotStatus";
+const dotPlotOrderListId = "floatingDotPlotOrderList";
+const dotPlotOrderModeId = "floatingDotPlotOrderMode";
+const dotPlotOrderResetId = "floatingDotPlotOrderReset";
+const featurePlotActionId = "floatingFeaturePlotAction";
+const featurePlotStatusId = "floatingFeaturePlotStatus";
+const featurePlotNcolId = "floatingFeaturePlotNcol";
 
 // R waiter package spinners
 // keep the style exactly the same with R function
@@ -69,6 +81,7 @@ let shelter;
 // global variables to store spinners
 let vlnPlotSpinner;
 let dotPlotSpinner;
+let featurePlotSpinner;
 let mainPlotSpinner;
 
 // init normal shelter for webR to gain better control of the r objects
@@ -89,7 +102,8 @@ document.addEventListener(
 
     // Add floating plot spinners
     vlnPlotSpinner = addOverlaySpinner("floatingVlnPlotBody");
-    dotPlotSpinner = addOverlaySpinner("floatingDotPlotBody");
+    dotPlotSpinner = addOverlaySpinner("floatingDotPlotCanvasWrap");
+    featurePlotSpinner = addOverlaySpinner("floatingFeaturePlotCanvasWrap");
     // Add main plot spinner
     mainPlotSpinner = addOverlaySpinner(mainPlotElId);
 
@@ -99,17 +113,119 @@ document.addEventListener(
       leftSidebarId: "leftSidebar",
       leftSidebarRailId: "leftSidebarRail",
       mainBoundsId: mainPlotElId,
-      refreshPanelPlot: (panelId) => {
-        if (panelId === "floatingVlnPlot") {
-          const canvas = document.getElementById(vlnPlotElId);
-          if (canvas) updateVlnPlot(canvas);
-        }
-        if (panelId === "floatingDotPlot") {
-          const canvas = document.getElementById(dotPlotElId);
-          if (canvas) updateDotPlot(canvas);
-        }
-      },
+      panelConfigs: [
+        {
+          id: "floatingVlnPlot",
+          refresh: () => {
+            const canvas = document.getElementById(vlnPlotElId);
+            if (canvas) updateVlnPlot(canvas);
+          },
+        },
+        {
+          id: "floatingDotPlot",
+          refresh: () => {
+            syncDotPlotPanelState();
+          },
+        },
+        {
+          id: "floatingFeaturePlot",
+          refresh: () => {
+            syncFeaturePlotPanelState();
+          },
+        },
+      ],
       debounce,
+    });
+
+    syncVlnPlotPanelState();
+    syncDotPlotPanelState();
+    syncFeaturePlotPanelState();
+
+    const dotPlotActionButton = document.getElementById(dotPlotActionId);
+    if (dotPlotActionButton) {
+      dotPlotActionButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        const canvas = document.getElementById(dotPlotElId);
+        if (canvas) updateDotPlot(canvas);
+      });
+    }
+
+    const featurePlotActionButton = document.getElementById(featurePlotActionId);
+    if (featurePlotActionButton) {
+      featurePlotActionButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        const canvas = document.getElementById(featurePlotElId);
+        if (canvas) updateFeaturePlot(canvas);
+      });
+    }
+
+    const featurePlotNcolInput = document.getElementById(featurePlotNcolId);
+    if (featurePlotNcolInput) {
+      featurePlotNcolInput.addEventListener("change", () => {
+        normalizeFeaturePlotNcol();
+        markFeaturePlotDirty();
+        syncFeaturePlotPanelState();
+      });
+    }
+
+    const dotPlotOrderList = document.getElementById(dotPlotOrderListId);
+    const dotPlotOrderReset = document.getElementById(dotPlotOrderResetId);
+    if (dotPlotOrderList) {
+      dotPlotOrderList.addEventListener("dragstart", (event) => {
+        const item = event.target.closest(".plot-floating-order-item");
+        if (!item) return;
+        item.classList.add("dragging");
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", item.dataset.value || "");
+      });
+
+      dotPlotOrderList.addEventListener("dragover", (event) => {
+        event.preventDefault();
+        const target = event.target.closest(".plot-floating-order-item");
+        dotPlotOrderList.querySelectorAll(".drop-target").forEach((node) => {
+          node.classList.remove("drop-target");
+        });
+        if (target && !target.classList.contains("dragging")) {
+          target.classList.add("drop-target");
+        }
+      });
+
+      dotPlotOrderList.addEventListener("drop", (event) => {
+        event.preventDefault();
+        const draggedValue = event.dataTransfer.getData("text/plain");
+        const target = event.target.closest(".plot-floating-order-item");
+        if (!draggedValue || !target || target.dataset.value === draggedValue) {
+          clearDotPlotOrderDragState();
+          return;
+        }
+
+        const currentOrder = getRenderedDotPlotOrder();
+        const nextOrder = currentOrder.filter((value) => value !== draggedValue);
+        const targetIndex = nextOrder.indexOf(target.dataset.value);
+        nextOrder.splice(targetIndex, 0, draggedValue);
+        setDotPlotGroupOrder(nextOrder, true);
+        markDotPlotDirty();
+        syncDotPlotPanelState();
+      });
+
+      dotPlotOrderList.addEventListener("dragend", () => {
+        clearDotPlotOrderDragState();
+      });
+    }
+
+    if (dotPlotOrderReset) {
+      dotPlotOrderReset.addEventListener("click", () => {
+        setDotPlotGroupOrder([], false);
+        clearDotPlotOrderDragState();
+        markDotPlotDirty();
+        syncDotPlotPanelState();
+      });
+    }
+
+    window.addEventListener("scspotlight:featurePlotSelectionChanged", () => {
+      markVlnPlotDirty();
+      refreshVlnDropOptions();
+      syncVlnPlotPanelState();
     });
 
     // add select widget to vlnplot box
@@ -155,26 +271,44 @@ document.addEventListener(
           ) {
             // ensure shelter was initiated and reglElementData was populated
             if (entry.target === vlnPlotCanvas && isElementVisible(entry.target)) {
+              const vlnPlotPanel = document.getElementById("floatingVlnPlot");
               if (
                 !document
                   .getElementById(vlnDropDownId)
                   .querySelector("button")
                   .classList.contains("show")
               ) {
-                console.log("resized vlnplot...");
-                updateVlnPlot(vlnPlotCanvas);
+                if (vlnPlotPanel?.dataset.plotRendered === "true") {
+                  console.log("resized vlnplot...");
+                  updateVlnPlot(vlnPlotCanvas);
+                } else {
+                  markVlnPlotDirty();
+                  syncVlnPlotPanelState();
+                }
               }
             }
             if (entry.target === dotPlotCanvas && isElementVisible(entry.target)) {
               console.log("resized dotplot...");
-              updateDotPlot(dotPlotCanvas);
+              const dotPlotPanel = document.getElementById("floatingDotPlot");
+              if (dotPlotPanel?.dataset.plotRendered === "true") {
+                updateDotPlot(dotPlotCanvas);
+              } else {
+                markDotPlotDirty();
+                syncDotPlotPanelState();
+              }
             }
             if (
               entry.target === featurePlotCanvas &&
-              entry.target.style.display !== "none"
+              isElementVisible(entry.target)
             ) {
               console.log("resized featureplot...");
-              updateFeaturePlot(featurePlotCanvas);
+              const featurePlotPanel = document.getElementById("floatingFeaturePlot");
+              if (featurePlotPanel?.dataset.featurePlotRendered === "true") {
+                updateFeaturePlot(featurePlotCanvas);
+              } else {
+                markFeaturePlotDirty();
+                syncFeaturePlotPanelState();
+              }
             }
           }
         }
@@ -293,7 +427,16 @@ Shiny.addCustomMessageHandler("meta_ready", (msg) => {
 
       // update vlnplot dropdown list
       emptyDropOptions(vlnDropDownId);
-      updateDropOptions(vlnDropDownId, numericCols);
+      updateDropOptions(vlnDropDownId);
+
+      markVlnPlotDirty();
+      markDotPlotDirty();
+      markFeaturePlotDirty();
+      requestFloatingPlotRefresh([
+        "floatingVlnPlot",
+        "floatingDotPlot",
+        "floatingFeaturePlot",
+      ]);
 
       Shiny.setInputValue("metaCols", nonNumericCols);
       Shiny.setInputValue("metaProcessed", true, { priority: "event" });
@@ -330,6 +473,14 @@ Shiny.addCustomMessageHandler("expr_ready", (msg) => {
           updateSparkLine(e, reglElementData);
         }
       });
+      markVlnPlotDirty();
+      refreshVlnDropOptions();
+      markDotPlotDirty();
+      markFeaturePlotDirty();
+      requestFloatingPlotRefresh([
+        "floatingDotPlot",
+        "floatingFeaturePlot",
+      ]);
     })();
   } catch (error) {
     console.error("There was a problem:", error);
@@ -349,10 +500,14 @@ Shiny.addCustomMessageHandler("clear_expr", (msg) => {
   // remove all sparkline
   document.getElementById("featureSparkLine").innerHTML = "";
 
-  // hide featurePlot and show scatterplot
-  const featurePlotCanvas = document.getElementById(featurePlotElId);
-  featurePlotCanvas.style.display = "none";
-  reglElementData.plotEl.style.display = "flex";
+  markVlnPlotDirty();
+  refreshVlnDropOptions();
+  markDotPlotDirty();
+  markFeaturePlotDirty();
+  requestFloatingPlotRefresh([
+    "floatingDotPlot",
+    "floatingFeaturePlot",
+  ]);
 });
 
 Shiny.addCustomMessageHandler("selectPointsByCategory", (msg) => {
@@ -493,11 +648,7 @@ Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
     mainPlotSpinner.style.display = "flex";
     console.log("mainPlotSpinner: ", mainPlotSpinner.style.display);
   }
-  // do necessary cleanups
-  // ensure the featurePlot canvas is hidden
   const parentDiv = document.getElementById(mainPlotElId);
-  const featurePlotCanvas = document.getElementById(featurePlotElId);
-  featurePlotCanvas.style.display = "none";
   reglElementData.plotEl.style.display = "none";
 
   // clear reglScatterCanvas data including plotMetaData
@@ -563,21 +714,7 @@ Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
     },
   });
 
-  if (
-    Object.keys(reglElementData.plotMetaData.selectedFeatures).length > 1 &&
-    !reglElementData.plotMetaData.moduleScore
-  ) {
-    console.log("Drawing featurePlot...");
-
-    updateFeaturePlot(featurePlotCanvas);
-    console.log("featureplot udpated...");
-    // show featurePlotCanvas
-    featurePlotCanvas.style.display = "flex";
-
-    //reglElementData.plotEl.style.display = "none";
-  } else {
-    reglElementData.plotEl.style.display = "flex";
-  }
+  reglElementData.plotEl.style.display = "flex";
 
   // hide spinner
   if (mainPlotSpinner.style.display !== "none") {
@@ -586,21 +723,33 @@ Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
     console.log("mainPlotSpinner: ", mainPlotSpinner.style.display);
   }
   //featurePlot().then({});
-  const vlnPlotCanvas = document.getElementById(vlnPlotElId);
-  const dotPlotCanvas = document.getElementById(dotPlotElId);
-  // update vlnplot
-  updateVlnPlot(vlnPlotCanvas);
-  // update dotplot
-  updateDotPlot(dotPlotCanvas);
+  markVlnPlotDirty();
+  markDotPlotDirty();
+  markFeaturePlotDirty();
+  requestFloatingPlotRefresh([
+    "floatingVlnPlot",
+    "floatingDotPlot",
+    "floatingFeaturePlot",
+  ]);
 });
 
 const updateFeaturePlot = (canvas) => {
-  // Firstly check the spinners
-  if (mainPlotSpinner.style.display === "none") {
-    mainPlotSpinner.style.display = "flex";
-  }
+  if (!canvas || !featurePlotSpinner) return;
+
+  const hideSpinner = () => {
+    featurePlotSpinner.style.display = "none";
+  };
+  const showSpinner = () => {
+    featurePlotSpinner.style.display = "flex";
+  };
+
+  hideSpinner();
 
   const container = canvas.parentElement;
+  if (!container) {
+    hideSpinner();
+    return;
+  }
   const rect = container.getBoundingClientRect();
   const containerPadding = getPadding(container);
   const canvasWidth =
@@ -612,37 +761,401 @@ const updateFeaturePlot = (canvas) => {
   canvas.style.width = "100%";
   canvas.style.height = "100%";
 
-  if (canvasWidth > 0 && canvasHeight > 0) {
-    // It seems that webR does not support typedArray
-    const expressionInput = {};
-    for (let f of reglElementData.plotMetaData.selectedFeatures) {
-      expressionInput[f] = Array.from(
-        reglElementData.origData.expressionData[f],
-      );
-    }
-    const drInput = {};
-    const colNames = Object.keys(reglElementData.origData.reductionData);
-    for (let i of colNames) {
-      // webr dataframe convertion doesn't support typed array
-      drInput[i] = Array.from(reglElementData.origData.reductionData[i]);
-    }
-    featurePlot(
-      shelter,
-      canvasWidth,
-      canvasHeight,
-      drInput,
-      expressionInput,
-    ).then((res) => {
-      const ctx = canvas.getContext("2d");
+  const ctx = canvas.getContext("2d");
+  if (canvasWidth <= 0 || canvasHeight <= 0) {
+    hideSpinner();
+    return;
+  }
+
+  const renderMessage = (message) => {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.font = "30px Arial";
+    ctx.fillStyle = "#636363";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillText(message, 10, 10);
+    hideSpinner();
+  };
+
+  const features = reglElementData.plotMetaData.selectedFeatures || [];
+  if (features.length <= 1 || reglElementData.plotMetaData.moduleScore) {
+    renderMessage("Please select at least two features");
+    syncFeaturePlotPanelState();
+    return;
+  }
+
+  const missingExpr = features.some(
+    (feature) => !reglElementData.origData.expressionData[feature],
+  );
+  if (missingExpr) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    hideSpinner();
+    syncFeaturePlotPanelState();
+    return;
+  }
+
+  const colNames = Object.keys(reglElementData.origData.reductionData);
+  if (colNames.length === 0) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    hideSpinner();
+    syncFeaturePlotPanelState();
+    return;
+  }
+
+  const expressionInput = {};
+  for (const feature of features) {
+    expressionInput[feature] = Array.from(
+      reglElementData.origData.expressionData[feature],
+    );
+  }
+
+  const drInput = {};
+  for (const colName of colNames) {
+    drInput[colName] = Array.from(reglElementData.origData.reductionData[colName]);
+  }
+
+  const ncol = normalizeFeaturePlotNcol();
+  setFeaturePlotControlsDisabled(true);
+  showSpinner();
+  featurePlot(shelter, canvasWidth, canvasHeight, drInput, expressionInput, ncol)
+    .then((res) => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      let img = res.images[0];
+      const img = res.images[0];
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      // hide spinner
-      if (mainPlotSpinner.style.display !== "none") {
-        mainPlotSpinner.style.display = "none";
+      const featurePlotPanel = document.getElementById("floatingFeaturePlot");
+      if (featurePlotPanel) {
+        featurePlotPanel.dataset.featurePlotRendered = "true";
+        featurePlotPanel.dataset.featurePlotStale = "false";
       }
+    })
+    .catch((error) => {
+      console.error("Failed to update featurePlot:", error);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    })
+    .finally(() => {
+      hideSpinner();
+      setFeaturePlotControlsDisabled(false);
+      syncFeaturePlotPanelState();
       shelter.purge();
     });
+};
+
+const syncFeaturePlotPanelState = () => {
+  const featurePlotPanel = document.getElementById("floatingFeaturePlot");
+  const statusEl = document.getElementById(featurePlotStatusId);
+  const actionButton = document.getElementById(featurePlotActionId);
+  const ncolInput = document.getElementById(featurePlotNcolId);
+
+  if (!featurePlotPanel || !statusEl || !actionButton || !ncolInput) return;
+
+  const selectedFeatures = reglElementData.plotMetaData.selectedFeatures || [];
+  const moduleScoreActive = Boolean(reglElementData.plotMetaData.moduleScore);
+  const hasRendered = featurePlotPanel.dataset.featurePlotRendered === "true";
+  const isStale = featurePlotPanel.dataset.featurePlotStale === "true";
+  const isBusy = featurePlotSpinner?.style.display !== "none";
+  const icon = actionButton.querySelector("i");
+  const ncol = normalizeFeaturePlotNcol();
+  ncolInput.disabled = moduleScoreActive || isBusy;
+
+  if (moduleScoreActive) {
+    statusEl.textContent = "FeaturePlot is unavailable while module score coloring is active.";
+    actionButton.disabled = true;
+    actionButton.title = "Plot unavailable";
+    if (icon) {
+      icon.className = "bi bi-slash-circle";
+    }
+    return;
+  }
+
+  if (selectedFeatures.length === 0) {
+    statusEl.textContent = "No genes selected. Select at least two genes, choose columns, then click plot.";
+    actionButton.disabled = true;
+    actionButton.title = "Select genes first";
+    if (icon) {
+      icon.className = "bi bi-play-circle";
+    }
+    return;
+  }
+
+  if (selectedFeatures.length === 1) {
+    statusEl.textContent = `Selected gene(s): ${selectedFeatures[0]}. Select at least one more gene, then click plot.`;
+    actionButton.disabled = true;
+    actionButton.title = "Select one more gene";
+    if (icon) {
+      icon.className = "bi bi-play-circle";
+    }
+    return;
+  }
+
+  statusEl.textContent = `Selected gene(s): ${selectedFeatures.join(", ")} | ncol: ${ncol}`;
+  actionButton.disabled = isBusy || selectedFeatures.length <= 1;
+  actionButton.title = hasRendered || isStale ? "Update plot" : "Plot";
+  if (icon) {
+    icon.className = hasRendered || isStale ? "bi bi-arrow-repeat" : "bi bi-play-circle";
+  }
+};
+
+const normalizeFeaturePlotNcol = () => {
+  const input = document.getElementById(featurePlotNcolId);
+  if (!input) return 3;
+
+  const parsed = Number.parseInt(input.value, 10);
+  const normalized = Number.isNaN(parsed) ? 3 : Math.min(6, Math.max(1, parsed));
+  input.value = String(normalized);
+  return normalized;
+};
+
+const markFeaturePlotDirty = () => {
+  const featurePlotPanel = document.getElementById("floatingFeaturePlot");
+  if (!featurePlotPanel) return;
+
+  if (featurePlotPanel.dataset.featurePlotRendered !== "true") {
+    featurePlotPanel.dataset.featurePlotStale = "false";
+    return;
+  }
+
+  featurePlotPanel.dataset.featurePlotStale = "true";
+};
+
+const markDotPlotDirty = () => {
+  const panel = document.getElementById("floatingDotPlot");
+  if (!panel) return;
+
+  panel.dataset.plotStale = panel.dataset.plotRendered === "true" ? "true" : "false";
+};
+
+const getDotPlotGroupMeta = (groupBy = reglElementData.plotMetaData.group_by) => {
+  if (!groupBy) return null;
+
+  const groupMeta = reglElementData.origData.cellMetaData[groupBy];
+  if (!groupMeta || groupMeta.type !== "category" || !groupMeta.value) {
+    return null;
+  }
+
+  return groupMeta;
+};
+
+const getDotPlotGroupLevels = (groupMeta = null) => {
+  const resolvedGroupMeta = groupMeta || getDotPlotGroupMeta();
+  if (!resolvedGroupMeta) return [];
+
+  return Object.keys(resolvedGroupMeta.value);
+};
+
+const setDotPlotControlsDisabled = (disabled) => {
+  const actionButton = document.getElementById(dotPlotActionId);
+  const orderList = document.getElementById(dotPlotOrderListId);
+  const orderReset = document.getElementById(dotPlotOrderResetId);
+
+  if (actionButton) {
+    actionButton.disabled = disabled;
+  }
+  if (orderList) {
+    orderList.setAttribute("aria-disabled", disabled ? "true" : "false");
+  }
+  if (orderReset) {
+    orderReset.dataset.busyDisabled = disabled ? "true" : "false";
+  }
+};
+
+const setFeaturePlotControlsDisabled = (disabled) => {
+  const actionButton = document.getElementById(featurePlotActionId);
+  const ncolInput = document.getElementById(featurePlotNcolId);
+
+  if (actionButton) {
+    actionButton.disabled = disabled;
+  }
+  if (ncolInput) {
+    ncolInput.disabled = disabled || Boolean(reglElementData.plotMetaData.moduleScore);
+  }
+};
+
+const markVlnPlotDirty = () => {
+  const panel = document.getElementById("floatingVlnPlot");
+  if (!panel) return;
+
+  panel.dataset.plotStale = panel.dataset.plotRendered === "true" ? "true" : "false";
+};
+
+const syncVlnPlotPanelState = () => {
+  const panel = document.getElementById("floatingVlnPlot");
+  const statusEl = document.getElementById(vlnPlotStatusId);
+  if (!panel || !statusEl) return;
+
+  const groupBy = reglElementData.plotMetaData.group_by;
+  const { selectedOption, options } = normalizeVlnSelection();
+
+  if (!groupBy || !reglElementData.origData.cellMetaData[groupBy]) {
+    statusEl.textContent = "No grouping metadata available for VlnPlot.";
+    return;
+  }
+
+  if (!selectedOption || options.length === 0) {
+    statusEl.textContent = `Group: ${groupBy} | No numeric metadata or selected genes available`;
+    return;
+  }
+
+  const modeLabel = selectedOption.type === "feature"
+    ? `Feature: ${selectedOption.label}`
+    : `Meta: ${selectedOption.label}`;
+
+  statusEl.textContent = `Group: ${groupBy} | ${modeLabel}`;
+};
+
+const clearDotPlotOrderDragState = () => {
+  const list = document.getElementById(dotPlotOrderListId);
+  if (!list) return;
+  list.querySelectorAll(".dragging, .drop-target").forEach((node) => {
+    node.classList.remove("dragging", "drop-target");
+  });
+};
+
+const getDefaultDotPlotGroupOrder = (groupLevels = []) => {
+  if (!Array.isArray(groupLevels) || groupLevels.length === 0) return [];
+  return [...groupLevels].sort(sortStringArray);
+};
+
+const getStoredDotPlotGroupOrder = () => {
+  const panel = document.getElementById("floatingDotPlot");
+  if (!panel) {
+    return { isCustom: false, order: [] };
+  }
+
+  const isCustom = panel.dataset.dotPlotOrderCustom === "true";
+  let order = [];
+  if (panel.dataset.dotPlotOrder) {
+    try {
+      order = JSON.parse(panel.dataset.dotPlotOrder);
+    } catch (_) {
+      order = [];
+    }
+  }
+
+  return {
+    isCustom,
+    order: Array.isArray(order) ? order : [],
+  };
+};
+
+const setDotPlotGroupOrder = (order = [], isCustom = false) => {
+  const panel = document.getElementById("floatingDotPlot");
+  if (!panel) return;
+
+  panel.dataset.dotPlotOrder = JSON.stringify(order);
+  panel.dataset.dotPlotOrderCustom = isCustom ? "true" : "false";
+};
+
+const getRenderedDotPlotOrder = () => {
+  const list = document.getElementById(dotPlotOrderListId);
+  if (!list) return [];
+  return [...list.querySelectorAll(".plot-floating-order-item")].map(
+    (item) => item.dataset.value,
+  );
+};
+
+const resolveDotPlotGroupOrder = (groupLevels = []) => {
+  const defaultOrder = getDefaultDotPlotGroupOrder(groupLevels);
+  const stored = getStoredDotPlotGroupOrder();
+  if (!stored.isCustom) {
+    return {
+      order: defaultOrder,
+      isCustom: false,
+    };
+  }
+
+  const included = stored.order.filter((value) => defaultOrder.includes(value));
+  const remaining = defaultOrder.filter((value) => !included.includes(value));
+  return {
+    order: [...included, ...remaining],
+    isCustom: true,
+  };
+};
+
+const renderDotPlotOrderList = (groupLevels = []) => {
+  const list = document.getElementById(dotPlotOrderListId);
+  const mode = document.getElementById(dotPlotOrderModeId);
+  const reset = document.getElementById(dotPlotOrderResetId);
+  if (!list || !mode || !reset) return { order: [], isCustom: false };
+
+  const { order, isCustom } = resolveDotPlotGroupOrder(groupLevels);
+  setDotPlotGroupOrder(isCustom ? order : [], isCustom);
+
+  list.innerHTML = "";
+  order.forEach((value) => {
+    const item = document.createElement("div");
+    item.className = "plot-floating-order-item";
+    item.draggable = true;
+    item.dataset.value = value;
+
+    const handle = document.createElement("span");
+    handle.className = "plot-floating-order-handle";
+    handle.innerHTML = '<i class="bi bi-grip-vertical"></i>';
+
+    const label = document.createElement("span");
+    label.className = "plot-floating-order-label";
+    label.textContent = value;
+
+    item.append(handle, label);
+    list.appendChild(item);
+  });
+
+  mode.textContent = isCustom ? "Custom order" : "Default order";
+  reset.disabled = !isCustom;
+
+  return { order, isCustom };
+};
+
+const syncDotPlotPanelState = () => {
+  const panel = document.getElementById("floatingDotPlot");
+  const statusEl = document.getElementById(dotPlotStatusId);
+  const actionButton = document.getElementById(dotPlotActionId);
+  const orderList = document.getElementById(dotPlotOrderListId);
+  const orderReset = document.getElementById(dotPlotOrderResetId);
+  if (!panel || !statusEl || !actionButton || !orderList || !orderReset) return;
+
+  const icon = actionButton.querySelector("i");
+  const hasRendered = panel.dataset.plotRendered === "true";
+  const isStale = panel.dataset.plotStale === "true";
+  const isBusy = dotPlotSpinner?.style.display !== "none";
+  const groupBy = reglElementData.plotMetaData.group_by;
+  const selectedFeatures = reglElementData.plotMetaData.selectedFeatures || [];
+  const groupMeta = getDotPlotGroupMeta(groupBy);
+  const groupLevels = getDotPlotGroupLevels(groupMeta);
+  const { order: groupOrder, isCustom: hasCustomOrder } = renderDotPlotOrderList(groupLevels);
+
+  if (!groupBy || !groupMeta || groupLevels.length === 0) {
+    statusEl.textContent = "No grouping metadata available for DotPlot.";
+    actionButton.disabled = true;
+    orderList.innerHTML = "";
+    orderList.setAttribute("aria-disabled", "true");
+    orderReset.disabled = true;
+    orderReset.dataset.busyDisabled = "false";
+    actionButton.title = "Plot unavailable";
+    if (icon) icon.className = "bi bi-slash-circle";
+    return;
+  }
+
+  orderList.setAttribute("aria-disabled", "false");
+
+  if (selectedFeatures.length <= 1) {
+    statusEl.textContent = "Select at least two genes to plot DotPlot.";
+    actionButton.disabled = true;
+    orderReset.disabled = !hasCustomOrder;
+    actionButton.title = "Select more genes";
+    if (icon) icon.className = "bi bi-play-circle";
+    return;
+  }
+
+  const orderLabel = hasCustomOrder
+    ? groupOrder.join(" > ")
+    : "default";
+  statusEl.textContent = `Group: ${groupBy} | genes: ${selectedFeatures.join(", ")} | order: ${orderLabel}`;
+  actionButton.disabled = isBusy;
+  orderList.setAttribute("aria-disabled", isBusy ? "true" : "false");
+  orderReset.disabled = isBusy || !hasCustomOrder;
+  actionButton.title = hasRendered || isStale ? "Update plot" : "Plot";
+  if (icon) {
+    icon.className = hasRendered || isStale ? "bi bi-arrow-repeat" : "bi bi-play-circle";
   }
 };
 
@@ -697,6 +1210,7 @@ const updateVlnPlot = (canvas) => {
   }
 
   const groupBy = reglElementData.plotMetaData.group_by;
+  const vlnPlotPanel = document.getElementById("floatingVlnPlot");
   const groupMeta = groupBy
     ? reglElementData.origData.cellMetaData[groupBy]
     : null;
@@ -704,6 +1218,7 @@ const updateVlnPlot = (canvas) => {
   if (!groupMeta) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     hideSpinner();
+    syncVlnPlotPanelState();
     return;
   }
 
@@ -715,26 +1230,31 @@ const updateVlnPlot = (canvas) => {
   const metaInput = {};
   let expr = false;
 
-  // vlnPlot only illustrates expression of the first selected genes
-  if (reglElementData.plotMetaData.selectedFeatures.length > 0) {
-    const f = reglElementData.plotMetaData.selectedFeatures[0];
+  const { selectedOption } = normalizeVlnSelection();
+  if (!selectedOption) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    hideSpinner();
+    syncVlnPlotPanelState();
+    return;
+  }
+
+  if (selectedOption.type === "feature") {
+    const f = selectedOption.label;
     const exprVec = reglElementData.origData.expressionData[f];
     if (!exprVec) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
       hideSpinner();
+      syncVlnPlotPanelState();
       return;
     }
     expressionInput[f] = Array.from(exprVec);
     expr = f;
   } else {
-    const numericCols = getNumericCols(reglElementData);
-    if (numericCols.length === 0) {
-      hideSpinner();
-      return;
-    }
-
-    const selectedMetaCol = reglElementData.plotMetaData.selectedMeta || numericCols[0];
+    const selectedMetaCol = selectedOption.label;
     if (!reglElementData.origData.cellMetaData[selectedMetaCol]) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
       hideSpinner();
+      syncVlnPlotPanelState();
       return;
     }
     metaInput[selectedMetaCol] = expandMeta(
@@ -765,6 +1285,10 @@ const updateVlnPlot = (canvas) => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       const img = res.images[0];
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      if (vlnPlotPanel) {
+        vlnPlotPanel.dataset.plotRendered = "true";
+        vlnPlotPanel.dataset.plotStale = "false";
+      }
     })
     .catch((error) => {
       console.error("Failed to update vlnPlot:", error);
@@ -772,6 +1296,7 @@ const updateVlnPlot = (canvas) => {
     })
     .finally(() => {
       hideSpinner();
+      syncVlnPlotPanelState();
       shelter.purge();
     });
 };
@@ -789,6 +1314,8 @@ const updateDotPlot = (canvas) => {
     dotPlotSpinner.style.display = "flex";
   };
 
+  hideSpinner();
+
   const container = canvas.parentElement;
   if (!container) {
     hideSpinner();
@@ -800,27 +1327,40 @@ const updateDotPlot = (canvas) => {
     rect.width - containerPadding.left - containerPadding.right;
   const canvasHeight =
     rect.height - containerPadding.top - containerPadding.bottom;
+
   canvas.width = canvasWidth * 2;
   canvas.height = canvasHeight * 2;
   canvas.style.width = "100%";
   canvas.style.height = "100%";
 
+  const dotPlotPanel = document.getElementById("floatingDotPlot");
   const ctx = canvas.getContext("2d");
   if (canvasWidth <= 0 || canvasHeight <= 0) {
     hideSpinner();
     return;
   }
 
-  // It seems that webR does not support typedArray
-  const expressionInput = {};
+  const renderMessage = (message) => {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.font = "30px Arial";
+    ctx.fillStyle = "#636363";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillText(message, 10, 10);
+    hideSpinner();
+  };
+
   const features = reglElementData.plotMetaData.selectedFeatures || [];
   // dotPlot only be rendered when there are more than one selected genes
   if (features.length > 1) {
+    const expressionInput = {};
     const missingExpr = features.some(
       (f) => !reglElementData.origData.expressionData[f],
     );
     if (missingExpr) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
       hideSpinner();
+      syncDotPlotPanelState();
       return;
     }
 
@@ -833,21 +1373,29 @@ const updateDotPlot = (canvas) => {
       ? reglElementData.origData.cellMetaData[groupBy]
       : null;
     if (!groupMeta) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
       hideSpinner();
+      syncDotPlotPanelState();
       return;
     }
 
+    const groupValues = expandMeta(groupMeta);
+    const { order: groupOrder } = resolveDotPlotGroupOrder(groupValues);
     const groupInput = {};
-    groupInput[groupBy] = expandMeta(groupMeta);
-
+    groupInput[groupBy] = groupValues;
     const dfInput = { ...groupInput, ...expressionInput };
 
+    setDotPlotControlsDisabled(true);
     showSpinner();
-    dotPlot(shelter, canvasWidth, canvasHeight, dfInput, groupBy)
+    dotPlot(shelter, canvasWidth, canvasHeight, dfInput, groupBy, groupOrder)
       .then((res) => {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         const img = res.images[0];
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        if (dotPlotPanel) {
+          dotPlotPanel.dataset.plotRendered = "true";
+          dotPlotPanel.dataset.plotStale = "false";
+        }
       })
       .catch((error) => {
         console.error("Failed to update dotPlot:", error);
@@ -855,19 +1403,13 @@ const updateDotPlot = (canvas) => {
       })
       .finally(() => {
         hideSpinner();
+        setDotPlotControlsDisabled(false);
+        syncDotPlotPanelState();
         shelter.purge();
       });
   } else {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    // Set text properties
-    ctx.font = "30px Arial";
-    ctx.fillStyle = "#636363";
-    ctx.textAlign = "left";
-    ctx.textBaseline = "top";
-
-    // Draw filled text
-    ctx.fillText("Please select at least two features", 10, 10);
-    hideSpinner();
+    renderMessage("Please select at least two features");
+    syncDotPlotPanelState();
   }
 };
 
@@ -933,7 +1475,7 @@ const createVlnDropend = (Id) => {
   const listHeader = document.createElement("li");
   const h = document.createElement("h6");
   h.classList.add("dropdown-header");
-  h.innerHTML = "Select numeric meta da ta";
+  h.innerHTML = "Select VlnPlot term";
   h.style.color = "var(--bs-primary)";
   listHeader.appendChild(h);
   ul.appendChild(listHeader);
@@ -943,47 +1485,109 @@ const createVlnDropend = (Id) => {
 
   // add listener
   el.addEventListener("click", function (e) {
-    if (e.target.classList.contains("dropdown-item")) {
+    const item = e.target.closest(".dropdown-item");
+    if (item) {
       e.preventDefault();
-      // when clicking, update plotMetaData with selected numeric meta
-      reglElementData.plotMetaData.selectedMeta = e.target.textContent;
+      reglElementData.plotMetaData.selectedMeta = item.dataset.optionId || null;
       console.log("reglElementData.plotMetaData", reglElementData.plotMetaData);
+      markVlnPlotDirty();
+      refreshVlnDropOptions();
       const vlnPlotCanvas = document.getElementById(vlnPlotElId);
-      updateVlnPlot(vlnPlotCanvas);
+      if (vlnPlotCanvas && isElementVisible(vlnPlotCanvas)) {
+        updateVlnPlot(vlnPlotCanvas);
+      } else {
+        syncVlnPlotPanelState();
+      }
     }
   });
 
   return el;
 };
 
+const getVlnPlotTermOptions = () => {
+  const metaOptions = getNumericCols(reglElementData).map((label) => ({
+    id: `meta:${label}`,
+    label,
+    type: "meta",
+  }));
+  const featureOptions = (reglElementData.plotMetaData.selectedFeatures || [])
+    .filter((feature) => Boolean(reglElementData.origData.expressionData[feature]))
+    .map((feature) => ({
+      id: `feature:${feature}`,
+      label: feature,
+      type: "feature",
+    }));
+
+  return [...metaOptions, ...featureOptions];
+};
+
+const normalizeVlnSelection = () => {
+  const options = getVlnPlotTermOptions();
+  const currentId = reglElementData.plotMetaData.selectedMeta;
+  let selectedOption = options.find((option) => option.id === currentId) || null;
+
+  if (!selectedOption) {
+    selectedOption = options.find((option) => option.type === "meta") || options[0] || null;
+  }
+
+  return {
+    options,
+    selectedOption,
+  };
+};
+
 // function to update menu options of the dropend button
-const updateDropOptions = (btId, list = []) => {
+const updateDropOptions = (btId) => {
   const bt = document.getElementById(btId);
+  if (!bt) return;
+
   const menu = bt.querySelector(".dropdown-menu");
+  if (!menu) return;
+
+  const { options, selectedOption } = normalizeVlnSelection();
 
   const listHeader = document.createElement("li");
   const h = document.createElement("h6");
   h.classList.add("dropdown-header");
-  h.innerHTML = "Select Numeric Meta Data";
+  h.innerHTML = "Select VlnPlot term";
   h.style.color = "var(--bs-primary)";
   listHeader.appendChild(h);
   menu.appendChild(listHeader);
 
-  list.forEach((e) => {
+  if (options.length === 0) {
+    const emptyItem = document.createElement("li");
+    emptyItem.classList.add("dropdown-item-text", "text-muted");
+    emptyItem.textContent = "No numeric metadata or selected genes available";
+    menu.appendChild(emptyItem);
+    return;
+  }
+
+  options.forEach((option) => {
     const item = document.createElement("li");
     const a = document.createElement("a");
     a.classList.add("dropdown-item");
+    if (selectedOption?.id === option.id) {
+      a.classList.add("active");
+    }
     a.setAttribute("href", "#");
+    a.dataset.optionId = option.id;
     a.style.fontSize = "0.9rem";
-    a.innerHTML = e;
+    a.innerHTML = `${option.label} <span class="text-muted">(${option.type})</span>`;
     item.appendChild(a);
     menu.appendChild(item);
   });
 };
 
+const refreshVlnDropOptions = () => {
+  emptyDropOptions(vlnDropDownId);
+  updateDropOptions(vlnDropDownId);
+};
+
 const emptyDropOptions = (btId) => {
   const bt = document.getElementById(btId);
+  if (!bt) return;
   const menu = bt.querySelector(".dropdown-menu");
+  if (!menu) return;
   reglScatterCanvas.removeAllChildNodes(menu);
 };
 

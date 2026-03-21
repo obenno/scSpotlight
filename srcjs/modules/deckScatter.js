@@ -1532,8 +1532,14 @@ export class reglScatterCanvas {
       this.plotMetaData.mode === "cluster+expr+twoSplit" ||
       this.plotMetaData.mode === "cluster+expr+multiSplit"
     ) {
-      const exprArray =
-        this.origData.expressionData[this.plotMetaData.selectedFeatures];
+      const selectedFeature = this.plotMetaData.selectedFeatures?.[0];
+      const exprArray = selectedFeature
+        ? this.origData.expressionData[selectedFeature]
+        : null;
+      if (!exprArray || exprArray.length === 0) {
+        return;
+      }
+
       const exprLegendColor = d3.scaleSequential(
         [d3.min(exprArray), d3.max(exprArray)],
         d3.interpolate("#E5E4E2", "#800080"),

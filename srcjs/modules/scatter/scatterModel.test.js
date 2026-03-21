@@ -132,6 +132,14 @@ describe("ScatterModel mode derivation", () => {
     expect(meta.mode).toBe("cluster+expr+multiSplit");
     expect(meta.nPanels).toBe(3);
   });
+
+  it("uses the first selected feature when multiple features are present", () => {
+    const model = buildModel();
+    model.setConfig({ selectedFeatures: ["GeneA", "GeneB"], moduleScore: false });
+    const meta = model.derivePlotMetaData("group", null, false);
+    expect(meta.mode).toBe("cluster+expr+noSplit");
+    expect(meta.nPanels).toBe(2);
+  });
 });
 
 describe("ScatterModel panel data assembly", () => {

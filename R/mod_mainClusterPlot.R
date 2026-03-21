@@ -21,13 +21,10 @@ mod_mainClusterPlot_ui <- function(id){
           card_body_fill(
               id = ns("clusterPlot"),
               style = "position: relative",
-              class = "align-items-center m-0 p-0",
-            tags$canvas(
-                   id = "featurePlotCanvas",
-                   style = "display: none;")
+              class = "align-items-center m-0 p-0"
              ##mod_FeaturePlot_ui(ns("featurePlot"))
-         )
-     )
+          )
+      )
   )
 }
 

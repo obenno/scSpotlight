@@ -377,6 +377,13 @@ infoBox_ui <- function(){
             `data-target` = "floatingDotPlot",
             title = "Open DotPlot",
             tags$i(class = "bi bi-grid-3x3-gap")
+        ),
+        tags$button(
+            type = "button",
+            class = "plot-rail-btn",
+            `data-target` = "floatingFeaturePlot",
+            title = "Open FeaturePlot",
+            tags$i(class = "bi bi-image")
         )
     )
 
@@ -385,14 +392,21 @@ infoBox_ui <- function(){
             id = "floatingVlnPlot",
             class = "plot-floating-panel",
             style = "display:none;",
-            tags$div(
-                class = "plot-floating-header",
-                tags$span("VlnPlot"),
-                tags$button(
-                    type = "button",
-                    class = "plot-floating-close",
-                    `data-close-target` = "floatingVlnPlot",
-                    tags$i(class = "bi bi-x-lg")
+                tags$div(
+                    class = "plot-floating-header plot-floating-header-vln",
+                    tags$span("VlnPlot"),
+                    tags$div(
+                        class = "plot-floating-header-actions",
+                        tags$span(
+                            id = "floatingVlnPlotStatus",
+                            class = "plot-floating-status-inline"
+                        ),
+                    tags$button(
+                        type = "button",
+                        class = "plot-floating-close",
+                        `data-close-target` = "floatingVlnPlot",
+                        tags$i(class = "bi bi-x-lg")
+                    )
                 )
             ),
             tags$div(
@@ -408,17 +422,127 @@ infoBox_ui <- function(){
             tags$div(
                 class = "plot-floating-header",
                 tags$span("DotPlot"),
-                tags$button(
-                    type = "button",
-                    class = "plot-floating-close",
-                    `data-close-target` = "floatingDotPlot",
-                    tags$i(class = "bi bi-x-lg")
+                tags$div(
+                    class = "plot-floating-header-actions",
+                    tags$button(
+                        id = "floatingDotPlotAction",
+                        type = "button",
+                        class = "plot-floating-action",
+                        title = "Plot",
+                        tags$i(class = "bi bi-play-circle")
+                    ),
+                    tags$button(
+                        type = "button",
+                        class = "plot-floating-close",
+                        `data-close-target` = "floatingDotPlot",
+                        tags$i(class = "bi bi-x-lg")
+                    )
                 )
             ),
             tags$div(
                 id = "floatingDotPlotBody",
                 class = "plot-floating-body",
-                tags$canvas(id = "DotPlot", style = "height: 100%;")
+                tags$div(
+                    id = "floatingDotPlotStatus",
+                    class = "plot-floating-status"
+                ),
+                tags$div(
+                    class = "plot-floating-toolbar plot-floating-toolbar-stack",
+                    tags$div(
+                        class = "plot-floating-toolbar-heading",
+                        tags$label(
+                            `for` = "floatingDotPlotOrderList",
+                            class = "plot-floating-toolbar-label",
+                            "Cluster order"
+                        ),
+                        tags$span(
+                            class = "plot-floating-toolbar-hint",
+                            "Drag clusters to reorder them, or reset to use the default order."
+                        )
+                    ),
+                    tags$div(
+                        class = "plot-floating-select-wrap",
+                        tags$div(
+                            class = "plot-floating-order-toolbar",
+                            tags$span(
+                                id = "floatingDotPlotOrderMode",
+                                class = "plot-floating-order-mode",
+                                "Default order"
+                            ),
+                            tags$button(
+                                id = "floatingDotPlotOrderReset",
+                                type = "button",
+                                class = "plot-floating-order-reset",
+                                "Reset"
+                            )
+                        ),
+                        tags$div(
+                            id = "floatingDotPlotOrderList",
+                            class = "plot-floating-order-list",
+                            tabindex = "0"
+                        )
+                    )
+                ),
+                tags$div(
+                    id = "floatingDotPlotCanvasWrap",
+                    class = "plot-floating-canvas-wrap",
+                    tags$canvas(id = "DotPlot", style = "height: 100%;")
+                )
+            )
+        ),
+        tags$div(
+            id = "floatingFeaturePlot",
+            class = "plot-floating-panel",
+            style = "display:none;",
+            tags$div(
+                class = "plot-floating-header",
+                tags$span("FeaturePlot"),
+                tags$div(
+                    class = "plot-floating-header-actions",
+                    tags$button(
+                        id = "floatingFeaturePlotAction",
+                        type = "button",
+                        class = "plot-floating-action",
+                        title = "Plot",
+                        tags$i(class = "bi bi-play-circle")
+                    ),
+                    tags$button(
+                        type = "button",
+                        class = "plot-floating-close",
+                        `data-close-target` = "floatingFeaturePlot",
+                        tags$i(class = "bi bi-x-lg")
+                    )
+                )
+            ),
+            tags$div(
+                id = "floatingFeaturePlotBody",
+                class = "plot-floating-body",
+                tags$div(
+                    id = "floatingFeaturePlotStatus",
+                    class = "plot-floating-status"
+                ),
+                tags$div(
+                    class = "plot-floating-toolbar",
+                    tags$label(
+                        `for` = "floatingFeaturePlotNcol",
+                        class = "plot-floating-toolbar-label",
+                        "Columns"
+                    ),
+                    tags$input(
+                        id = "floatingFeaturePlotNcol",
+                        class = "plot-floating-toolbar-input",
+                        type = "number",
+                        min = "1",
+                        max = "6",
+                        step = "1",
+                        value = "3"
+                    )
+                ),
+                tags$div(
+                    id = "floatingFeaturePlotCanvasWrap",
+                    class = "plot-floating-canvas-wrap",
+                    tags$canvas(id = "featurePlotCanvas", style = "height: 100%;")
+                )
             )
         )
     )

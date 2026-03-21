@@ -100,19 +100,20 @@ export class ScatterModel {
     const nGroupBy = groupByArray.length;
     const nSplitBy = splitByArray.length;
     const selectedFeatures = this.plotMetaData.selectedFeatures || [];
+    const hasSelectedFeature = selectedFeatures.length > 0;
 
     let plottingMode = null;
     let nPanels = null;
-    if (selectedFeatures.length === 1 && nSplitBy === 0) {
+    if (hasSelectedFeature && nSplitBy === 0) {
       plottingMode = "cluster+expr+noSplit";
       nPanels = 2;
-    } else if (selectedFeatures.length === 1 && nSplitBy === 2) {
+    } else if (hasSelectedFeature && nSplitBy === 2) {
       plottingMode = "cluster+expr+twoSplit";
       nPanels = 4;
-    } else if (selectedFeatures.length === 1 && nSplitBy > 2) {
+    } else if (hasSelectedFeature && nSplitBy > 2) {
       plottingMode = "cluster+expr+multiSplit";
       nPanels = nSplitBy;
-    } else if (selectedFeatures.length === 0 && nSplitBy > 1) {
+    } else if (!hasSelectedFeature && nSplitBy > 1) {
       plottingMode = "cluster+multiSplit";
       nPanels = nSplitBy;
     } else {

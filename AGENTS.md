@@ -5,6 +5,8 @@
 **scSpotlight** is an R/Shiny application for single-cell RNA-seq analysis and visualization,
 built with the [golem](https://thinkr-open.github.io/golem/) framework.
 
+For recent frontend interaction decisions and UI behavior notes, see `DEVELOPMENT.md`.
+
 **CRITICAL CONSTRAINT**: This application must efficiently handle **millions of cells**.
 All code contributions must consider performance implications for large datasets (1M+ cells).
 
