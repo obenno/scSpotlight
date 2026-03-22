@@ -141,6 +141,11 @@ export class reglScatterCanvas {
     this.origData = this.model.origData;
   }
 
+  updatePcaStdev(pcaStdev) {
+    this.model.setData({ pcaStdev });
+    this.origData = this.model.origData;
+  }
+
   updatePlotMetaData(group_by = null, split_by = null, moduleScore = false) {
     this.model.plotMetaData.selectedFeatures = this.plotMetaData.selectedFeatures;
     this.model.plotMetaData.moduleScore = this.plotMetaData.moduleScore;

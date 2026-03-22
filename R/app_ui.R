@@ -582,7 +582,15 @@ infoBox_ui <- function(){
                 ),
                 tags$div(
                     class = "plot-floating-body",
-                    mod_ElbowPlot_ui("elbowPlot")
+                    tags$div(
+                        id = "floatingElbowPlotStatus",
+                        class = "plot-floating-status"
+                    ),
+                    tags$div(
+                        id = "floatingElbowPlotCanvasWrap",
+                        class = "plot-floating-canvas-wrap",
+                        tags$canvas(id = "elbowPlotCanvas", style = "height: 100%;")
+                    )
                 )
             ),
             tags$div(

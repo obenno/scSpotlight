@@ -28,6 +28,7 @@ mod_UpdateReduction_ui <- function(id){
 #'
 #' @importFrom qs2 qs_save
 mod_UpdateReduction_server <- function(id,
+                                       seuratObj,
                                        reductionUpdateIndicator,
                                        reductionProcessed){
 
@@ -49,6 +50,26 @@ mod_UpdateReduction_server <- function(id,
             choices = ordered_reduction,
             selected = NULL
           )
+
+          obj <- seuratObj()
+          pcaFileName <- hash_md5("pca_stdev")
+          pcaFilePath <- file.path(session$userData$tempDir, "reduction", pcaFileName)
+
+          if(isTruthy(obj) && "pca" %in% SeuratObject::Reductions(obj)){
+              qs_save(obj[["pca"]]@stdev, pcaFilePath, compress_level = 9L)
+              session$sendCustomMessage(
+                  type = "pca_ready",
+                  message = list(stdevFile = pcaFileName)
+              )
+          } else {
+              if(file.exists(pcaFilePath)){
+                  file.remove(pcaFilePath)
+              }
+              session$sendCustomMessage(
+                  type = "pca_ready",
+                  message = list(stdevFile = NULL)
+              )
+          }
       }, priority = -200)
 
       ##observeEvent(input$reduction, {

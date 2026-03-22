@@ -46,6 +46,8 @@ const getPanelConfigsById = (panelConfigs = []) => {
           ...config,
           refresh:
             typeof config.refresh === "function" ? config.refresh : noop,
+          onResize:
+            typeof config.onResize === "function" ? config.onResize : noop,
         },
       ]),
   );
@@ -69,6 +71,7 @@ const buildPanelEntries = ({ host, rail, panelConfigs = [] }) => {
       const panelConfig = panelConfigsById.get(panelId) || {
         id: panelId,
         refresh: noop,
+        onResize: noop,
       };
 
       return {
@@ -380,6 +383,9 @@ const initFloatingPlotWindows = ({
 
     const panelResizeObserver = new ResizeObserver(() => {
       clampPanelToBounds(panel);
+      if (panel.style.display !== "none") {
+        panelEntry.onResize({ panelId: panelEntry.id, panelEl: panel });
+      }
     });
     panelResizeObserver.observe(panel);
 

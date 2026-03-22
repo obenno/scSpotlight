@@ -66,6 +66,8 @@ const dotPlotOrderResetId = "floatingDotPlotOrderReset";
 const featurePlotActionId = "floatingFeaturePlotAction";
 const featurePlotStatusId = "floatingFeaturePlotStatus";
 const featurePlotNcolId = "floatingFeaturePlotNcol";
+const elbowPlotElId = "elbowPlotCanvas";
+const elbowPlotStatusId = "floatingElbowPlotStatus";
 
 // R waiter package spinners
 // keep the style exactly the same with R function
@@ -133,6 +135,17 @@ document.addEventListener(
             syncFeaturePlotPanelState();
           },
         },
+        {
+          id: "floatingElbowPlot",
+          refresh: () => {
+            const canvas = document.getElementById(elbowPlotElId);
+            if (canvas) updateElbowPlot(canvas);
+          },
+          onResize: debounce(() => {
+            const canvas = document.getElementById(elbowPlotElId);
+            if (canvas) updateElbowPlot(canvas);
+          }, 120),
+        },
       ],
       debounce,
     });
@@ -140,6 +153,7 @@ document.addEventListener(
     syncVlnPlotPanelState();
     syncDotPlotPanelState();
     syncFeaturePlotPanelState();
+    syncElbowPlotPanelState();
 
     const dotPlotActionButton = document.getElementById(dotPlotActionId);
     if (dotPlotActionButton) {
@@ -369,6 +383,31 @@ Shiny.addCustomMessageHandler("reduction_ready", (msg) => {
   } catch (error) {
     console.error("There was a problem:", error);
     mainPlotSpinner.style.display = "none";
+  }
+});
+
+Shiny.addCustomMessageHandler("pca_ready", (msg) => {
+  try {
+    (async () => {
+      if (!msg?.stdevFile) {
+        reglElementData.updatePcaStdev(null);
+        syncElbowPlotPanelState();
+        requestFloatingPlotRefresh(["floatingElbowPlot"]);
+        return;
+      }
+
+      const stdevURL = `${window.location.origin}/data/reduction/${msg.stdevFile}`;
+      const stdevRes = await qs2ReadFromUrl(webR, shelter, stdevURL);
+      const stdevArray = new Float32Array(await stdevRes.toTypedArray());
+      reglElementData.updatePcaStdev(stdevArray);
+      await shelter.purge();
+      syncElbowPlotPanelState();
+      requestFloatingPlotRefresh(["floatingElbowPlot"]);
+    })().catch((error) => {
+      console.error("There was a problem:", error);
+    });
+  } catch (error) {
+    console.error("There was a problem:", error);
   }
 });
 
@@ -893,6 +932,152 @@ const syncFeaturePlotPanelState = () => {
   if (icon) {
     icon.className = hasRendered || isStale ? "bi bi-arrow-repeat" : "bi bi-play-circle";
   }
+};
+
+const syncElbowPlotPanelState = () => {
+  const statusEl = document.getElementById(elbowPlotStatusId);
+  if (!statusEl) return;
+
+  const stdev = reglElementData.origData.pcaStdev;
+  if (!stdev || stdev.length === 0) {
+    statusEl.textContent = "No PCA standard deviation data available.";
+    return;
+  }
+
+  statusEl.textContent = `PCA standard deviations | ${stdev.length} PCs`;
+};
+
+const updateElbowPlot = (canvas) => {
+  if (!canvas) return;
+
+  const container = canvas.parentElement;
+  const ctx = canvas.getContext("2d");
+  if (!container || !ctx) return;
+
+  const rect = container.getBoundingClientRect();
+  const padding = getPadding(container);
+  const width = rect.width - padding.left - padding.right;
+  const height = rect.height - padding.top - padding.bottom;
+  const dpr = Math.max(window.devicePixelRatio || 1, 300 / 96);
+
+  canvas.width = Math.max(1, Math.floor(width * dpr));
+  canvas.height = Math.max(1, Math.floor(height * dpr));
+  canvas.style.width = "100%";
+  canvas.style.height = "100%";
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, Math.max(1, width), Math.max(1, height));
+
+  const stdev = reglElementData.origData.pcaStdev;
+  if (!stdev || stdev.length === 0) {
+    ctx.font = "16px Arial";
+    ctx.fillStyle = "#636363";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillText("No PCA data available", 12, 12);
+    syncElbowPlotPanelState();
+    return;
+  }
+
+  if (width <= 0 || height <= 0) {
+    syncElbowPlotPanelState();
+    return;
+  }
+
+  const margins = { top: 20, right: 18, bottom: 54, left: 64 };
+  const plotWidth = Math.max(1, width - margins.left - margins.right);
+  const plotHeight = Math.max(1, height - margins.top - margins.bottom);
+  const values = Array.from(stdev);
+  const maxValue = Math.max(...values);
+  const minValue = Math.min(...values);
+  const yMin = Math.min(0, minValue);
+  const yMax = maxValue <= yMin ? yMin + 1 : maxValue;
+  const xCount = values.length;
+
+  const getX = (index) => {
+    if (xCount === 1) return margins.left + plotWidth / 2;
+    return margins.left + (index / (xCount - 1)) * plotWidth;
+  };
+
+  const getY = (value) => margins.top + ((yMax - value) / (yMax - yMin)) * plotHeight;
+
+  ctx.strokeStyle = "rgba(0, 0, 0, 0.2)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(margins.left, margins.top);
+  ctx.lineTo(margins.left, margins.top + plotHeight);
+  ctx.lineTo(margins.left + plotWidth, margins.top + plotHeight);
+  ctx.stroke();
+
+  const tickCount = Math.min(5, xCount);
+  ctx.fillStyle = "rgba(0, 0, 0, 0.62)";
+  ctx.font = "12px Arial";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  for (let i = 0; i < tickCount; i += 1) {
+    const idx = tickCount === 1 ? 0 : Math.round((i / (tickCount - 1)) * (xCount - 1));
+    const x = getX(idx);
+    ctx.beginPath();
+    ctx.moveTo(x, margins.top + plotHeight);
+    ctx.lineTo(x, margins.top + plotHeight + 6);
+    ctx.stroke();
+    ctx.fillText(String(idx + 1), x, margins.top + plotHeight + 8);
+  }
+
+  const yTickCount = 5;
+  ctx.textAlign = "right";
+  ctx.textBaseline = "middle";
+  for (let i = 0; i < yTickCount; i += 1) {
+    const value = yMin + ((yMax - yMin) * i) / (yTickCount - 1);
+    const y = getY(value);
+    ctx.strokeStyle = "rgba(0, 0, 0, 0.08)";
+    ctx.beginPath();
+    ctx.moveTo(margins.left, y);
+    ctx.lineTo(margins.left + plotWidth, y);
+    ctx.stroke();
+
+    ctx.strokeStyle = "rgba(0, 0, 0, 0.2)";
+    ctx.beginPath();
+    ctx.moveTo(margins.left - 6, y);
+    ctx.lineTo(margins.left, y);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(0, 0, 0, 0.62)";
+    ctx.fillText(value.toFixed(2), margins.left - 10, y);
+  }
+
+  ctx.strokeStyle = "#2a6f9e";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  values.forEach((value, index) => {
+    const x = getX(index);
+    const y = getY(value);
+    if (index === 0) {
+      ctx.moveTo(x, y);
+    } else {
+      ctx.lineTo(x, y);
+    }
+  });
+  ctx.stroke();
+
+  ctx.fillStyle = "#1c4e70";
+  values.forEach((value, index) => {
+    const x = getX(index);
+    const y = getY(value);
+    ctx.beginPath();
+    ctx.arc(x, y, 3, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  ctx.save();
+  ctx.fillStyle = "rgba(0, 0, 0, 0.72)";
+  ctx.font = "12px Arial";
+  ctx.textAlign = "center";
+  ctx.fillText("Principal Component", margins.left + plotWidth / 2, height - 10);
+  ctx.translate(10, margins.top + plotHeight / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText("Standard Deviation", 0, 0);
+  ctx.restore();
+
+  syncElbowPlotPanelState();
 };
 
 const normalizeFeaturePlotNcol = () => {

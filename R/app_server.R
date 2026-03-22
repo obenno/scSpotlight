@@ -103,11 +103,6 @@ app_server <- function(input, output, session) {
         DEG_markers
     )
 
-    mod_ElbowPlot_server(
-        "elbowPlot",
-        seuratObj
-    )
-
     observeEvent(input$metaProcessed, {
         metaProcessed(input$metaProcessed)
     })
@@ -124,6 +119,7 @@ app_server <- function(input, output, session) {
     ## Update reductions
     mod_UpdateReduction_server(
         "updateReduction",
+        seuratObj,
         reductionUpdateIndicator,
         reductionProcessed
     )

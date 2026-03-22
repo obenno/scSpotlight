@@ -83,6 +83,7 @@ function createFixture() {
     expressionData: {
       GeneA: [0.1, 0.2, 0.3, 0.4, 3.1, 3.2, 3.3, 3.4],
     },
+    pcaStdev: [4.2, 2.8, 1.6, 1.1],
   };
 }
 
@@ -93,6 +94,16 @@ function buildModel() {
 }
 
 describe("ScatterModel mode derivation", () => {
+  it("stores PCA standard deviations as typed array data", () => {
+    const model = buildModel();
+    expect(model.origData.pcaStdev).toBeInstanceOf(Float32Array);
+    expect(Array.from(model.origData.pcaStdev)).toHaveLength(4);
+    expect(model.origData.pcaStdev[0]).toBeCloseTo(4.2);
+    expect(model.origData.pcaStdev[1]).toBeCloseTo(2.8);
+    expect(model.origData.pcaStdev[2]).toBeCloseTo(1.6);
+    expect(model.origData.pcaStdev[3]).toBeCloseTo(1.1);
+  });
+
   it("uses clusterOnly when no feature and no split", () => {
     const model = buildModel();
     model.setConfig({ selectedFeatures: [], moduleScore: false });

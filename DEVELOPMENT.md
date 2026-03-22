@@ -7,6 +7,7 @@ This file records recent frontend behavior changes for the main scatter plot, sp
 The recent work touched these areas:
 
 - floating plot UI in `R/app_ui.R`
+- reduction transfer in `R/mod_UpdateReduction.R`
 - floating plot state and rendering flow in `srcjs/index.js`
 - sparkline gene selection behavior in `srcjs/modules/featureSparkLine.js`
 - main scatter plot mode selection in `srcjs/modules/scatter/scatterModel.js`
@@ -152,6 +153,24 @@ Implementation notes:
 
 - `srcjs/modules/floatingPlots.js` excludes `.plot-floating-action` from drag start handling.
 
+### 9. ElbowPlot is rendered client-side from transferred PCA standard deviations
+
+Decision:
+
+- The floating ElbowPlot window renders on the client from PCA standard deviation data sent from R.
+- ElbowPlot refreshes automatically when the window opens, when the window is resized, and when PCA is updated after analysis.
+
+Why:
+
+- The elbow plot depends on PCA summary data, not the current main-plot reduction state.
+- Client-side rendering avoids relying on Shiny plot output sizing inside the floating panel.
+
+Implementation notes:
+
+- `R/mod_UpdateReduction.R` transfers PCA standard deviations to the client via `pca_ready` whenever reductions are updated.
+- `srcjs/modules/scatter/scatterModel.js` stores `pcaStdev` alongside other client-side data.
+- `srcjs/index.js` renders the elbow plot on `elbowPlotCanvas` and refreshes it on floating-panel open, resize, and PCA updates.
+
 ## Important Behavior Rules
 
 These rules should be preserved unless intentionally changed.
@@ -183,6 +202,13 @@ These rules should be preserved unless intentionally changed.
 - FeaturePlot requires more than one selected gene and is unavailable for module-score mode.
 - FeaturePlot does not redraw on gene-selection change alone.
 - FeaturePlot redraws on explicit action button click or on resize after first render.
+
+### ElbowPlot
+
+- ElbowPlot shows PCA standard deviations when PCA data exists.
+- ElbowPlot refreshes automatically on panel open.
+- ElbowPlot refreshes automatically on panel resize.
+- ElbowPlot refreshes automatically when client-side PCA summary data is updated.
 
 ## Performance Considerations
 
