@@ -29,7 +29,7 @@ export const createSparkLine = (feature) => {
   geneSymbol.classList.add("feature-gene-symbol");
   geneSymbol.classList.add("d-flex");
   geneSymbol.classList.add("align-items-center");
-  geneSymbol.style.flexShirk = 0;
+  geneSymbol.style.flexShrink = 0;
   geneSymbol.innerHTML = feature;
   containerEl.appendChild(geneSymbol);
 
@@ -62,8 +62,8 @@ export const createSparkLine = (feature) => {
   iconDiv.classList.add("d-flex");
   iconDiv.classList.add("align-items-center");
   iconDiv.style.justifyContent = "space-around";
-  iconDiv.style.margeLeft = "2px";
-  iconDiv.style.flexShirk = 0;
+  iconDiv.style.marginLeft = "2px";
+  iconDiv.style.flexShrink = 0;
   const spinner = document.createElement("span");
   spinner.classList.add("spinner-border");
   spinner.classList.add("text-primary");
