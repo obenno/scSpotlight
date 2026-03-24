@@ -109,13 +109,8 @@ export class reglScatterCanvas {
     this.isResizeBlank = false;
     this.allowResizeBlank = false;
     this.initialLayoutPending = false;
+    this.lastResizeSignature = null;
     this.onPanelDoubleClick = null;
-    this.onWindowResize = () => {
-      if (this.allowResizeBlank && !this.initialLayoutPending && this.lifecycle.isReady()) {
-        this.beginResizeBlank();
-      }
-      this.relayoutDebounced();
-    };
     this.updateLayersDebounced = this.debounce(() => {
       if (this.deck) {
         this.deck.setProps({ layers: this.createAllLayers() });
@@ -138,6 +133,11 @@ export class reglScatterCanvas {
 
   updateExpressionData(expressionData) {
     this.model.setData({ expressionData });
+    this.origData = this.model.origData;
+  }
+
+  updatePcaStdev(pcaStdev) {
+    this.model.setData({ pcaStdev });
     this.origData = this.model.origData;
   }
 
@@ -184,7 +184,6 @@ export class reglScatterCanvas {
       this.resizeObserver.disconnect();
       this.resizeObserver = null;
     }
-    window.removeEventListener("resize", this.onWindowResize);
     this.viewStates = {};
     this.baseZoomByView = {};
     this.lastZoomByView = {};
@@ -325,6 +324,21 @@ export class reglScatterCanvas {
     this.createDeck();
     if (!this.resizeObserver) {
       this.resizeObserver = new ResizeObserver(() => {
+        const canvasContainer = this.plotEl.querySelector("#canvas-wrapper");
+        const resizeSignature = [
+          deckContainer?.clientWidth || 0,
+          deckContainer?.clientHeight || 0,
+          canvasContainer?.clientWidth || 0,
+          canvasContainer?.clientHeight || 0,
+          this.plotEl?.clientWidth || 0,
+          this.plotEl?.clientHeight || 0,
+        ].join("x");
+
+        if (resizeSignature === this.lastResizeSignature) {
+          return;
+        }
+
+        this.lastResizeSignature = resizeSignature;
         if (this.allowResizeBlank) {
           this.beginResizeBlank();
         }
@@ -336,7 +350,6 @@ export class reglScatterCanvas {
         this.resizeObserver.observe(canvasContainer);
       }
       this.resizeObserver.observe(this.plotEl);
-      window.addEventListener("resize", this.onWindowResize);
     }
     // Do not force an immediate second relayout after createDeck();
     // it can cause a visible panel "snap" during initial multi-panel mount.
@@ -1532,8 +1545,14 @@ export class reglScatterCanvas {
       this.plotMetaData.mode === "cluster+expr+twoSplit" ||
       this.plotMetaData.mode === "cluster+expr+multiSplit"
     ) {
-      const exprArray =
-        this.origData.expressionData[this.plotMetaData.selectedFeatures];
+      const selectedFeature = this.plotMetaData.selectedFeatures?.[0];
+      const exprArray = selectedFeature
+        ? this.origData.expressionData[selectedFeature]
+        : null;
+      if (!exprArray || exprArray.length === 0) {
+        return;
+      }
+
       const exprLegendColor = d3.scaleSequential(
         [d3.min(exprArray), d3.max(exprArray)],
         d3.interpolate("#E5E4E2", "#800080"),

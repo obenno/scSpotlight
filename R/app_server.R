@@ -92,22 +92,6 @@ app_server <- function(input, output, session) {
         inputData$selectedAssay
     )
 
-    DEG_markers <- mod_FindMarkers_server(
-        "findMarkers",
-        inputData$seuratObj,
-        categoryInfo$group.by
-    )
-
-    mod_DEG_Table_server(
-        "DEGList",
-        DEG_markers
-    )
-
-    mod_ElbowPlot_server(
-        "elbowPlot",
-        seuratObj
-    )
-
     observeEvent(input$metaProcessed, {
         metaProcessed(input$metaProcessed)
     })
@@ -124,6 +108,7 @@ app_server <- function(input, output, session) {
     ## Update reductions
     mod_UpdateReduction_server(
         "updateReduction",
+        seuratObj,
         reductionUpdateIndicator,
         reductionProcessed
     )
@@ -143,6 +128,12 @@ app_server <- function(input, output, session) {
         "updateCategory",
         metaCols,
         scatterUpdateIndicator
+    )
+
+    mod_DEG_Window_server(
+        "DEGWindow",
+        seuratObj,
+        categoryInfo$group.by
     )
 
     ## Input Features
@@ -169,19 +160,6 @@ app_server <- function(input, output, session) {
         categoryInfo$split.by,
         featureInfo$moduleScore
     )
-
-    ## infoBox needs to be collapsed by default
-    observeEvent(input$infoBox_show, {
-        message("input$infoBox_show is ", input$infoBox_show)
-        if(input$infoBox_show){
-            message("show infoBox")
-            show_infoBox(session)
-        }else{
-            message("collapse infoBox")
-            ## default value of input$infoBox_show is FALSE
-            collapse_infoBox(session)
-        }
-    }, priority = 100) # high priority for UI components
 
     ## Rename Clusters
     selectedPoints <- eventReactive(input$selectedPoints, {

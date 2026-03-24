@@ -11,22 +11,20 @@ mod_mainClusterPlot_ui <- function(id){
   ns <- NS(id)
   tagList(
      card(
-         id = ns("mainClusterPlot"),
-         full_screen = TRUE,
-         class = c("border", "border-primary", "border-2", "mb-1", "shadow"),
-         ## add resize property
-         style = "resize:both; width:100%",
-         card_body(
-             id = ns("clusterPlot"),
-             height="600px",
-             style = "position: relative",
-             class = "align-items-center m-0 p-1",
-           tags$canvas(
-                  id = "featurePlotCanvas",
-                  style = "display: none;")
+          id = ns("mainClusterPlot"),
+          fill = TRUE,
+          full_screen = FALSE,
+          border_radius = FALSE,
+          class = NULL,
+          ## add resize property
+          style = "width: 100%; height: 100%; border-radius: 0;",
+          card_body_fill(
+              id = ns("clusterPlot"),
+              style = "position: relative",
+              class = "align-items-center m-0 p-0"
              ##mod_FeaturePlot_ui(ns("featurePlot"))
-         )
-     )
+          )
+      )
   )
 }
 

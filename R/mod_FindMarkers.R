@@ -34,6 +34,15 @@ mod_FindMarkers_ui <- function(id){
           step = 0.05,
           width = NULL
       ),
+      numericInput(
+          inputId = ns("p_val_adj_cutoff"),
+          label = tagList("adjusted p-value cutoff", infoIcon("Filter DEG heatmap genes to markers with adjusted p-value below this threshold. Default is 0.001.", "right")),
+          value = 0.001,
+          min = 0,
+          max = 1,
+          step = 0.001,
+          width = NULL
+      ),
       actionButton(
           inputId = ns("runFindAllMarkers"),
           label = "Find Markers",
@@ -46,7 +55,7 @@ mod_FindMarkers_ui <- function(id){
 
 #' FindMarkers Server Functions
 #'
-#' @importFrom promises %...>% finally
+#' @importFrom promises %...>% %...!% finally
 #' @noRd 
 mod_FindMarkers_server <- function(id,
                                    seuratObj,
@@ -54,7 +63,7 @@ mod_FindMarkers_server <- function(id,
     moduleServer( id, function(input, output, session){
         ns <- session$ns
 
-        DEG_markers <- reactiveVal()
+        DEG_markers <- reactiveVal(NULL)
         observeEvent(input$runFindAllMarkers,{
 
             if(!isTruthy(seuratObj())){
@@ -82,30 +91,56 @@ mod_FindMarkers_server <- function(id,
                 obj <- seuratObj()
                 DEG_method <- input$DEG_method
                 group.by_value <- group.by()
-                future_promise({
+                min_pct_value <- input$min.pct
+                logfc_threshold_value <- input$logfc.threshold
+                DEG_promise <- future_promise({
                     message("Started FindAllMarkers...")
-                    if(group.by() != "None"){
+                    if(isTruthy(group.by_value) && group.by_value != "None"){
                         ## save original idents
                         Idents(obj) <- group.by_value
                     }
                     markers <- FindAllMarkers(obj,
                                               test.use = DEG_method,
                                               only.pos = TRUE,
-                                              min.pct = input$min.pct,
-                                              logfc.threshold = input$logfc.threshold)
+                                              min.pct = min_pct_value,
+                                              logfc.threshold = logfc_threshold_value)
 
                     markers
-                }) %...>%
-                DEG_markers() %>%
-                finally(function(){ removeNotification(id = "DEG_notification") })
+                }) %...>% (
+                    function(markers) {
+                        DEG_markers(markers)
+
+                        markers
+                    }
+                ) %...!% (
+                    function(error) {
+                        showNotification(
+                            ui = paste("DEG analysis failed:", conditionMessage(error)),
+                            action = NULL,
+                            duration = 6,
+                            closeButton = TRUE,
+                            type = "error",
+                            session = session
+                        )
+                    }
+                )
+
+                promises::finally(
+                    DEG_promise,
+                    function(){ removeNotification(id = "DEG_notification", session = session) }
+                )
 
             }
             return(NULL) ## pretty important, or the future_promise will block the main thread
         })
-        DEG_out <- reactive({
-            DEG_markers()
-        })
-        return(DEG_out)
+        list(
+            markers = reactive({
+                DEG_markers()
+            }),
+            pAdjCutoff = reactive({
+                input$p_val_adj_cutoff
+            })
+        )
     })
 
     

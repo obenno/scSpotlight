@@ -11,6 +11,7 @@ export class ScatterModel {
       reductionData: {},
       cellMetaData: {},
       expressionData: {},
+      pcaStdev: null,
     };
 
     this.plotData = {
@@ -56,7 +57,7 @@ export class ScatterModel {
     this.plotMetaData.catColors = [];
   }
 
-  setData({ reductionData = null, cellMetaData = null, expressionData = null } = {}) {
+  setData({ reductionData = null, cellMetaData = null, expressionData = null, pcaStdev = undefined } = {}) {
     if (reductionData) {
       Object.keys(reductionData).forEach((key) => {
         this.origData.reductionData[key] = reductionData[key];
@@ -71,6 +72,10 @@ export class ScatterModel {
       Object.keys(expressionData).forEach((key) => {
         this.origData.expressionData[key] = new Float32Array(expressionData[key]);
       });
+    }
+
+    if (pcaStdev !== undefined) {
+      this.origData.pcaStdev = pcaStdev ? new Float32Array(pcaStdev) : null;
     }
   }
 
@@ -100,19 +105,20 @@ export class ScatterModel {
     const nGroupBy = groupByArray.length;
     const nSplitBy = splitByArray.length;
     const selectedFeatures = this.plotMetaData.selectedFeatures || [];
+    const hasSelectedFeature = selectedFeatures.length > 0;
 
     let plottingMode = null;
     let nPanels = null;
-    if (selectedFeatures.length === 1 && nSplitBy === 0) {
+    if (hasSelectedFeature && nSplitBy === 0) {
       plottingMode = "cluster+expr+noSplit";
       nPanels = 2;
-    } else if (selectedFeatures.length === 1 && nSplitBy === 2) {
+    } else if (hasSelectedFeature && nSplitBy === 2) {
       plottingMode = "cluster+expr+twoSplit";
       nPanels = 4;
-    } else if (selectedFeatures.length === 1 && nSplitBy > 2) {
+    } else if (hasSelectedFeature && nSplitBy > 2) {
       plottingMode = "cluster+expr+multiSplit";
       nPanels = nSplitBy;
-    } else if (selectedFeatures.length === 0 && nSplitBy > 1) {
+    } else if (!hasSelectedFeature && nSplitBy > 1) {
       plottingMode = "cluster+multiSplit";
       nPanels = nSplitBy;
     } else {

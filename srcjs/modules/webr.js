@@ -108,7 +108,14 @@ export async function initShelter(webR) {
   return shelter;
 }
 
-export async function featurePlot(shelter, figWidth, figHeight, dr, expr) {
+export async function featurePlot(
+  shelter,
+  figWidth,
+  figHeight,
+  dr,
+  expr,
+  ncol = null,
+) {
   let result = await shelter.captureR(
     `
 mapColor <- function(x, low = "#E5E4E2", high = "#800080"){
@@ -185,10 +192,14 @@ for(i in seq_along(features)){
     }
     pList[[i]] <- plotFeature(df, raster = raster)
 }
-if(length(pList) >=3){
-    ncol <- 3
+if(is.null(panelNcol)){
+  if(length(pList) >=3){
+      ncol <- 3
+  }else{
+      ncol <- length(pList)
+  }
 }else{
-    ncol <- length(pList)
+  ncol <- max(1, min(as.integer(panelNcol), length(pList)))
 }
 wrap_plots(pList, ncol=ncol)
 `,
@@ -196,6 +207,7 @@ wrap_plots(pList, ncol=ncol)
       env: {
         exprList: expr,
         reduction: dr,
+        panelNcol: ncol,
       },
       captureGraphics: {
         width: figWidth,
@@ -210,78 +222,6 @@ wrap_plots(pList, ncol=ncol)
 
   return result;
   //console.log("new library: ", res);
-}
-
-export async function readQS(webR, buffer) {
-  let now = new Date();
-  console.log(`start qs reading: ${now.toLocaleTimeString()}`);
-  const randomString = Math.random().toString(36).substring(2, 10);
-  const vfsPath = randomString + ".qs";
-  const uint8Array = new Uint8Array(buffer);
-  await webR.FS.writeFile(vfsPath, uint8Array);
-
-  let res = await webR.evalR(
-    `
-d <- qs2::qs_read(qsFile) %>%
-    as.data.frame(check.names = FALSE)
-## convert factor column to character ones
-for(i in 1:ncol(d)){
-    if(is.factor(d[, i])){
-        d[, i] <- as.character(d[, i])
-    }
-}
-as.list(d)
-`,
-    {
-      env: {
-        qsFile: vfsPath,
-      },
-      withAutoprint: false,
-      captureStreams: true,
-      captureConditions: true,
-    },
-  );
-  // delete the file
-  await webR.FS.unlink(vfsPath);
-  now = new Date();
-  console.log(`finished qs reading: ${now.toLocaleTimeString()}`);
-  // RDataFrame.toObject() will convert df to json array
-  // rownames will be omitted
-  //
-  // Convert the whole data frame will consume too much memory
-  // So here we loop the list to convert one "column" each time
-  const df = {};
-  let idx = 0;
-  const colNames = await res.names();
-  for await (const i of res) {
-    const out = await i.toJs();
-    df[colNames[idx]] = out["values"];
-    idx++;
-  }
-  now = new Date();
-  console.log(`finished object convertion: ${now.toLocaleTimeString()}`);
-  // destroy res to release memory
-  await webR.destroy(res);
-
-  for (const key in df) {
-    if (Array.isArray(df[key]) && df[key].length > 0) {
-      const firstElement = df[key][0];
-      if (typeof firstElement === "number") {
-        // Check if all elements are integers
-        // modulo operation is much faster than .isInteger()
-        const isIntArray = df[key].every((num) => num % 1 === 0);
-
-        if (isIntArray) {
-          df[key] = new Int32Array(df[key]);
-        } else {
-          df[key] = new Float32Array(df[key]);
-        }
-      }
-    }
-  }
-  now = new Date();
-  console.log(`finished looping: ${now.toLocaleTimeString()}`);
-  return df;
 }
 
 export async function qs2ReadFromUrl(webR, shelter, url, ext = ".qs2") {
@@ -522,7 +462,14 @@ wrap_plots(pList, ncol=ncol)
   return result;
 }
 
-export async function dotPlot(shelter, figWidth, figHeight, df, group) {
+export async function dotPlot(
+  shelter,
+  figWidth,
+  figHeight,
+  df,
+  group,
+  groupOrder = null,
+) {
   let result = await shelter.captureR(
     `
 summarize_expr <- function(df, group, feature){
@@ -551,6 +498,13 @@ d <- do.call(
     })
 )
 
+if(!is.null(groupOrder)){
+    observed_groups <- unique(as.character(d[[group]]))
+    normalized_levels <- intersect(as.character(groupOrder), observed_groups)
+    normalized_levels <- c(normalized_levels, setdiff(observed_groups, normalized_levels))
+    d[[group]] <- factor(as.character(d[[group]]), levels = normalized_levels)
+}
+
 p <- ggplot(d, aes(x = features.plot, y= !!as.symbol(group),
                    fill = avg.exp.scaled, size = pct.exp))+
     geom_point(shape=21, color = "black")+
@@ -573,6 +527,7 @@ print(p)
       env: {
         group: group,
         df: df,
+        groupOrder: groupOrder,
       },
       captureGraphics: {
         width: figWidth,
