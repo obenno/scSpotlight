@@ -172,9 +172,9 @@ hr.setting {
 /* Left sidebar collapsed icon rail (bslib-compatible) */
 .left-sidebar-rail {
     position: absolute;
-    top: 2.7rem;
+    top: 4.5rem;
     left: 0.35rem;
-    z-index: 25;
+    z-index: 24;
     width: 2.5rem;
     padding: 0.35rem 0.2rem;
     border-radius: 0.6rem;
@@ -543,6 +543,42 @@ hr.setting {
 .plot-floating-canvas-wrap img {
     max-width: 100%;
     max-height: 100%;
+}
+
+.deg-floating-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-height: 0;
+    height: 100%;
+}
+
+.deg-floating-settings .shiny-input-container {
+    margin-bottom: 0.5rem !important;
+}
+
+.deg-floating-settings .btn {
+    width: 100%;
+}
+
+.deg-floating-tabs {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.deg-floating-tabs .card,
+.deg-floating-tabs .tab-content,
+.deg-floating-tabs .tab-pane {
+    height: 100%;
+}
+
+.deg-floating-tabs .card-body {
+    min-height: 0;
+    overflow: auto;
+}
+
+.deg-floating-tabs .shiny-plot-output {
+    min-height: 22rem;
 }
 
 .plot-floating-body canvas {

@@ -92,17 +92,6 @@ app_server <- function(input, output, session) {
         inputData$selectedAssay
     )
 
-    DEG_markers <- mod_FindMarkers_server(
-        "findMarkers",
-        inputData$seuratObj,
-        categoryInfo$group.by
-    )
-
-    mod_DEG_Table_server(
-        "DEGList",
-        DEG_markers
-    )
-
     observeEvent(input$metaProcessed, {
         metaProcessed(input$metaProcessed)
     })
@@ -139,6 +128,12 @@ app_server <- function(input, output, session) {
         "updateCategory",
         metaCols,
         scatterUpdateIndicator
+    )
+
+    mod_DEG_Window_server(
+        "DEGWindow",
+        seuratObj,
+        categoryInfo$group.by
     )
 
     ## Input Features

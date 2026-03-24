@@ -7,6 +7,7 @@ const LEFT_RAIL_SYNC_DELAY_MS = 140;
 const LEFT_RAIL_PANEL_DELAY_MS = 120;
 const WINDOW_RESIZE_DEBOUNCE_MS = 100;
 const FLOATING_PLOTS_REFRESH_EVENT = "scspotlight:floatingPlotsRefresh";
+const LEFT_SIDEBAR_RAIL_TOP_GAP_PX = 10;
 
 const getFloatingPanelLimits = (boundsRect, margin = PANEL_MARGIN_PX) => {
   const availableWidth = Math.max(1, boundsRect.width - margin * 2);
@@ -454,9 +455,20 @@ const initLeftSidebarIconRail = ({ leftSidebar, rail }) => {
 
   rail.dataset.leftSidebarRailInitialized = "true";
 
+  const syncLeftRailPosition = () => {
+    const layoutRect = layout.getBoundingClientRect();
+    const toggleRect = toggleBtn.getBoundingClientRect();
+    const nextTop = Math.max(
+      12,
+      Math.round(toggleRect.bottom - layoutRect.top + LEFT_SIDEBAR_RAIL_TOP_GAP_PX),
+    );
+    rail.style.top = `${nextTop}px`;
+  };
+
   const syncRailVisibility = () => {
     const isOpen = toggleBtn.getAttribute("aria-expanded") === "true";
     rail.classList.toggle("visible", !isOpen);
+    syncLeftRailPosition();
   };
 
   syncRailVisibility();
@@ -466,6 +478,13 @@ const initLeftSidebarIconRail = ({ leftSidebar, rail }) => {
     attributes: true,
     attributeFilter: ["aria-expanded"],
   });
+
+  window.addEventListener(
+    "resize",
+    () => {
+      syncLeftRailPosition();
+    },
+  );
 
   rail.addEventListener("click", (event) => {
     const button = event.target.closest(".left-sidebar-rail-btn");

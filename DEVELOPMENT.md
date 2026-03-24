@@ -7,6 +7,7 @@ This file records recent frontend behavior changes for the main scatter plot, sp
 The recent work touched these areas:
 
 - floating plot UI in `R/app_ui.R`
+- DEG analysis UI in `R/mod_DEG_Window.R`, `R/mod_FindMarkers.R`, and `R/mod_DEG_Table.R`
 - reduction transfer in `R/mod_UpdateReduction.R`
 - floating plot state and rendering flow in `srcjs/index.js`
 - sparkline gene selection behavior in `srcjs/modules/featureSparkLine.js`
@@ -171,6 +172,24 @@ Implementation notes:
 - `srcjs/modules/scatter/scatterModel.js` stores `pcaStdev` alongside other client-side data.
 - `srcjs/index.js` renders the elbow plot on `elbowPlotCanvas` and refreshes it on floating-panel open, resize, and PCA updates.
 
+### 10. DEG analysis lives in the floating DEG window
+
+Decision:
+
+- DEG settings, run action, marker table, and heatmap are grouped inside the floating DEG window.
+- The old left-sidebar "Find Markers" panel is removed.
+
+Why:
+
+- DEG analysis is a result workflow rather than a persistent sidebar setting.
+- Keeping settings, results, and heatmap together reduces context switching.
+
+Implementation notes:
+
+- `R/mod_DEG_Window.R` composes DEG settings, marker table, and heatmap into one floating workflow.
+- `R/mod_FindMarkers.R` owns the async DEG run and returns marker results reactively.
+- The DEG rail button now opens the full DEG analysis window rather than a table-only panel.
+
 ## Important Behavior Rules
 
 These rules should be preserved unless intentionally changed.
@@ -209,6 +228,13 @@ These rules should be preserved unless intentionally changed.
 - ElbowPlot refreshes automatically on panel open.
 - ElbowPlot refreshes automatically on panel resize.
 - ElbowPlot refreshes automatically when client-side PCA summary data is updated.
+
+### DEG analysis
+
+- DEG settings are configured inside the floating DEG window.
+- DEG results run only when the user clicks the DEG run button.
+- DEG marker table and DEG heatmap live in the same floating DEG window.
+- DEG marker table and DEG heatmap are rendered server-side in the floating DEG window.
 
 ## Performance Considerations
 

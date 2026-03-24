@@ -213,12 +213,6 @@ left_sidebar_ui <- function(){
                 class = "bg-light text-black"
             ),
             accordion_panel(
-                "Find Markers",
-                icon = bsicons::bs_icon("bar-chart-steps"),
-                mod_FindMarkers_ui("findMarkers"),
-                class = "bg-light text-black"
-            ),
-            accordion_panel(
                 "Download Result",
                 icon = bsicons::bs_icon("cloud-download"),
                 mod_Download_ui("downloadObj"),
@@ -252,8 +246,7 @@ left_sidebar_rail_ui <- function(){
             tags$button(type = "button", class = "left-sidebar-rail-btn", title = "Cell Filtering", `data-panel-index` = "1", bsicons::bs_icon("filter")),
             tags$button(type = "button", class = "left-sidebar-rail-btn", title = "Clustering Settings", `data-panel-index` = "2", bsicons::bs_icon("sliders")),
             tags$button(type = "button", class = "left-sidebar-rail-btn", title = "Cell Cycling", `data-panel-index` = "3", bsicons::bs_icon("clock-history")),
-            tags$button(type = "button", class = "left-sidebar-rail-btn", title = "Find Markers", `data-panel-index` = "4", bsicons::bs_icon("bar-chart-steps")),
-            tags$button(type = "button", class = "left-sidebar-rail-btn", title = "Download Result", `data-panel-index` = "5", bsicons::bs_icon("cloud-download"))
+            tags$button(type = "button", class = "left-sidebar-rail-btn", title = "Download Result", `data-panel-index` = "4", bsicons::bs_icon("cloud-download"))
         ))
     }
 
@@ -560,8 +553,8 @@ infoBox_ui <- function(){
                 type = "button",
                 class = "plot-rail-btn",
                 `data-target` = "floatingDEGList",
-                title = "Open DEG List",
-                tags$i(class = "bi bi-table")
+                title = "Open DEG Analysis",
+                tags$i(class = "bi bi-bar-chart-steps")
             )
         ))
 
@@ -599,7 +592,7 @@ infoBox_ui <- function(){
                 style = "display:none;",
                 tags$div(
                     class = "plot-floating-header",
-                    tags$span("DEG List"),
+                    tags$span("DEG Analysis"),
                     tags$button(
                         type = "button",
                         class = "plot-floating-close",
@@ -609,7 +602,7 @@ infoBox_ui <- function(){
                 ),
                 tags$div(
                     class = "plot-floating-body",
-                    mod_DEG_Table_ui("DEGList")
+                    mod_DEG_Window_ui("DEGWindow")
                 )
             )
         ))

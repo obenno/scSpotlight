@@ -969,11 +969,6 @@ const updateElbowPlot = (canvas) => {
 
   const stdev = reglElementData.origData.pcaStdev;
   if (!stdev || stdev.length === 0) {
-    ctx.font = "16px Arial";
-    ctx.fillStyle = "#636363";
-    ctx.textAlign = "left";
-    ctx.textBaseline = "top";
-    ctx.fillText("No PCA data available", 12, 12);
     syncElbowPlotPanelState();
     return;
   }
