@@ -243,6 +243,7 @@ These changes were implemented with the repo's large-dataset constraints in mind
 - Avoid expanding full category metadata arrays for DotPlot panel state when only group labels are needed.
 - Avoid auto-redrawing floating panels on every selection change.
 - Keep main-panel expression handling single-gene to match current rendering assumptions.
+- Decode Arrow dictionary-encoded metadata from index buffers directly in `srcjs/modules/arrowReader.js` instead of calling `col.get(j)` for every row. This preserves the Arrow IPC migration's performance benefit for 1M+ cells by avoiding slow per-element Arrow accessor calls on categorical metadata columns.
 
 ## Validation Performed
 
@@ -251,7 +252,7 @@ Recent validation included:
 - `pixi run test-js`
 - parse validation for `R/app_ui.R`
 
-At the time of writing, the JS test suite passed with 45 tests.
+At the time of writing, the JS test suite passed with 54 tests.
 
 ## Files to Check for Future Changes
 
@@ -259,6 +260,7 @@ If behavior changes again, review these files together:
 
 - `R/app_ui.R`
 - `srcjs/index.js`
+- `srcjs/modules/arrowReader.js`
 - `srcjs/modules/featureSparkLine.js`
 - `srcjs/modules/scatter/scatterModel.js`
 - `srcjs/modules/deckScatter.js`

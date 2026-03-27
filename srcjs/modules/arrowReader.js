@@ -6,6 +6,45 @@
  */
 import { tableFromIPC, Type } from "apache-arrow";
 
+function isIntegerTypedArray(arr) {
+  return (
+    arr instanceof Int8Array ||
+    arr instanceof Uint8Array ||
+    arr instanceof Uint8ClampedArray ||
+    arr instanceof Int16Array ||
+    arr instanceof Uint16Array ||
+    arr instanceof Int32Array ||
+    arr instanceof Uint32Array ||
+    arr instanceof BigInt64Array ||
+    arr instanceof BigUint64Array
+  );
+}
+
+function isChunkValueValid(chunk, rowIndex) {
+  if (!chunk || chunk.nullCount === 0) {
+    return true;
+  }
+
+  const nullBitmap = chunk.nullBitmap;
+  if (!nullBitmap || nullBitmap.length === 0) {
+    return true;
+  }
+
+  const bitIndex = chunk.offset + rowIndex;
+  return (nullBitmap[bitIndex >> 3] & (1 << (bitIndex & 7))) !== 0;
+}
+
+function getChunkIndices(chunk) {
+  const values = chunk.values;
+  if (!values) {
+    return [];
+  }
+
+  const start = chunk.offset ?? 0;
+  const end = start + chunk.length;
+  return values.subarray(start, end);
+}
+
 /**
  * Fetch an Arrow IPC stream file and return the decoded Table.
  * @param {string} url - URL to the .arrow file served via addResourcePath
@@ -74,22 +113,35 @@ export function parseMetaFromArrow(table) {
     const typeId = field.type.typeId;
 
     if (typeId === Type.Dictionary) {
-      // Category column — Arrow dictionary encoding
-      // Build { catName: [cell indices (0-based)] }
+      // Category column — Arrow dictionary encoding.
+      // Decode via dictionary/index buffers directly to avoid per-row col.get().
       const catMap = {};
-      const nRows = col.length;
+      let globalRowIndex = 0;
 
-      // Collect dictionary keys first
-      const dictVec = col.data[0].dictionary;
-      for (let i = 0; i < dictVec.length; i++) {
-        catMap[dictVec.get(i)] = [];
-      }
+      for (const chunk of col.data) {
+        const dictVec = chunk.dictionary;
+        const labels = Array.from({ length: dictVec.length }, (_, i) =>
+          dictVec.get(i),
+        );
 
-      // Iterate rows and bucket cell indices by category
-      for (let j = 0; j < nRows; j++) {
-        const label = col.get(j);
-        if (label != null) {
-          catMap[label].push(j);
+        for (const label of labels) {
+          if (label != null && catMap[label] === undefined) {
+            catMap[label] = [];
+          }
+        }
+
+        const indices = getChunkIndices(chunk);
+        for (let j = 0; j < indices.length; j++) {
+          if (!isChunkValueValid(chunk, j)) {
+            globalRowIndex += 1;
+            continue;
+          }
+
+          const label = labels[indices[j]];
+          if (label != null) {
+            catMap[label].push(globalRowIndex);
+          }
+          globalRowIndex += 1;
         }
       }
 
@@ -99,6 +151,11 @@ export function parseMetaFromArrow(table) {
       const dataArray = col.toArray();
       if (dataArray instanceof Int32Array) {
         out[field.name] = { type: "number", value: dataArray };
+      } else if (isIntegerTypedArray(dataArray)) {
+        out[field.name] = {
+          type: "number",
+          value: Int32Array.from(dataArray, Number),
+        };
       } else if (isIntegerArray(dataArray)) {
         out[field.name] = { type: "number", value: Int32Array.from(dataArray) };
       } else {

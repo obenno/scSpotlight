@@ -66,6 +66,17 @@ describe("parseMetaFromArrow", () => {
     expect(Array.from(meta.nFeature.value)).toEqual([50, 60, 70]);
   });
 
+  it("normalizes non-Int32 integer arrays to Int32Array", () => {
+    const table = tableFromArrays({
+      smallInts: Int8Array.from([1, 2, 3]),
+    });
+    const meta = parseMetaFromArrow(table);
+
+    expect(meta.smallInts.type).toBe("number");
+    expect(meta.smallInts.value).toBeInstanceOf(Int32Array);
+    expect(Array.from(meta.smallInts.value)).toEqual([1, 2, 3]);
+  });
+
   it("parses dictionary-encoded columns as category maps", () => {
     // Build a dictionary-encoded column using DictionaryBuilder
     const builder = makeBuilder({
