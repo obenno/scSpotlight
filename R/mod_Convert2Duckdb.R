@@ -16,7 +16,6 @@ mod_Convert2Duckdb_ui <- function(id){
     
 #' PrepareDuckdb Server Functions
 #'
-#' @importFrom qs2 qs_save
 #' @noRd 
 mod_Convert2Duckdb_server <- function(id,
                                      seuratObj,

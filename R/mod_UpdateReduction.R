@@ -26,7 +26,7 @@ mod_UpdateReduction_ui <- function(id){
 #'
 #' @noRd
 #'
-#' @importFrom qs2 qs_save
+#' @importFrom arrow arrow_table write_ipc_stream float32 Array
 mod_UpdateReduction_server <- function(id,
                                        seuratObj,
                                        reductionUpdateIndicator,
@@ -56,7 +56,10 @@ mod_UpdateReduction_server <- function(id,
           pcaFilePath <- file.path(session$userData$tempDir, "reduction", pcaFileName)
 
           if(isTruthy(obj) && "pca" %in% SeuratObject::Reductions(obj)){
-              qs_save(obj[["pca"]]@stdev, pcaFilePath, compress_level = 9L)
+              write_ipc_stream(
+                  arrow_table(stdev = Array$create(obj[["pca"]]@stdev, type = float32())),
+                  pcaFilePath
+              )
               session$sendCustomMessage(
                   type = "pca_ready",
                   message = list(stdevFile = pcaFileName)
@@ -90,11 +93,15 @@ mod_UpdateReduction_server <- function(id,
               if(!file.exists(dirPath)){
                   stop(paste0(dirPath, " does not exist."))
               }
-              xFileName <- hash_md5("X")
-              yFileName <- hash_md5("Y")
-              qs_save(d$X, file.path(dirPath, xFileName), compress_level = 9L)
-              qs_save(d$Y, file.path(dirPath, yFileName), compress_level = 9L)
-              return(list(xFile = xFileName, yFile = yFileName))
+              reductionFileName <- hash_md5("reduction")
+              write_ipc_stream(
+                  arrow_table(
+                      X = Array$create(d$X, type = float32()),
+                      Y = Array$create(d$Y, type = float32())
+                  ),
+                  file.path(dirPath, reductionFileName)
+              )
+              return(list(reductionFile = reductionFileName))
           })
 
       })

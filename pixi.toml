@@ -50,13 +50,10 @@ xz = "*"
 
 [target.linux-64.dependencies]
 r-duckdb = "*"
-r-qs2 = "*"
 
 [target.osx-64.dependencies]
-r-qs2 = "*"
 
 [target.win-64.dependencies]
-r-qs2 = "*"
 
 [tasks]
 bootstrap-r = "env -u CONDA_PREFIX -u CONDA_DEFAULT_ENV -u CMAKE_PREFIX_PATH -u PKG_CONFIG_PATH -u LIBRARY_PATH -u CPATH -u C_INCLUDE_PATH -u CPLUS_INCLUDE_PATH -u LD_LIBRARY_PATH R_LIBS_USER= R_LIBS_SITE= Rscript dev/bootstrap_r_deps.R"
