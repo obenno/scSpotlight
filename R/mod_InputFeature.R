@@ -96,7 +96,7 @@ mod_InputFeature_ui <- function(id){
 #' @import shiny
 #' @importFrom promises future_promise %...>% %...!%
 #' @importFrom cli hash_md5
-#' @importFrom qs2 qs_save
+#' @importFrom arrow arrow_table write_ipc_stream float32 Array
 #' @noRd
 mod_InputFeature_server <- function(id,
                                     assay,
@@ -211,7 +211,10 @@ mod_InputFeature_server <- function(id,
               if(file.exists(filePath)){
                   file.remove(filePath)
               }
-              qs_save(expr[[features]], filePath, compress_level = 9L)
+              write_ipc_stream(
+                  arrow_table(expr = Array$create(expr[[features]], type = float32())),
+                  filePath
+              )
               return(list(geneName = features, exprFile = basename(filePath)))
           })
       })

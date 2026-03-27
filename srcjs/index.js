@@ -33,9 +33,13 @@ import {
   vlnPlot,
   dotPlot,
   initWebRInstance,
-  qs2ReadFromUrl,
-  isIntegerArray,
 } from "./modules/webr.js";
+
+import {
+  readArrowIPC,
+  getFloat32Column,
+  parseMetaFromArrow,
+} from "./modules/arrowReader.js";
 
 import {
   createSparkLine,
@@ -357,21 +361,20 @@ Shiny.addCustomMessageHandler("createSparkLine", (feature) => {
 
 Shiny.addCustomMessageHandler("reduction_ready", (msg) => {
   try {
-    const xFileURL = window.location.origin + "/data/reduction/" + msg.xFile;
-    const yFileURL = window.location.origin + "/data/reduction/" + msg.yFile;
+    const reductionURL =
+      window.location.origin + "/data/reduction/" + msg.reductionFile;
     (async () => {
       // show spinner
       if (mainPlotSpinner.style.display === "none") {
         mainPlotSpinner.style.display = "flex";
       }
 
-      const df = {};
-      const xRes = await qs2ReadFromUrl(webR, shelter, xFileURL);
-      df["X"] = new Float32Array(await xRes.toTypedArray());
-      const yRes = await qs2ReadFromUrl(webR, shelter, yFileURL);
-      df["Y"] = new Float32Array(await yRes.toTypedArray());
+      const table = await readArrowIPC(reductionURL);
+      const df = {
+        X: getFloat32Column(table, "X"),
+        Y: getFloat32Column(table, "Y"),
+      };
       reglElementData.updateReductionData(df);
-      await shelter.purge();
       Shiny.setInputValue("reductionProcessed", true, { priority: "event" });
       console.log("reduction", df);
 
@@ -397,10 +400,9 @@ Shiny.addCustomMessageHandler("pca_ready", (msg) => {
       }
 
       const stdevURL = `${window.location.origin}/data/reduction/${msg.stdevFile}`;
-      const stdevRes = await qs2ReadFromUrl(webR, shelter, stdevURL);
-      const stdevArray = new Float32Array(await stdevRes.toTypedArray());
+      const table = await readArrowIPC(stdevURL);
+      const stdevArray = getFloat32Column(table, "stdev");
       reglElementData.updatePcaStdev(stdevArray);
-      await shelter.purge();
       syncElbowPlotPanelState();
       requestFloatingPlotRefresh(["floatingElbowPlot"]);
     })().catch((error) => {
@@ -414,51 +416,13 @@ Shiny.addCustomMessageHandler("pca_ready", (msg) => {
 Shiny.addCustomMessageHandler("meta_ready", (msg) => {
   try {
     const metaURL = window.location.origin + "/data/meta/" + msg.metaFile;
-    //let meta = {}
     (async () => {
       // show main plot spinner
       if (mainPlotSpinner.style.display === "none") {
         mainPlotSpinner.style.display = "flex";
       }
-      const res = await qs2ReadFromUrl(webR, shelter, metaURL);
-      const out = {};
-      const loadedData = await res.toObject({ depth: 1 });
-      console.log(loadedData);
-      //const out = await res.toObject();
-      for (const key in loadedData) {
-        console.log("reading:", key);
-        const e = await loadedData[key].toObject({ depth: 1 });
-        console.log("reading succeed", e);
-        const dataType = await e.type.toString();
-        if (dataType === "number") {
-          const dataArray = await e.value.toArray();
-          if (isIntegerArray(dataArray)) {
-            out[key] = {
-              type: dataType,
-              value: Int32Array.from(dataArray),
-            };
-          } else {
-            out[key] = {
-              type: dataType,
-              value: Float32Array.from(dataArray),
-            };
-          }
-        } else if (dataType === "category") {
-          const dataObject = {};
-          const catData = await e.value.toObject({ depth: 1 });
-
-          const catNames = Object.keys(catData);
-          for (const cat of catNames) {
-            dataObject[cat] = await catData[cat].toTypedArray();
-            // original R array starts from 1
-            // here convert it to javascript convention
-            dataObject[cat] = dataObject[cat].map((e) => e - 1);
-          }
-          out[key] = { type: dataType, value: dataObject };
-        } else {
-          out[key] = { type: dataType, value: [] };
-        }
-      }
+      const table = await readArrowIPC(metaURL);
+      const out = parseMetaFromArrow(table);
       console.log("metaData", out);
       reglElementData.updateCellMetaData(out);
       const nonNumericCols = getNonNumericCols(reglElementData);
@@ -479,7 +443,6 @@ Shiny.addCustomMessageHandler("meta_ready", (msg) => {
 
       Shiny.setInputValue("metaCols", nonNumericCols);
       Shiny.setInputValue("metaProcessed", true, { priority: "event" });
-      await shelter.purge();
 
       // do not hide the spinner, since it will trigger the reglScatter_plot immediately
     })().catch((error) => {
@@ -496,10 +459,9 @@ Shiny.addCustomMessageHandler("expr_ready", (msg) => {
   try {
     const exprURL = window.location.origin + "/data/expr/" + msg.exprFile;
     (async () => {
+      const table = await readArrowIPC(exprURL);
       const expr = {};
-      const res = await qs2ReadFromUrl(webR, shelter, exprURL);
-      expr[msg.geneName] = new Float32Array(await res.toTypedArray());
-      await shelter.purge();
+      expr[msg.geneName] = getFloat32Column(table, "expr");
       reglElementData.updateExpressionData(expr);
       console.log("exprData", reglElementData.origData.expressionData);
       const feature = Object.keys(expr)[0];

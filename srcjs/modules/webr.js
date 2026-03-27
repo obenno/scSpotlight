@@ -36,19 +36,12 @@ export async function initWebRInstance() {
     `
 webr::mount("/library", sourceURL)
 .libPaths(c(.libPaths(), "/library"))
-if (!requireNamespace("qs2", quietly = TRUE)) {
-  webr::install("qs2", repos = "https://repo.r-wasm.org/")
-}
-if (!requireNamespace("qs2", quietly = TRUE)) {
-  stop("Package 'qs2' is required in the webR mounted library and runtime install failed.")
-}
 library(ggplot2)
 library(scales)
 library(scattermore)
 library(dplyr)
 library(patchwork)
 library(cowplot)
-library(qs2)
 options(device=webr::canvas)
 `,
     {
@@ -224,158 +217,6 @@ wrap_plots(pList, ncol=ncol)
   //console.log("new library: ", res);
 }
 
-export async function qs2ReadFromUrl(webR, shelter, url, ext = ".qs2") {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch ${url}: ${response.status} ${response.statusText}`);
-  }
-
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  const tempPath = `/${Math.random().toString(36).slice(2, 10)}${ext}`;
-  await webR.FS.writeFile(tempPath, bytes);
-
-  try {
-    return await shelter.evalR(
-      `qs2::qs_read(path)`,
-      {
-        env: { path: tempPath },
-        withAutoprint: false,
-        captureStreams: true,
-        captureConditions: true,
-      },
-    );
-  } finally {
-    try {
-      await webR.FS.unlink(tempPath);
-    } catch (_) {
-      // ignore cleanup errors
-    }
-  }
-}
-
-export async function qsReadNumVector(shelter, url) {
-  let now = new Date();
-  console.log(`start qs reading: ${now.toLocaleTimeString()}`);
-  //const randomString = Math.random().toString(36).substring(2, 10);
-  //const vfsPath = randomString + ".qs";
-  //const uint8Array = new Uint8Array(buffer);
-  //await webR.FS.writeFile(vfsPath, uint8Array);
-
-  let res = await shelter.evalR(
-    `
-d <- local({
-  tf <- tempfile(fileext = ".qs2")
-  on.exit(unlink(tf), add = TRUE)
-  utils::download.file(url, tf, mode = "wb", quiet = TRUE)
-  qs2::qs_read(tf)
-})
-d
-`,
-    {
-      env: {
-        url: url,
-      },
-      withAutoprint: false,
-      captureStreams: true,
-      captureConditions: true,
-    },
-  );
-  // toTypedArray() return float64
-  // convert to float32 array
-  const out = new Float32Array(await res.toTypedArray());
-  // destroy res to release memory
-  await shelter.purge();
-  now = new Date();
-  console.log(`finished qs reading: ${now.toLocaleTimeString()}`);
-  return out;
-}
-
-export async function qsReadList(shelter, url) {
-  let now = new Date();
-  console.log(`start qs reading: ${now.toLocaleTimeString()}`);
-
-  let res = await shelter.evalR(
-    `
-d <- local({
-  tf <- tempfile(fileext = ".qs2")
-  on.exit(unlink(tf), add = TRUE)
-  utils::download.file(url, tf, mode = "wb", quiet = TRUE)
-  qs2::qs_read(tf)
-})
-d
-`,
-    {
-      env: {
-        url: url,
-      },
-      withAutoprint: false,
-      captureStreams: true,
-      captureConditions: true,
-    },
-  );
-
-  let idx = 0;
-  const out = {};
-  const colNames = Object.keys(await res.toObject({ depth: 1 }));
-  //const out = await res.toObject();
-  for await (const i of res) {
-    const e = await i.toObject({ depth: 1 });
-
-    const dataType = await e.type.toString();
-    if (dataType === "number") {
-      const dataArray = await e.value.toArray();
-      if (isIntegerArray(dataArray)) {
-        out[colNames[idx]] = {
-          type: dataType,
-          value: Int32Array.from(dataArray),
-        };
-      } else {
-        out[colNames[idx]] = {
-          type: dataType,
-          value: Float32Array.from(dataArray),
-        };
-      }
-    } else if (dataType === "category") {
-      const dataObject = {};
-      const catData = await e.value.toObject({ depth: 1 });
-      const catNames = Object.keys(catData);
-      for (const cat of catNames) {
-        dataObject[cat] = await catData[cat].toTypedArray();
-      }
-      out[colNames[idx]] = { type: dataType, value: dataObject };
-    } else {
-      out[colNames[idx]] = { type: dataType, value: [] };
-    }
-    //df[colNames[idx]] = out["values"];
-    idx++;
-  }
-  // destroy res to release memory
-  await shelter.purge();
-
-  now = new Date();
-  console.log(`finished looping: ${now.toLocaleTimeString()}`);
-  return out;
-}
-
-export async function qsRead(shelter) {
-  let fn = await shelter.evalR(
-    `
-function(url){
-    tf <- tempfile(fileext = ".qs2")
-    on.exit(unlink(tf), add = TRUE)
-    utils::download.file(url, tf, mode = "wb", quiet = TRUE)
-    qs2::qs_read(tf)
-}
-`,
-    {
-      withAutoprint: false,
-      captureStreams: true,
-      captureConditions: true,
-    },
-  );
-  return fn;
-}
-
 export async function vlnPlot(
   shelter,
   figWidth,
@@ -542,7 +383,3 @@ print(p)
 
   return result;
 }
-
-// helper function to check integer array and floating number array
-export const isFloatArray = (arr) => arr.every((num) => !Number.isInteger(num));
-export const isIntegerArray = (arr) => arr.every(Number.isInteger);

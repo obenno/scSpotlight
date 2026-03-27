@@ -89,7 +89,8 @@ app_server <- function(input, output, session) {
     mod_CellCycling_server(
         "cellCycling",
         seuratObj,
-        inputData$selectedAssay
+        inputData$selectedAssay,
+        metaUpdateIndicator
     )
 
     observeEvent(input$metaProcessed, {

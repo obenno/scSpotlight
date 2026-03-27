@@ -16,7 +16,8 @@ mod_UpdateMetaData_ui <- function(id) {
     
 #' UpdateMetaData Server Functions
 #'
-#' @noRd 
+#' @noRd
+#' @importFrom arrow as_arrow_table write_ipc_stream
 mod_UpdateMetaData_server <- function(id,
                                       metaUpdateIndicator,
                                       metaProcessed){
@@ -30,34 +31,27 @@ mod_UpdateMetaData_server <- function(id,
                 con <- duckConnect(session)
                 on.exit(DBI::dbDisconnect(con))
                 d <- queryDuckMeta(con, "metaData")
-                d <- d %>% mutate(cells=1:nrow(d)) %>% as_tibble()
+                d <- d %>% mutate(cells = seq_len(nrow(d)) - 1L) %>% as_tibble()
                 stopifnot(file.exists(dirPath))
-                out = list()
-                for(i in seq_along(colnames(d))){
-                    data <- d %>% dplyr::pull(i)
-                    if(is.numeric(data)){
-                        data[is.na(data)] <- 0
-                        data[is.nan(data)] <- 0
-                        data[is.null(data)] <- 0
-                        data[is.infinite(data)] <- 0
-                        k <- list(
-                            type = "number",
-                            value = data
-                        )
-                    }else{
-                        k <- list(
-                            type = "category",
-                            value = split(seq_along(data), data)
-                        )
+
+                ## Clean numeric columns and convert character to factor
+                ## (Arrow encodes factors as dictionary-encoded columns)
+                for (col in colnames(d)) {
+                    if (is.numeric(d[[col]])) {
+                        v <- d[[col]]
+                        v[is.na(v)] <- 0
+                        v[is.nan(v)] <- 0
+                        v[is.null(v)] <- 0
+                        v[is.infinite(v)] <- 0
+                        d[[col]] <- v
+                    } else if (is.character(d[[col]]) || is.logical(d[[col]])) {
+                        d[[col]] <- as.factor(d[[col]])
                     }
-                    out[[i]] <- k
+                    ## factors stay as-is — Arrow will encode them as dictionary
                 }
-                names(out) <- colnames(d)
-                filePath <- file.path(
-                    dirPath,
-                    hash_md5("meta")
-                )
-                qs_save(out, filePath, compress_level = 9L)
+
+                filePath <- file.path(dirPath, hash_md5("meta"))
+                write_ipc_stream(as_arrow_table(d), filePath)
 
                 return(list(metaFile = basename(filePath)))
 

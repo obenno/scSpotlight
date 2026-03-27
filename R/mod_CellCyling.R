@@ -27,7 +27,8 @@ mod_CellCycling_ui <- function(id){
 #' @noRd
 mod_CellCycling_server <- function(id,
                                    seuratObj,
-                                   assay){
+                                   assay,
+                                   metaUpdateIndicator){
     moduleServer( id, function(input, output, session){
         ns <- session$ns
         observeEvent(input$addCycling, {
@@ -76,6 +77,7 @@ mod_CellCycling_server <- function(id,
                             assay = assay(),
                             data = rownames_to_column(seuratObj()[[]], "cell")
                         )
+                        metaUpdateIndicator(metaUpdateIndicator() + 1)
                         showNotification(
                             ui = "Successfully Added!",
                             action = NULL,

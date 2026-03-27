@@ -30,7 +30,6 @@ Imports:
     magrittr,
     plotly,
     promises,
-    qs2,
     readr,
     readxl,
     RhpcBLASctl,
