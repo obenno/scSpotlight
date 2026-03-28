@@ -107,6 +107,12 @@ docker run -p 8081:8081 scspotlight \
 4. Merge to `dev` only after checks pass.
 5. Promote tested changes via PR from `dev` -> `main`.
 
+### PR Summary Expectations
+- PR summaries should be detailed enough to preserve implementation context for future review.
+- Include, when relevant: overall goal, server-side changes, client-side changes, performance impact, correctness/safety improvements, caching or state-management changes, and validation performed.
+- Prefer repository file references and concrete behavior changes over vague summaries like "refactor" or "cleanup".
+- When a PR changes interaction contracts or architectural patterns, also update `DEVELOPMENT.md` with the rationale and behavior rules.
+
 ### Review Feedback Handling
 - Reply to each review thread with one of: fixed, partially fixed, or not changed.
 - When fixed, reference commit SHA or file path.
