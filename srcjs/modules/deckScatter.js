@@ -131,6 +131,11 @@ export class reglScatterCanvas {
     this.origData = this.model.origData;
   }
 
+  updateCellMetaDataPatch(cellMetaDataPatch) {
+    this.model.setData({ cellMetaDataPatch });
+    this.origData = this.model.origData;
+  }
+
   updateExpressionData(expressionData) {
     this.model.setData({ expressionData });
     this.origData = this.model.origData;

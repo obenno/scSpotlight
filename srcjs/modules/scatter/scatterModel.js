@@ -57,7 +57,13 @@ export class ScatterModel {
     this.plotMetaData.catColors = [];
   }
 
-  setData({ reductionData = null, cellMetaData = null, expressionData = null, pcaStdev = undefined } = {}) {
+  setData({
+    reductionData = null,
+    cellMetaData = null,
+    cellMetaDataPatch = null,
+    expressionData = null,
+    pcaStdev = undefined,
+  } = {}) {
     if (reductionData) {
       Object.keys(reductionData).forEach((key) => {
         this.origData.reductionData[key] = reductionData[key];
@@ -66,6 +72,13 @@ export class ScatterModel {
 
     if (cellMetaData) {
       this.origData.cellMetaData = cellMetaData;
+    }
+
+    if (cellMetaDataPatch) {
+      this.origData.cellMetaData = {
+        ...this.origData.cellMetaData,
+        ...cellMetaDataPatch,
+      };
     }
 
     if (expressionData) {

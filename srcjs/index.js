@@ -413,6 +413,33 @@ Shiny.addCustomMessageHandler("pca_ready", (msg) => {
   }
 });
 
+const syncMetaUiAfterUpdate = ({ fullTransfer = false } = {}) => {
+  const nonNumericCols = getNonNumericCols(reglElementData);
+
+  emptyDropOptions(vlnDropDownId);
+  updateDropOptions(vlnDropDownId);
+
+  markVlnPlotDirty();
+  markDotPlotDirty();
+  markFeaturePlotDirty();
+  requestFloatingPlotRefresh([
+    "floatingVlnPlot",
+    "floatingDotPlot",
+    "floatingFeaturePlot",
+  ]);
+
+  Shiny.setInputValue("metaCols", nonNumericCols);
+  if (fullTransfer) {
+    Shiny.setInputValue("metaProcessed", true, { priority: "event" });
+  } else {
+    Shiny.setInputValue(
+      "metaPatchProcessed",
+      { timestamp: Date.now() },
+      { priority: "event" },
+    );
+  }
+};
+
 Shiny.addCustomMessageHandler("meta_ready", (msg) => {
   try {
     const metaURL = window.location.origin + "/data/meta/" + msg.metaFile;
@@ -425,26 +452,32 @@ Shiny.addCustomMessageHandler("meta_ready", (msg) => {
       const out = parseMetaFromArrow(table);
       console.log("metaData", out);
       reglElementData.updateCellMetaData(out);
-      const nonNumericCols = getNonNumericCols(reglElementData);
-      const numericCols = getNumericCols(reglElementData);
-
-      // update vlnplot dropdown list
-      emptyDropOptions(vlnDropDownId);
-      updateDropOptions(vlnDropDownId);
-
-      markVlnPlotDirty();
-      markDotPlotDirty();
-      markFeaturePlotDirty();
-      requestFloatingPlotRefresh([
-        "floatingVlnPlot",
-        "floatingDotPlot",
-        "floatingFeaturePlot",
-      ]);
-
-      Shiny.setInputValue("metaCols", nonNumericCols);
-      Shiny.setInputValue("metaProcessed", true, { priority: "event" });
+      syncMetaUiAfterUpdate({ fullTransfer: true });
 
       // do not hide the spinner, since it will trigger the reglScatter_plot immediately
+    })().catch((error) => {
+      console.error("There was a problem:", error);
+      mainPlotSpinner.style.display = "none";
+    });
+  } catch (error) {
+    console.error("There was a problem:", error);
+    mainPlotSpinner.style.display = "none";
+  }
+});
+
+Shiny.addCustomMessageHandler("meta_patch_ready", (msg) => {
+  try {
+    const metaURL = window.location.origin + "/data/meta/" + msg.metaFile;
+    (async () => {
+      if (mainPlotSpinner.style.display === "none") {
+        mainPlotSpinner.style.display = "flex";
+      }
+
+      const table = await readArrowIPC(metaURL);
+      const out = parseMetaFromArrow(table);
+      console.log("metaPatch", out);
+      reglElementData.updateCellMetaDataPatch(out);
+      syncMetaUiAfterUpdate({ fullTransfer: false });
     })().catch((error) => {
       console.error("There was a problem:", error);
       mainPlotSpinner.style.display = "none";

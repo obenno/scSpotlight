@@ -244,15 +244,19 @@ These changes were implemented with the repo's large-dataset constraints in mind
 - Avoid auto-redrawing floating panels on every selection change.
 - Keep main-panel expression handling single-gene to match current rendering assumptions.
 - Decode Arrow dictionary-encoded metadata from index buffers directly in `srcjs/modules/arrowReader.js` instead of calling `col.get(j)` for every row. This preserves the Arrow IPC migration's performance benefit for 1M+ cells by avoiding slow per-element Arrow accessor calls on categorical metadata columns.
+- Keep plot refresh signaling separate from transfer completion state. `R/app_server.R` now increments a dedicated `plotRefreshIndicator` when full metadata/reduction transfers finish, while view-driven redraws continue to use `scatterUpdateIndicator`. This prevents `mod_mainClusterPlot_server()` from directly depending on `metaProcessed()` and `reductionProcessed()` as redraw triggers.
+- Prefer partial metadata transfers for column-scoped changes. `R/mod_UpdateMetaData.R` supports Arrow IPC patches via `meta_patch_ready`, and `srcjs/index.js` merges them into the existing client metadata object instead of replacing the entire metadata payload. `Cell Cycling` uses this path for `S.Score`, `G2M.Score`, and `Phase`.
 
 ## Validation Performed
 
 Recent validation included:
 
 - `pixi run test-js`
+- `pixi run R -e 'devtools::document()'`
+- `pixi run build-js`
 - parse validation for `R/app_ui.R`
 
-At the time of writing, the JS test suite passed with 54 tests.
+At the time of writing, the JS test suite passed with 55 tests.
 
 ## Files to Check for Future Changes
 
@@ -264,6 +268,9 @@ If behavior changes again, review these files together:
 - `srcjs/modules/featureSparkLine.js`
 - `srcjs/modules/scatter/scatterModel.js`
 - `srcjs/modules/deckScatter.js`
+- `R/mod_UpdateMetaData.R`
+- `R/mod_mainClusterPlot.R`
+- `R/app_server.R`
 - `srcjs/modules/floatingPlots.js`
 
 ## Suggested Follow-up Discipline

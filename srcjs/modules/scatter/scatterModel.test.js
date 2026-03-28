@@ -94,6 +94,20 @@ function buildModel() {
 }
 
 describe("ScatterModel mode derivation", () => {
+  it("merges metadata patches without replacing existing columns", () => {
+    const model = buildModel();
+    model.setData({
+      cellMetaDataPatch: {
+        Phase: { value: ["G1", "S", "G2M", "G1", "S", "G2M", "G1", "S"] },
+      },
+    });
+
+    expect(model.origData.cellMetaData.group).toBeDefined();
+    expect(model.origData.cellMetaData.cells).toBeDefined();
+    expect(model.origData.cellMetaData.Phase).toBeDefined();
+    expect(model.origData.cellMetaData.Phase.value[0]).toBe("G1");
+  });
+
   it("stores PCA standard deviations as typed array data", () => {
     const model = buildModel();
     expect(model.origData.pcaStdev).toBeInstanceOf(Float32Array);

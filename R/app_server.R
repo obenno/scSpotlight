@@ -48,6 +48,10 @@ app_server <- function(input, output, session) {
     reductionUpdateIndicator <- reactiveVal(0)
     ## indicator for invoking regl plot
     scatterUpdateIndicator <- reactiveVal(0)
+    ## indicator for plot refresh after data transfer completion
+    plotRefreshIndicator <- reactiveVal(0)
+    ## request for partial metadata transfer
+    metaPatchRequest <- reactiveVal(NULL)
     ## Init value to store user defined groups/metaData
     userMetaData <- reactiveVal(NULL)
 
@@ -90,21 +94,32 @@ app_server <- function(input, output, session) {
         "cellCycling",
         seuratObj,
         inputData$selectedAssay,
-        metaUpdateIndicator
+        metaPatchRequest
     )
 
     observeEvent(input$metaProcessed, {
         metaProcessed(input$metaProcessed)
+        if (isTRUE(input$metaProcessed)) {
+            plotRefreshIndicator(plotRefreshIndicator() + 1)
+        }
     })
     ## Update metaData
     mod_UpdateMetaData_server(
         "updateMetaData",
         metaUpdateIndicator,
+        metaPatchRequest,
         metaProcessed
     )
 
     observeEvent(input$reductionProcessed, {
         reductionProcessed(input$reductionProcessed)
+        if (isTRUE(input$reductionProcessed)) {
+            plotRefreshIndicator(plotRefreshIndicator() + 1)
+        }
+    })
+
+    observeEvent(input$metaPatchProcessed, {
+        plotRefreshIndicator(plotRefreshIndicator() + 1)
     })
     ## Update reductions
     mod_UpdateReduction_server(
@@ -156,6 +171,7 @@ app_server <- function(input, output, session) {
         "mainClusterPlot",
         reductionProcessed,
         metaProcessed,
+        plotRefreshIndicator,
         scatterUpdateIndicator,
         categoryInfo$group.by,
         categoryInfo$split.by,
