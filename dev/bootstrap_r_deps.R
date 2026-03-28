@@ -2,8 +2,26 @@
 
 source("dev/r_dep_utils.R")
 
-include_suggests <- identical(Sys.getenv("SCSPOTLIGHT_INSTALL_SUGGESTS"), "true")
-required <- required_description_packages(include_suggests = include_suggests)
+prepare_pixi_r_session(clear_toolchain = TRUE)
+
+required <- required_description_packages(include_suggests = FALSE)
+perf_pkgs <- optional_performance_packages()
+
+if (length(perf_pkgs)) {
+    message(
+        "Optional Seurat performance packages are not installed by `pixi run setup`: ",
+        paste(perf_pkgs, collapse = ", "),
+        "."
+    )
+    message(
+        "Install them later with `pixi run install-optional-packages` when needed."
+    )
+    message(
+        "Hard dependency bootstrap will continue with: ",
+        paste(perf_pkgs, collapse = ", "),
+        " left out."
+    )
+}
 
 fallback <- required
 if (identical(Sys.info()[["sysname"]], "Linux")) {

@@ -583,6 +583,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-64/r-dplyr-1.2.0-r45hed9a748_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/r-dqrng-0.3.2-r45ha730edb_2.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/r-dt-0.34.0-r45hc72bb7e_1.conda
+      - conda: https://conda.anaconda.org/conda-forge/osx-64/r-duckdb-1.5.1-r45h384437d_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/r-ellipsis-0.3.2-r45h735ac91_4.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/r-evaluate-1.0.5-r45hc72bb7e_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/r-fansi-1.0.7-r45h735ac91_0.conda
@@ -9702,6 +9703,18 @@ packages:
   license_family: MIT
   size: 14384388
   timestamp: 1769683336007
+- conda: https://conda.anaconda.org/conda-forge/osx-64/r-duckdb-1.5.1-r45h384437d_0.conda
+  sha256: 79ca5e8ba06291c2745f869e643c901d2cec5b7090fb26b847be3890746fd23f
+  md5: 07058deb4ebe174594b84762949e61e3
+  depends:
+  - __osx >=11.0
+  - libcxx >=19
+  - r-base >=4.5,<4.6.0a0
+  - r-dbi
+  license: MIT
+  license_family: MIT
+  size: 12361325
+  timestamp: 1774522528180
 - conda: https://conda.anaconda.org/conda-forge/linux-64/r-ellipsis-0.3.2-r45h54b55ab_4.conda
   sha256: 2e4660ab89eaa40874abc78b0c5462f8539da9f6c7a96d3afbc3ff1e233fc727
   md5: 7ab2ebe9016d83ae37d90080bb9e52d5
