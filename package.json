@@ -17,10 +17,14 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "overrides": {
+    "picomatch": "^4.0.4",
+    "tsx": "^4.21.0"
+  },
   "devDependencies": {
     "jsdom": "^24.1.3",
-    "vite": "^5.0.0",
-    "vitest": "^3.2.4"
+    "vite": "^8.0.3",
+    "vitest": "^4.1.2"
   },
   "dependencies": {
     "@deck.gl/core": "^9.0.0",
