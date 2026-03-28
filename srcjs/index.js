@@ -80,9 +80,8 @@ const elbowPlotStatusId = "floatingElbowPlotStatus";
 
 var reglElementData = new reglScatterCanvas("reglScatter");
 
-// init webR instance for reading reduction and expr data
-// It seems put two async webr jobs in the same instance might cause data processing conflicts
-// We found this when reading reduction and meta data with just one instance
+// init webR instance for browser-side plotting helpers
+// keep a dedicated shelter because concurrent plot jobs can otherwise step on shared state
 let webR;
 let shelter;
 
