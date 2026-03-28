@@ -82,7 +82,6 @@ options(device=webr::canvas)
 //webr::mount("/library", paste0(domainURL, "www/webr/vfs/library.data"))
 //.libPaths(c(.libPaths(), "/library"))
 //library(dplyr)
-//library(qs2)
 //options(device=webr::canvas)
 //`,
 //    {

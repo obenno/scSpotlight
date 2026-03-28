@@ -11,7 +11,7 @@ For recent frontend interaction decisions and UI behavior notes, see `DEVELOPMEN
 All code contributions must consider performance implications for large datasets (1M+ cells).
 
 ### Tech Stack
-- **Backend**: R, Shiny, Seurat (v5), DuckDB (on-disk queries), qs2 (fast serialization)
+- **Backend**: R, Shiny, Seurat (v5), DuckDB (on-disk queries), Arrow IPC (versioned binary transfer)
 - **Frontend**: JavaScript (ES6), deck.gl (WebGL), D3.js, webR
 - **Build**: [Vite](https://vitejs.dev/) for JavaScript bundling (native ES modules, fast HMR)
 
@@ -45,8 +45,8 @@ pixi run npm run test:watch    # Run tests in watch mode
 pixi run npm run test:scatter-model  # Run specific test file
 ```
 
-### webR VFS Library Rebuild (qs2 + plotting stack)
-Use this when webR package availability changes (e.g. `qs2`) or when refreshing browser-side R libraries.
+### webR VFS Library Rebuild (plotting stack)
+Use this when webR package availability changes or when refreshing browser-side R libraries.
 
 ```bash
 # Build package repo + VFS image in a clean toolchain container
@@ -55,7 +55,7 @@ docker run --rm -v "/tmp/scspotlight-webrbuild:/output" -w /output ghcr.io/r-was
   Rscript -e "install.packages('pak', repos='https://cloud.r-project.org'); \
               pak::pak('r-wasm/rwasm'); \
               library(rwasm); \
-              add_pkg(c('qs2','ggplot2','scales','scattermore','dplyr','patchwork','cowplot'), dependencies = NA); \
+              add_pkg(c('ggplot2','scales','scattermore','dplyr','patchwork','cowplot'), dependencies = NA); \
               make_vfs_library(compress = TRUE)"
 
 # Deploy VFS files into app static assets
@@ -159,7 +159,7 @@ Adjust rendering parameters based on cell count (see `srcjs/modules/deckScatter.
 
 **R:**
 - Use **DuckDB** for on-disk expression matrix queries (avoid loading full matrix)
-- Use **qs2** package for fast binary serialization (`qs_save`)
+- Use **Arrow IPC** for versioned binary transfer between R and the browser
 - Use **ExtendedTask** + `future_promise` for non-blocking async operations
 - Use `scattermore::geom_scattermost()` for R-generated plots when cells > 30K
 - Consider **BPCells** for very large sparse matrices
@@ -283,10 +283,10 @@ scSpotlight/
 ## Key Patterns
 
 ### R ↔ JavaScript Data Transfer
-1. **R saves data** using `qs2::qs_save()` to temp directory
+1. **R saves data** as versioned Arrow IPC files in the session temp directory
 2. **R notifies JS** via `session$sendCustomMessage()`
-3. **JS fetches data** through webR reader utilities
-4. Data converted to TypedArrays for efficiency
+3. **JS fetches data** through Arrow IPC helpers and may keep cold IPC buffers in a versioned client cache
+4. Data is decoded to TypedArrays / compact metadata structures only when needed for rendering or analysis
 
 ### Reactive Update Flow
 Use indicator `reactiveVal()` counters to trigger cascading updates:
