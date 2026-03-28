@@ -52,11 +52,15 @@ xz = "*"
 r-duckdb = "*"
 
 [target.osx-64.dependencies]
+r-duckdb = "*"
+
+[target.osx-arm64.dependencies]
 
 [target.win-64.dependencies]
 
 [tasks]
-bootstrap-r = "env -u CONDA_PREFIX -u CONDA_DEFAULT_ENV -u CMAKE_PREFIX_PATH -u PKG_CONFIG_PATH -u LIBRARY_PATH -u CPATH -u C_INCLUDE_PATH -u CPLUS_INCLUDE_PATH -u LD_LIBRARY_PATH R_LIBS_USER= R_LIBS_SITE= Rscript dev/bootstrap_r_deps.R"
+bootstrap-r = "Rscript dev/bootstrap_r_deps.R"
+install-optional-packages = "Rscript dev/install_optional_packages.R"
 install-js = "npm install"
 setup = { depends-on = ["install-local", "install-js"] }
 install-local = { cmd = "R CMD INSTALL .", depends-on = ["bootstrap-r"] }
@@ -67,4 +71,4 @@ r-check = "Rscript -e \"devtools::check()\""
 build-pkgdown = "Rscript -e \"pkgdown::build_site_github_pages(new_process = FALSE, install = FALSE)\""
 run-app = "Rscript -e \"scSpotlight::run_app()\""
 run-app-processing = "Rscript -e \"scSpotlight::run_app(runningMode = 'processing')\""
-doctor-env = "R_LIBS_USER= R_LIBS_SITE= Rscript dev/doctor_env.R"
+doctor-env = "Rscript dev/doctor_env.R"

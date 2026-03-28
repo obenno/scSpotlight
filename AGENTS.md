@@ -27,6 +27,11 @@ pixi run run-app                # Start app in viewer mode
 pixi run run-app-processing     # Start app in processing mode
 ```
 
+Notes:
+- Pixi is the only project environment manager; the repo does not use `renv`.
+- `pixi run setup` is written to work in native Windows shells as well as Unix shells.
+- `r-duckdb` currently resolves directly from conda-forge on Linux and macOS Intel; macOS Apple Silicon and Windows use the `pak` fallback path for `duckdb`.
+
 ### R Package Commands
 ```r
 devtools::document()            # Generate roxygen2 documentation
