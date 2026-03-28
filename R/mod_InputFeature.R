@@ -228,6 +228,26 @@ mod_InputFeature_server <- function(id,
           input$cachedExprKeys
       })
 
+      invoke_expression_transfer <- function(feature, create_sparkline = TRUE){
+          req(file.exists(session$userData$duckdb), assay(), isTruthy(feature))
+
+          if (create_sparkline) {
+              start_extract_expr(feature, session)
+          }
+
+          exprVersion <- geneUpdateIndicator()
+          promise_assay <- assay()
+          promise_filePath <- file.path(
+              session$userData$tempDir,
+              "expr",
+              hash_md5(paste0("expr_", promise_assay, "_", feature, "_", exprVersion))
+          )
+          extract_expression$invoke(assay = promise_assay,
+                                    features = feature,
+                                    filePath = promise_filePath,
+                                    exprVersion = exprVersion)
+      }
+
       observeEvent(input$geneSet, {
           req(uploadedFeatureList(), input$geneSet,
               file.exists(session$userData$duckdb), assay(), genes())
@@ -265,7 +285,7 @@ mod_InputFeature_server <- function(id,
           exprVersion <- geneUpdateIndicator()
           cacheKeys <- if (isTruthy(cachedExprKeys())) cachedExprKeys() else character()
           cachedFeatures <- filteredFeatures[vapply(filteredFeatures, function(feature) {
-              paste0(exprVersion, "::", promise_assay, "::", feature) %in% cacheKeys
+              paste0(exprVersion, cache_key_delim, promise_assay, cache_key_delim, feature) %in% cacheKeys
           }, logical(1))]
 
           for(feature in cachedFeatures){
@@ -281,20 +301,9 @@ mod_InputFeature_server <- function(id,
           }
 
           selectedFeatures <- setdiff(filteredFeatures, union(storedFeatures(), cachedFeatures))
-          promise_dbFile <- session$userData$duckdb
 
           for(feature in selectedFeatures){
-              start_extract_expr(feature, session) # create sparkline elements
-              promise_feature <- feature
-              promise_filePath <- file.path(
-                  session$userData$tempDir,
-                  "expr",
-                  hash_md5(paste0("expr_", promise_assay, "_", promise_feature, "_", exprVersion))
-              )
-              extract_expression$invoke(assay = promise_assay,
-                                        features = promise_feature,
-                                        filePath = promise_filePath,
-                                        exprVersion = exprVersion)
+              invoke_expression_transfer(feature, create_sparkline = TRUE)
               message("invoked extendedTask")
           }
       }, priority = -10, ignoreNULL = FALSE)
@@ -339,7 +348,7 @@ mod_InputFeature_server <- function(id,
           ##    })
           ##}else{
           exprVersion <- geneUpdateIndicator()
-          cacheKey <- paste0(exprVersion, "::", assay(), "::", input$features[1])
+          cacheKey <- paste0(exprVersion, cache_key_delim, assay(), cache_key_delim, input$features[1])
 
           if(input$features %in% storedFeatures()){
               showNotification(
@@ -361,22 +370,15 @@ mod_InputFeature_server <- function(id,
                   )
               )
           }else{
-
-              start_extract_expr(input$features, session)
-              promise_assay <- assay()
-              promise_features <- input$features[1]
-              promise_filePath <- file.path(
-                  session$userData$tempDir,
-                  "expr",
-                  hash_md5(paste0("expr_", promise_assay, "_", promise_features, "_", exprVersion))
-              )
-              extract_expression$invoke(assay = promise_assay,
-                                        features = promise_features,
-                                        filePath = promise_filePath,
-                                        exprVersion = exprVersion)
+              invoke_expression_transfer(input$features[1], create_sparkline = TRUE)
           }
 
       }, priority = -10, ignoreNULL = FALSE) # lower priority than plottingMode()
+
+      observeEvent(input$cacheMissFeature, {
+          req(file.exists(session$userData$duckdb), assay(), isTruthy(input$cacheMissFeature))
+          invoke_expression_transfer(input$cacheMissFeature, create_sparkline = FALSE)
+      }, priority = -10, ignoreNULL = TRUE)
 
       observeEvent(input$plotFeature, {
           message("Plotting featuerPlot...")

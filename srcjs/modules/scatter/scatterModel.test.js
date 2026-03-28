@@ -98,7 +98,10 @@ describe("ScatterModel mode derivation", () => {
     const model = buildModel();
     model.setData({
       cellMetaDataPatch: {
-        Phase: { value: ["G1", "S", "G2M", "G1", "S", "G2M", "G1", "S"] },
+        Phase: {
+          type: "category",
+          value: ["G1", "S", "G2M", "G1", "S", "G2M", "G1", "S"],
+        },
       },
     });
 
@@ -106,6 +109,29 @@ describe("ScatterModel mode derivation", () => {
     expect(model.origData.cellMetaData.cells).toBeDefined();
     expect(model.origData.cellMetaData.Phase).toBeDefined();
     expect(model.origData.cellMetaData.Phase.value[0]).toBe("G1");
+  });
+
+  it("rejects metadata patches with mismatched length", () => {
+    const model = buildModel();
+    expect(() => {
+      model.setData({
+        cellMetaDataPatch: {
+          Phase: { type: "category", value: ["G1", "S"] },
+        },
+      });
+    }).toThrow(/length mismatch/);
+  });
+
+  it("rejects metadata patches with mismatched type", () => {
+    const model = buildModel();
+    model.origData.cellMetaData.group.type = "category";
+    expect(() => {
+      model.setData({
+        cellMetaDataPatch: {
+          group: { type: "number", value: [1, 1, 2, 2, 1, 2, 1, 2] },
+        },
+      });
+    }).toThrow(/type mismatch/);
   });
 
   it("stores PCA standard deviations as typed array data", () => {

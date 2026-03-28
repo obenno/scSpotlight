@@ -46,12 +46,14 @@ app_server <- function(input, output, session) {
     metaUpdateIndicator <- reactiveVal(0)
     ## indicator for reduction changes
     reductionUpdateIndicator <- reactiveVal(0)
-    ## indicator for invoking regl plot
+    ## indicator for view-driven plot changes (group.by/split.by/feature toggles)
     scatterUpdateIndicator <- reactiveVal(0)
     ## indicator for plot refresh after data transfer completion
     plotRefreshIndicator <- reactiveVal(0)
     ## request for partial metadata transfer
     metaPatchRequest <- reactiveVal(NULL)
+    ## monotonic counter for partial metadata patch versions
+    metaPatchVersion <- reactiveVal(0)
     ## Init value to store user defined groups/metaData
     userMetaData <- reactiveVal(NULL)
 
@@ -94,7 +96,8 @@ app_server <- function(input, output, session) {
         "cellCycling",
         seuratObj,
         inputData$selectedAssay,
-        metaPatchRequest
+        metaPatchRequest,
+        metaPatchVersion
     )
 
     observeEvent(input$metaProcessed, {

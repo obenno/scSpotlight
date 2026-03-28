@@ -117,25 +117,7 @@ mod_UpdateReduction_server <- function(id,
 
       })
 
-      observeEvent(input$reduction, {
-          req(file.exists(session$userData$duckdb))
-          req(input$reduction!="None")
-
-          reductionVersion <- reductionUpdateIndicator()
-          cacheKey <- paste0(reductionVersion, "::", input$reduction)
-
-          if (isTruthy(input$cachedReductionKeys) && cacheKey %in% input$cachedReductionKeys) {
-              reductionProcessed(FALSE)
-              session$sendCustomMessage(
-                  type = "reduction_cached",
-                  message = list(
-                      reductionName = input$reduction,
-                      reductionVersion = reductionVersion
-                  )
-              )
-              return()
-          }
-
+      invoke_reduction_transfer <- function(reduction_name){
           showNotification(
               ui = div(div(class = c("spinner-border", "spinner-border-sm", "text-primary"),
                            role = "status",
@@ -150,13 +132,39 @@ mod_UpdateReduction_server <- function(id,
           )
           message("Transferring reductionData...")
           reductionProcessed(FALSE)
-          promise_reduction <- input$reduction
           promise_dirPath <- file.path(session$userData$tempDir, "reduction")
-          promise_reductionVersion <- reductionVersion
-          extract_reduction$invoke(reduction = promise_reduction,
+          extract_reduction$invoke(reduction = reduction_name,
                                    dirPath = promise_dirPath,
-                                   reductionVersion = promise_reductionVersion)
+                                   reductionVersion = reductionUpdateIndicator())
+      }
 
+      observeEvent(input$reduction, {
+          req(file.exists(session$userData$duckdb))
+          req(input$reduction!="None")
+
+          reductionVersion <- reductionUpdateIndicator()
+          cacheKey <- paste0(reductionVersion, cache_key_delim, input$reduction)
+
+          if (isTruthy(input$cachedReductionKeys) && cacheKey %in% input$cachedReductionKeys) {
+              reductionProcessed(FALSE)
+              session$sendCustomMessage(
+                  type = "reduction_cached",
+                  message = list(
+                      reductionName = input$reduction,
+                      reductionVersion = reductionVersion
+                  )
+              )
+              return()
+          }
+
+          invoke_reduction_transfer(input$reduction)
+
+      }, priority = -500)
+
+      observeEvent(input$cacheMissReduction, {
+          req(file.exists(session$userData$duckdb))
+          req(isTruthy(input$cacheMissReduction), input$cacheMissReduction != "None")
+          invoke_reduction_transfer(input$cacheMissReduction)
       }, priority = -500)
 
       observeEvent(extract_reduction$status(), {

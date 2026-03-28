@@ -28,7 +28,8 @@ mod_CellCycling_ui <- function(id){
 mod_CellCycling_server <- function(id,
                                    seuratObj,
                                    assay,
-                                   metaPatchRequest){
+                                   metaPatchRequest,
+                                   metaPatchVersion){
     moduleServer( id, function(input, output, session){
         ns <- session$ns
         observeEvent(input$addCycling, {
@@ -77,9 +78,11 @@ mod_CellCycling_server <- function(id,
                             assay = assay(),
                             data = rownames_to_column(seuratObj()[[]], "cell")
                         )
+                        nextPatchVersion <- metaPatchVersion() + 1L
+                        metaPatchVersion(nextPatchVersion)
                         metaPatchRequest(list(
                             cols = c("S.Score", "G2M.Score", "Phase"),
-                            version = as.integer(as.numeric(Sys.time()) * 1000)
+                            version = nextPatchVersion
                         ))
                         showNotification(
                             ui = "Successfully Added!",

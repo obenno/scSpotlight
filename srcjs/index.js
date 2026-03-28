@@ -99,6 +99,29 @@ const ipcCache = {
   exprVersion: null,
 };
 
+const REDUCTION_CACHE_LIMIT = 4;
+const EXPR_CACHE_LIMIT = 100;
+const CACHE_KEY_DELIMITER = "::";
+
+const touchCacheEntry = (cacheMap, key) => {
+  if (!cacheMap.has(key)) return null;
+  const value = cacheMap.get(key);
+  cacheMap.delete(key);
+  cacheMap.set(key, value);
+  return value;
+};
+
+const setCacheEntry = (cacheMap, key, value, limit) => {
+  if (cacheMap.has(key)) {
+    cacheMap.delete(key);
+  }
+  cacheMap.set(key, value);
+  while (cacheMap.size > limit) {
+    const oldestKey = cacheMap.keys().next().value;
+    cacheMap.delete(oldestKey);
+  }
+};
+
 const updateReductionCacheKeys = () => {
   Shiny.setInputValue(
     "updateReduction-cachedReductionKeys",
@@ -116,26 +139,41 @@ const updateExprCacheKeys = () => {
 };
 
 const ensureReductionCacheVersion = (version) => {
+  if (
+    ipcCache.reductionVersion !== null &&
+    Number(version) < Number(ipcCache.reductionVersion)
+  ) {
+    return false;
+  }
+
   if (ipcCache.reductionVersion !== version) {
     ipcCache.reductions.clear();
     ipcCache.reductionVersion = version;
     updateReductionCacheKeys();
   }
+
+  return true;
 };
 
 const ensureExprCacheVersion = (version) => {
+  if (ipcCache.exprVersion !== null && Number(version) < Number(ipcCache.exprVersion)) {
+    return false;
+  }
+
   if (ipcCache.exprVersion !== version) {
     ipcCache.expr.clear();
     ipcCache.exprVersion = version;
     updateExprCacheKeys();
   }
+
+  return true;
 };
 
 const makeReductionCacheKey = (version, reductionName) =>
-  `${version}::${reductionName}`;
+  `${version}${CACHE_KEY_DELIMITER}${reductionName}`;
 
 const makeExprCacheKey = (version, assay, geneName) =>
-  `${version}::${assay}::${geneName}`;
+  `${version}${CACHE_KEY_DELIMITER}${assay}${CACHE_KEY_DELIMITER}${geneName}`;
 
 // init normal shelter for webR to gain better control of the r objects
 //const shelterInstance = await initShelter(plotWebR);
@@ -416,13 +454,20 @@ Shiny.addCustomMessageHandler("reduction_ready", (msg) => {
         mainPlotSpinner.style.display = "flex";
       }
 
-      ensureReductionCacheVersion(msg.reductionVersion);
+      if (!ensureReductionCacheVersion(msg.reductionVersion)) {
+        return;
+      }
       const cacheKey = makeReductionCacheKey(
         msg.reductionVersion,
         msg.reductionName,
       );
       const buffer = await fetchArrowIPCBuffer(reductionURL);
-      ipcCache.reductions.set(cacheKey, buffer);
+      setCacheEntry(
+        ipcCache.reductions,
+        cacheKey,
+        buffer,
+        REDUCTION_CACHE_LIMIT,
+      );
       updateReductionCacheKeys();
 
       const table = decodeArrowIPC(buffer);
@@ -452,14 +497,22 @@ Shiny.addCustomMessageHandler("reduction_cached", (msg) => {
         mainPlotSpinner.style.display = "flex";
       }
 
-      ensureReductionCacheVersion(msg.reductionVersion);
+      if (!ensureReductionCacheVersion(msg.reductionVersion)) {
+        return;
+      }
       const cacheKey = makeReductionCacheKey(
         msg.reductionVersion,
         msg.reductionName,
       );
-      const buffer = ipcCache.reductions.get(cacheKey);
+      const buffer = touchCacheEntry(ipcCache.reductions, cacheKey);
       if (!buffer) {
-        throw new Error(`Cached reduction IPC missing for ${cacheKey}`);
+        updateReductionCacheKeys();
+        Shiny.setInputValue(
+          "updateReduction-cacheMissReduction",
+          msg.reductionName,
+          { priority: "event" },
+        );
+        return;
       }
 
       const table = decodeArrowIPC(buffer);
@@ -472,6 +525,7 @@ Shiny.addCustomMessageHandler("reduction_cached", (msg) => {
     })().catch((error) => {
       console.error("There was a problem:", error);
       mainPlotSpinner.style.display = "none";
+      Shiny.setInputValue("reductionProcessed", false, { priority: "event" });
     });
   } catch (error) {
     console.error("There was a problem:", error);
@@ -582,10 +636,12 @@ Shiny.addCustomMessageHandler("expr_ready", (msg) => {
   try {
     const exprURL = window.location.origin + "/data/expr/" + msg.exprFile;
     (async () => {
-      ensureExprCacheVersion(msg.exprVersion);
+      if (!ensureExprCacheVersion(msg.exprVersion)) {
+        return;
+      }
       const cacheKey = makeExprCacheKey(msg.exprVersion, msg.assay, msg.geneName);
       const buffer = await fetchArrowIPCBuffer(exprURL);
-      ipcCache.expr.set(cacheKey, buffer);
+      setCacheEntry(ipcCache.expr, cacheKey, buffer, EXPR_CACHE_LIMIT);
       updateExprCacheKeys();
 
       const table = decodeArrowIPC(buffer);
@@ -611,7 +667,9 @@ Shiny.addCustomMessageHandler("expr_ready", (msg) => {
         "floatingDotPlot",
         "floatingFeaturePlot",
       ]);
-    })();
+    })().catch((error) => {
+      console.error("There was a problem:", error);
+    });
   } catch (error) {
     console.error("There was a problem:", error);
   }
@@ -620,11 +678,17 @@ Shiny.addCustomMessageHandler("expr_ready", (msg) => {
 Shiny.addCustomMessageHandler("expr_cached", (msg) => {
   try {
     (async () => {
-      ensureExprCacheVersion(msg.exprVersion);
+      if (!ensureExprCacheVersion(msg.exprVersion)) {
+        return;
+      }
       const cacheKey = makeExprCacheKey(msg.exprVersion, msg.assay, msg.geneName);
-      const buffer = ipcCache.expr.get(cacheKey);
+      const buffer = touchCacheEntry(ipcCache.expr, cacheKey);
       if (!buffer) {
-        throw new Error(`Cached expression IPC missing for ${cacheKey}`);
+        updateExprCacheKeys();
+        Shiny.setInputValue("inputFeatures-cacheMissFeature", msg.geneName, {
+          priority: "event",
+        });
+        return;
       }
 
       const table = decodeArrowIPC(buffer);

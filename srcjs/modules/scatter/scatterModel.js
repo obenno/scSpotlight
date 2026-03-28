@@ -57,6 +57,37 @@ export class ScatterModel {
     this.plotMetaData.catColors = [];
   }
 
+  validateCellMetaDataPatch(cellMetaDataPatch) {
+    const expandMeta = this.utils.expandMeta;
+    const existingMeta = this.origData.cellMetaData || {};
+    const expectedLength = existingMeta.cells ? expandMeta(existingMeta.cells).length : null;
+
+    Object.entries(cellMetaDataPatch).forEach(([key, value]) => {
+      if (!value || value.type === undefined || value.value === undefined) {
+        throw new Error(`Invalid metadata patch payload for column ${key}`);
+      }
+
+      if (expectedLength !== null) {
+        const patchLength = expandMeta(value).length;
+        if (patchLength !== expectedLength) {
+          throw new Error(
+            `Metadata patch length mismatch for ${key}: expected ${expectedLength}, got ${patchLength}`,
+          );
+        }
+      }
+
+      if (
+        existingMeta[key] &&
+        existingMeta[key].type !== undefined &&
+        existingMeta[key].type !== value.type
+      ) {
+        throw new Error(
+          `Metadata patch type mismatch for ${key}: expected ${existingMeta[key].type}, got ${value.type}`,
+        );
+      }
+    });
+  }
+
   setData({
     reductionData = null,
     cellMetaData = null,
@@ -75,6 +106,7 @@ export class ScatterModel {
     }
 
     if (cellMetaDataPatch) {
+      this.validateCellMetaDataPatch(cellMetaDataPatch);
       this.origData.cellMetaData = {
         ...this.origData.cellMetaData,
         ...cellMetaDataPatch,
