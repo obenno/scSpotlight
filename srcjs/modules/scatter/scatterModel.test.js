@@ -94,6 +94,46 @@ function buildModel() {
 }
 
 describe("ScatterModel mode derivation", () => {
+  it("merges metadata patches without replacing existing columns", () => {
+    const model = buildModel();
+    model.setData({
+      cellMetaDataPatch: {
+        Phase: {
+          type: "category",
+          value: ["G1", "S", "G2M", "G1", "S", "G2M", "G1", "S"],
+        },
+      },
+    });
+
+    expect(model.origData.cellMetaData.group).toBeDefined();
+    expect(model.origData.cellMetaData.cells).toBeDefined();
+    expect(model.origData.cellMetaData.Phase).toBeDefined();
+    expect(model.origData.cellMetaData.Phase.value[0]).toBe("G1");
+  });
+
+  it("rejects metadata patches with mismatched length", () => {
+    const model = buildModel();
+    expect(() => {
+      model.setData({
+        cellMetaDataPatch: {
+          Phase: { type: "category", value: ["G1", "S"] },
+        },
+      });
+    }).toThrow(/length mismatch/);
+  });
+
+  it("rejects metadata patches with mismatched type", () => {
+    const model = buildModel();
+    model.origData.cellMetaData.group.type = "category";
+    expect(() => {
+      model.setData({
+        cellMetaDataPatch: {
+          group: { type: "number", value: [1, 1, 2, 2, 1, 2, 1, 2] },
+        },
+      });
+    }).toThrow(/type mismatch/);
+  });
+
   it("stores PCA standard deviations as typed array data", () => {
     const model = buildModel();
     expect(model.origData.pcaStdev).toBeInstanceOf(Float32Array);

@@ -36,6 +36,7 @@ mod_mainClusterPlot_ui <- function(id){
 mod_mainClusterPlot_server <- function(id,
                                        reductionProcessed,
                                        metaProcessed,
+                                       plotRefreshIndicator,
                                        scatterUpdateIndicator,
                                        group.by,
                                        split.by,
@@ -49,9 +50,8 @@ mod_mainClusterPlot_server <- function(id,
       ##}, ignoreInit = TRUE)
 
       observeEvent(list(
-          scatterUpdateIndicator(),
-          metaProcessed(),
-          reductionProcessed()
+          plotRefreshIndicator(),
+          scatterUpdateIndicator()
       ), {
           ## Update plots when group.by and split.by changes
           req(metaProcessed())

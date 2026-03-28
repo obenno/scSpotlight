@@ -195,7 +195,7 @@ mod_InputFeature_server <- function(id,
       ## https://cran.r-project.org/web/packages/future/vignettes/future-4-non-exportable-objects.html
       ## future codes needs to be installed before testing:
       ## https://github.com/HenrikBengtsson/future/issues/206
-      extract_expression <- ExtendedTask$new(function(assay, features, layer = "data", filePath) {
+      extract_expression <- ExtendedTask$new(function(assay, features, layer = "data", filePath, exprVersion) {
           future_promise({
               con <- duckConnect(session)
               on.exit(DBI::dbDisconnect(con))
@@ -215,9 +215,38 @@ mod_InputFeature_server <- function(id,
                   arrow_table(expr = Array$create(expr[[features]], type = float32())),
                   filePath
               )
-              return(list(geneName = features, exprFile = basename(filePath)))
+              return(list(
+                  geneName = features,
+                  assay = assay,
+                  exprVersion = exprVersion,
+                  exprFile = basename(filePath)
+              ))
           })
       })
+
+      cachedExprKeys <- reactive({
+          input$cachedExprKeys
+      })
+
+      invoke_expression_transfer <- function(feature, create_sparkline = TRUE){
+          req(file.exists(session$userData$duckdb), assay(), isTruthy(feature))
+
+          if (create_sparkline) {
+              start_extract_expr(feature, session)
+          }
+
+          exprVersion <- geneUpdateIndicator()
+          promise_assay <- assay()
+          promise_filePath <- file.path(
+              session$userData$tempDir,
+              "expr",
+              hash_md5(paste0("expr_", promise_assay, "_", feature, "_", exprVersion))
+          )
+          extract_expression$invoke(assay = promise_assay,
+                                    features = feature,
+                                    filePath = promise_filePath,
+                                    exprVersion = exprVersion)
+      }
 
       observeEvent(input$geneSet, {
           req(uploadedFeatureList(), input$geneSet,
@@ -252,17 +281,29 @@ mod_InputFeature_server <- function(id,
               )
           }
 
-          selectedFeatures <- setdiff(filteredFeatures, storedFeatures())
-          promise_dbFile <- session$userData$duckdb
           promise_assay <- assay()
+          exprVersion <- geneUpdateIndicator()
+          cacheKeys <- if (isTruthy(cachedExprKeys())) cachedExprKeys() else character()
+          cachedFeatures <- filteredFeatures[vapply(filteredFeatures, function(feature) {
+              paste0(exprVersion, cache_key_delim, promise_assay, cache_key_delim, feature) %in% cacheKeys
+          }, logical(1))]
+
+          for(feature in cachedFeatures){
+              start_extract_expr(feature, session)
+              session$sendCustomMessage(
+                  type = "expr_cached",
+                  message = list(
+                      geneName = feature,
+                      assay = promise_assay,
+                      exprVersion = exprVersion
+                  )
+              )
+          }
+
+          selectedFeatures <- setdiff(filteredFeatures, union(storedFeatures(), cachedFeatures))
 
           for(feature in selectedFeatures){
-              start_extract_expr(feature, session) # create sparkline elements
-              promise_feature <- feature
-              promise_filePath <- file.path(session$userData$tempDir, "expr", hash_md5(promise_feature))
-              extract_expression$invoke(assay = promise_assay,
-                                        features = promise_feature,
-                                        filePath = promise_filePath)
+              invoke_expression_transfer(feature, create_sparkline = TRUE)
               message("invoked extendedTask")
           }
       }, priority = -10, ignoreNULL = FALSE)
@@ -306,6 +347,9 @@ mod_InputFeature_server <- function(id,
           ##        message("moduleScore failed:", "\n", e)
           ##    })
           ##}else{
+          exprVersion <- geneUpdateIndicator()
+          cacheKey <- paste0(exprVersion, cache_key_delim, assay(), cache_key_delim, input$features[1])
+
           if(input$features %in% storedFeatures()){
               showNotification(
                   ui = paste0("Features already queried: ", input$features),
@@ -315,18 +359,26 @@ mod_InputFeature_server <- function(id,
                   type = "default",
                   session = session
               )
+          }else if (isTruthy(cachedExprKeys()) && cacheKey %in% cachedExprKeys()){
+              start_extract_expr(input$features[1], session)
+              session$sendCustomMessage(
+                  type = "expr_cached",
+                  message = list(
+                      geneName = input$features[1],
+                      assay = assay(),
+                      exprVersion = exprVersion
+                  )
+              )
           }else{
-
-              start_extract_expr(input$features, session)
-              promise_assay <- assay()
-              promise_features <- input$features[1]
-              promise_filePath <- file.path(session$userData$tempDir, "expr",hash_md5(promise_features))
-              extract_expression$invoke(assay = promise_assay,
-                                        features = promise_features,
-                                        filePath = promise_filePath)
+              invoke_expression_transfer(input$features[1], create_sparkline = TRUE)
           }
 
       }, priority = -10, ignoreNULL = FALSE) # lower priority than plottingMode()
+
+      observeEvent(input$cacheMissFeature, {
+          req(file.exists(session$userData$duckdb), assay(), isTruthy(input$cacheMissFeature))
+          invoke_expression_transfer(input$cacheMissFeature, create_sparkline = FALSE)
+      }, priority = -10, ignoreNULL = TRUE)
 
       observeEvent(input$plotFeature, {
           message("Plotting featuerPlot...")

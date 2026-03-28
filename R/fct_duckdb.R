@@ -387,14 +387,21 @@ queryDuckAssays <- function(con){
 #'
 #' @return A list containing gene's expression, each of the element was neamed by gene's name, and 0 value was discarded.
 #'
-#' @importFrom dplyr tbl collect
+#' @importFrom dplyr tbl collect select all_of
 #' @importFrom DBI dbListTables
 #' @export
-queryDuckMeta <- function(con, meta = "metaData"){
+queryDuckMeta <- function(con, meta = "metaData", cols = NULL){
 
     stopifnot(meta %in% dbListTables(con))
 
-    d <- tbl(con, meta) %>%
+    d <- tbl(con, meta)
+
+    if (!is.null(cols)) {
+        keep_cols <- unique(c("cell", cols))
+        d <- d %>% select(all_of(keep_cols))
+    }
+
+    d <- d %>%
         collect() %>%
         tibble::column_to_rownames("cell")
 

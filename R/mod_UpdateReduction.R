@@ -52,7 +52,8 @@ mod_UpdateReduction_server <- function(id,
           )
 
           obj <- seuratObj()
-          pcaFileName <- hash_md5("pca_stdev")
+          reductionVersion <- reductionUpdateIndicator()
+          pcaFileName <- hash_md5(paste0("pca_stdev_", reductionVersion))
           pcaFilePath <- file.path(session$userData$tempDir, "reduction", pcaFileName)
 
           if(isTruthy(obj) && "pca" %in% SeuratObject::Reductions(obj)){
@@ -62,7 +63,10 @@ mod_UpdateReduction_server <- function(id,
               )
               session$sendCustomMessage(
                   type = "pca_ready",
-                  message = list(stdevFile = pcaFileName)
+                  message = list(
+                      stdevFile = pcaFileName,
+                      reductionVersion = reductionVersion
+                  )
               )
           } else {
               if(file.exists(pcaFilePath)){
@@ -70,7 +74,10 @@ mod_UpdateReduction_server <- function(id,
               }
               session$sendCustomMessage(
                   type = "pca_ready",
-                  message = list(stdevFile = NULL)
+                  message = list(
+                      stdevFile = NULL,
+                      reductionVersion = reductionVersion
+                  )
               )
           }
       }, priority = -200)
@@ -79,7 +86,7 @@ mod_UpdateReduction_server <- function(id,
       ##   reductionUpdateIndicator(reductionUpdateIndicator()+1)
       ##}, ignoreNULL = TRUE)
 
-      extract_reduction <- ExtendedTask$new(function(reduction, dirPath){
+      extract_reduction <- ExtendedTask$new(function(reduction, dirPath, reductionVersion){
           future_promise({
 
               con <- duckConnect(session)
@@ -93,7 +100,7 @@ mod_UpdateReduction_server <- function(id,
               if(!file.exists(dirPath)){
                   stop(paste0(dirPath, " does not exist."))
               }
-              reductionFileName <- hash_md5("reduction")
+              reductionFileName <- hash_md5(paste0("reduction_", reduction, "_", reductionVersion))
               write_ipc_stream(
                   arrow_table(
                       X = Array$create(d$X, type = float32()),
@@ -101,15 +108,16 @@ mod_UpdateReduction_server <- function(id,
                   ),
                   file.path(dirPath, reductionFileName)
               )
-              return(list(reductionFile = reductionFileName))
+              return(list(
+                  reductionFile = reductionFileName,
+                  reductionName = reduction,
+                  reductionVersion = reductionVersion
+              ))
           })
 
       })
 
-      observeEvent(input$reduction, {
-          req(file.exists(session$userData$duckdb))
-          req(input$reduction!="None")
-
+      invoke_reduction_transfer <- function(reduction_name){
           showNotification(
               ui = div(div(class = c("spinner-border", "spinner-border-sm", "text-primary"),
                            role = "status",
@@ -124,11 +132,39 @@ mod_UpdateReduction_server <- function(id,
           )
           message("Transferring reductionData...")
           reductionProcessed(FALSE)
-          promise_reduction <- input$reduction
           promise_dirPath <- file.path(session$userData$tempDir, "reduction")
-          extract_reduction$invoke(reduction = promise_reduction,
-                                   dirPath = promise_dirPath)
+          extract_reduction$invoke(reduction = reduction_name,
+                                   dirPath = promise_dirPath,
+                                   reductionVersion = reductionUpdateIndicator())
+      }
 
+      observeEvent(input$reduction, {
+          req(file.exists(session$userData$duckdb))
+          req(input$reduction!="None")
+
+          reductionVersion <- reductionUpdateIndicator()
+          cacheKey <- paste0(reductionVersion, cache_key_delim, input$reduction)
+
+          if (isTruthy(input$cachedReductionKeys) && cacheKey %in% input$cachedReductionKeys) {
+              reductionProcessed(FALSE)
+              session$sendCustomMessage(
+                  type = "reduction_cached",
+                  message = list(
+                      reductionName = input$reduction,
+                      reductionVersion = reductionVersion
+                  )
+              )
+              return()
+          }
+
+          invoke_reduction_transfer(input$reduction)
+
+      }, priority = -500)
+
+      observeEvent(input$cacheMissReduction, {
+          req(file.exists(session$userData$duckdb))
+          req(isTruthy(input$cacheMissReduction), input$cacheMissReduction != "None")
+          invoke_reduction_transfer(input$cacheMissReduction)
       }, priority = -500)
 
       observeEvent(extract_reduction$status(), {

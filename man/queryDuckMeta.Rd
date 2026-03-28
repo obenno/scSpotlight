@@ -4,7 +4,7 @@
 \alias{queryDuckMeta}
 \title{queryDuckMeta}
 \usage{
-queryDuckMeta(con, meta = "metaData")
+queryDuckMeta(con, meta = "metaData", cols = NULL)
 }
 \arguments{
 \item{con}{duckdb connection object}

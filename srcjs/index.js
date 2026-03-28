@@ -37,6 +37,8 @@ import {
 
 import {
   readArrowIPC,
+  fetchArrowIPCBuffer,
+  decodeArrowIPC,
   getFloat32Column,
   parseMetaFromArrow,
 } from "./modules/arrowReader.js";
@@ -89,6 +91,89 @@ let vlnPlotSpinner;
 let dotPlotSpinner;
 let featurePlotSpinner;
 let mainPlotSpinner;
+
+const ipcCache = {
+  reductions: new Map(),
+  expr: new Map(),
+  reductionVersion: null,
+  exprVersion: null,
+};
+
+const REDUCTION_CACHE_LIMIT = 4;
+const EXPR_CACHE_LIMIT = 100;
+const CACHE_KEY_DELIMITER = "::";
+
+const touchCacheEntry = (cacheMap, key) => {
+  if (!cacheMap.has(key)) return null;
+  const value = cacheMap.get(key);
+  cacheMap.delete(key);
+  cacheMap.set(key, value);
+  return value;
+};
+
+const setCacheEntry = (cacheMap, key, value, limit) => {
+  if (cacheMap.has(key)) {
+    cacheMap.delete(key);
+  }
+  cacheMap.set(key, value);
+  while (cacheMap.size > limit) {
+    const oldestKey = cacheMap.keys().next().value;
+    cacheMap.delete(oldestKey);
+  }
+};
+
+const updateReductionCacheKeys = () => {
+  Shiny.setInputValue(
+    "updateReduction-cachedReductionKeys",
+    Array.from(ipcCache.reductions.keys()),
+    { priority: "event" },
+  );
+};
+
+const updateExprCacheKeys = () => {
+  Shiny.setInputValue(
+    "inputFeatures-cachedExprKeys",
+    Array.from(ipcCache.expr.keys()),
+    { priority: "event" },
+  );
+};
+
+const ensureReductionCacheVersion = (version) => {
+  if (
+    ipcCache.reductionVersion !== null &&
+    Number(version) < Number(ipcCache.reductionVersion)
+  ) {
+    return false;
+  }
+
+  if (ipcCache.reductionVersion !== version) {
+    ipcCache.reductions.clear();
+    ipcCache.reductionVersion = version;
+    updateReductionCacheKeys();
+  }
+
+  return true;
+};
+
+const ensureExprCacheVersion = (version) => {
+  if (ipcCache.exprVersion !== null && Number(version) < Number(ipcCache.exprVersion)) {
+    return false;
+  }
+
+  if (ipcCache.exprVersion !== version) {
+    ipcCache.expr.clear();
+    ipcCache.exprVersion = version;
+    updateExprCacheKeys();
+  }
+
+  return true;
+};
+
+const makeReductionCacheKey = (version, reductionName) =>
+  `${version}${CACHE_KEY_DELIMITER}${reductionName}`;
+
+const makeExprCacheKey = (version, assay, geneName) =>
+  `${version}${CACHE_KEY_DELIMITER}${assay}${CACHE_KEY_DELIMITER}${geneName}`;
 
 // init normal shelter for webR to gain better control of the r objects
 //const shelterInstance = await initShelter(plotWebR);
@@ -369,7 +454,23 @@ Shiny.addCustomMessageHandler("reduction_ready", (msg) => {
         mainPlotSpinner.style.display = "flex";
       }
 
-      const table = await readArrowIPC(reductionURL);
+      if (!ensureReductionCacheVersion(msg.reductionVersion)) {
+        return;
+      }
+      const cacheKey = makeReductionCacheKey(
+        msg.reductionVersion,
+        msg.reductionName,
+      );
+      const buffer = await fetchArrowIPCBuffer(reductionURL);
+      setCacheEntry(
+        ipcCache.reductions,
+        cacheKey,
+        buffer,
+        REDUCTION_CACHE_LIMIT,
+      );
+      updateReductionCacheKeys();
+
+      const table = decodeArrowIPC(buffer);
       const df = {
         X: getFloat32Column(table, "X"),
         Y: getFloat32Column(table, "Y"),
@@ -382,6 +483,49 @@ Shiny.addCustomMessageHandler("reduction_ready", (msg) => {
     })().catch((error) => {
       console.error("There was a problem:", error);
       mainPlotSpinner.style.display = "none";
+    });
+  } catch (error) {
+    console.error("There was a problem:", error);
+    mainPlotSpinner.style.display = "none";
+  }
+});
+
+Shiny.addCustomMessageHandler("reduction_cached", (msg) => {
+  try {
+    (async () => {
+      if (mainPlotSpinner.style.display === "none") {
+        mainPlotSpinner.style.display = "flex";
+      }
+
+      if (!ensureReductionCacheVersion(msg.reductionVersion)) {
+        return;
+      }
+      const cacheKey = makeReductionCacheKey(
+        msg.reductionVersion,
+        msg.reductionName,
+      );
+      const buffer = touchCacheEntry(ipcCache.reductions, cacheKey);
+      if (!buffer) {
+        updateReductionCacheKeys();
+        Shiny.setInputValue(
+          "updateReduction-cacheMissReduction",
+          msg.reductionName,
+          { priority: "event" },
+        );
+        return;
+      }
+
+      const table = decodeArrowIPC(buffer);
+      const df = {
+        X: getFloat32Column(table, "X"),
+        Y: getFloat32Column(table, "Y"),
+      };
+      reglElementData.updateReductionData(df);
+      Shiny.setInputValue("reductionProcessed", true, { priority: "event" });
+    })().catch((error) => {
+      console.error("There was a problem:", error);
+      mainPlotSpinner.style.display = "none";
+      Shiny.setInputValue("reductionProcessed", false, { priority: "event" });
     });
   } catch (error) {
     console.error("There was a problem:", error);
@@ -413,6 +557,33 @@ Shiny.addCustomMessageHandler("pca_ready", (msg) => {
   }
 });
 
+const syncMetaUiAfterUpdate = ({ fullTransfer = false } = {}) => {
+  const nonNumericCols = getNonNumericCols(reglElementData);
+
+  emptyDropOptions(vlnDropDownId);
+  updateDropOptions(vlnDropDownId);
+
+  markVlnPlotDirty();
+  markDotPlotDirty();
+  markFeaturePlotDirty();
+  requestFloatingPlotRefresh([
+    "floatingVlnPlot",
+    "floatingDotPlot",
+    "floatingFeaturePlot",
+  ]);
+
+  Shiny.setInputValue("metaCols", nonNumericCols);
+  if (fullTransfer) {
+    Shiny.setInputValue("metaProcessed", true, { priority: "event" });
+  } else {
+    Shiny.setInputValue(
+      "metaPatchProcessed",
+      { timestamp: Date.now() },
+      { priority: "event" },
+    );
+  }
+};
+
 Shiny.addCustomMessageHandler("meta_ready", (msg) => {
   try {
     const metaURL = window.location.origin + "/data/meta/" + msg.metaFile;
@@ -425,26 +596,32 @@ Shiny.addCustomMessageHandler("meta_ready", (msg) => {
       const out = parseMetaFromArrow(table);
       console.log("metaData", out);
       reglElementData.updateCellMetaData(out);
-      const nonNumericCols = getNonNumericCols(reglElementData);
-      const numericCols = getNumericCols(reglElementData);
-
-      // update vlnplot dropdown list
-      emptyDropOptions(vlnDropDownId);
-      updateDropOptions(vlnDropDownId);
-
-      markVlnPlotDirty();
-      markDotPlotDirty();
-      markFeaturePlotDirty();
-      requestFloatingPlotRefresh([
-        "floatingVlnPlot",
-        "floatingDotPlot",
-        "floatingFeaturePlot",
-      ]);
-
-      Shiny.setInputValue("metaCols", nonNumericCols);
-      Shiny.setInputValue("metaProcessed", true, { priority: "event" });
+      syncMetaUiAfterUpdate({ fullTransfer: true });
 
       // do not hide the spinner, since it will trigger the reglScatter_plot immediately
+    })().catch((error) => {
+      console.error("There was a problem:", error);
+      mainPlotSpinner.style.display = "none";
+    });
+  } catch (error) {
+    console.error("There was a problem:", error);
+    mainPlotSpinner.style.display = "none";
+  }
+});
+
+Shiny.addCustomMessageHandler("meta_patch_ready", (msg) => {
+  try {
+    const metaURL = window.location.origin + "/data/meta/" + msg.metaFile;
+    (async () => {
+      if (mainPlotSpinner.style.display === "none") {
+        mainPlotSpinner.style.display = "flex";
+      }
+
+      const table = await readArrowIPC(metaURL);
+      const out = parseMetaFromArrow(table);
+      console.log("metaPatch", out);
+      reglElementData.updateCellMetaDataPatch(out);
+      syncMetaUiAfterUpdate({ fullTransfer: false });
     })().catch((error) => {
       console.error("There was a problem:", error);
       mainPlotSpinner.style.display = "none";
@@ -459,7 +636,15 @@ Shiny.addCustomMessageHandler("expr_ready", (msg) => {
   try {
     const exprURL = window.location.origin + "/data/expr/" + msg.exprFile;
     (async () => {
-      const table = await readArrowIPC(exprURL);
+      if (!ensureExprCacheVersion(msg.exprVersion)) {
+        return;
+      }
+      const cacheKey = makeExprCacheKey(msg.exprVersion, msg.assay, msg.geneName);
+      const buffer = await fetchArrowIPCBuffer(exprURL);
+      setCacheEntry(ipcCache.expr, cacheKey, buffer, EXPR_CACHE_LIMIT);
+      updateExprCacheKeys();
+
+      const table = decodeArrowIPC(buffer);
       const expr = {};
       expr[msg.geneName] = getFloat32Column(table, "expr");
       reglElementData.updateExpressionData(expr);
@@ -482,7 +667,56 @@ Shiny.addCustomMessageHandler("expr_ready", (msg) => {
         "floatingDotPlot",
         "floatingFeaturePlot",
       ]);
-    })();
+    })().catch((error) => {
+      console.error("There was a problem:", error);
+    });
+  } catch (error) {
+    console.error("There was a problem:", error);
+  }
+});
+
+Shiny.addCustomMessageHandler("expr_cached", (msg) => {
+  try {
+    (async () => {
+      if (!ensureExprCacheVersion(msg.exprVersion)) {
+        return;
+      }
+      const cacheKey = makeExprCacheKey(msg.exprVersion, msg.assay, msg.geneName);
+      const buffer = touchCacheEntry(ipcCache.expr, cacheKey);
+      if (!buffer) {
+        updateExprCacheKeys();
+        Shiny.setInputValue("inputFeatures-cacheMissFeature", msg.geneName, {
+          priority: "event",
+        });
+        return;
+      }
+
+      const table = decodeArrowIPC(buffer);
+      const expr = {};
+      expr[msg.geneName] = getFloat32Column(table, "expr");
+      reglElementData.updateExpressionData(expr);
+      console.log("exprData", reglElementData.origData.expressionData);
+      const feature = Object.keys(expr)[0];
+      const sparkLine = document
+        .getElementById("featureSparkLine")
+        .querySelectorAll(".featureSparkLine");
+      const sparkLineArray = [...sparkLine];
+      sparkLineArray.forEach((e) => {
+        if (e.querySelector("span").innerHTML == feature) {
+          updateSparkLine(e, reglElementData);
+        }
+      });
+      markVlnPlotDirty();
+      refreshVlnDropOptions();
+      markDotPlotDirty();
+      markFeaturePlotDirty();
+      requestFloatingPlotRefresh([
+        "floatingDotPlot",
+        "floatingFeaturePlot",
+      ]);
+    })().catch((error) => {
+      console.error("There was a problem:", error);
+    });
   } catch (error) {
     console.error("There was a problem:", error);
   }
