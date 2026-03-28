@@ -6,6 +6,20 @@
  */
 import { tableFromIPC, Type } from "apache-arrow";
 
+export async function fetchArrowIPCBuffer(url) {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch Arrow IPC ${url}: ${response.status} ${response.statusText}`,
+    );
+  }
+  return response.arrayBuffer();
+}
+
+export function decodeArrowIPC(buffer) {
+  return tableFromIPC(buffer);
+}
+
 function isIntegerTypedArray(arr) {
   return (
     arr instanceof Int8Array ||
@@ -51,14 +65,8 @@ function getChunkIndices(chunk) {
  * @returns {Promise<import("apache-arrow").Table>}
  */
 export async function readArrowIPC(url) {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(
-      `Failed to fetch Arrow IPC ${url}: ${response.status} ${response.statusText}`,
-    );
-  }
-  const buffer = await response.arrayBuffer();
-  return tableFromIPC(buffer);
+  const buffer = await fetchArrowIPCBuffer(url);
+  return decodeArrowIPC(buffer);
 }
 
 /**

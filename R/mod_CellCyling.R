@@ -77,7 +77,10 @@ mod_CellCycling_server <- function(id,
                             assay = assay(),
                             data = rownames_to_column(seuratObj()[[]], "cell")
                         )
-                        metaPatchRequest(list(cols = c("S.Score", "G2M.Score", "Phase")))
+                        metaPatchRequest(list(
+                            cols = c("S.Score", "G2M.Score", "Phase"),
+                            version = as.integer(as.numeric(Sys.time()) * 1000)
+                        ))
                         showNotification(
                             ui = "Successfully Added!",
                             action = NULL,

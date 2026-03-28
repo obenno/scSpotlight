@@ -45,7 +45,7 @@ mod_UpdateMetaData_server <- function(id,
         }
 
         ## extract_meta will now only extract one column each time
-        extract_meta <- ExtendedTask$new(function(dirPath){
+        extract_meta <- ExtendedTask$new(function(dirPath, metaVersion){
             future_promise({
 
                 con <- duckConnect(session)
@@ -54,15 +54,15 @@ mod_UpdateMetaData_server <- function(id,
                 d <- clean_meta_frame(d)
                 stopifnot(file.exists(dirPath))
 
-                filePath <- file.path(dirPath, hash_md5("meta"))
+                filePath <- file.path(dirPath, hash_md5(paste0("meta_", metaVersion)))
                 write_ipc_stream(as_arrow_table(d), filePath)
 
-                return(list(metaFile = basename(filePath)))
+                return(list(metaFile = basename(filePath), metaVersion = metaVersion))
 
             })
         })
 
-        extract_meta_patch <- ExtendedTask$new(function(dirPath, cols){
+        extract_meta_patch <- ExtendedTask$new(function(dirPath, cols, metaVersion){
             future_promise({
                 con <- duckConnect(session)
                 on.exit(DBI::dbDisconnect(con))
@@ -73,10 +73,10 @@ mod_UpdateMetaData_server <- function(id,
                 stopifnot(file.exists(dirPath))
 
                 patch_key <- paste(sort(cols), collapse = "|")
-                filePath <- file.path(dirPath, hash_md5(paste0("meta_patch_", patch_key)))
+                filePath <- file.path(dirPath, hash_md5(paste0("meta_patch_", patch_key, "_", metaVersion)))
                 write_ipc_stream(as_arrow_table(d), filePath)
 
-                return(list(metaFile = basename(filePath), cols = cols))
+                return(list(metaFile = basename(filePath), cols = cols, metaVersion = metaVersion))
             })
         })
 
@@ -97,11 +97,12 @@ mod_UpdateMetaData_server <- function(id,
             )
             message("Transferring metaData...")
             metaProcessed(FALSE)
+            metaVersion <- metaUpdateIndicator()
             promise_dirPath <- file.path(
                 session$userData$tempDir,
                 "meta"
             )
-            extract_meta$invoke(dirPath = promise_dirPath)
+            extract_meta$invoke(dirPath = promise_dirPath, metaVersion = metaVersion)
 
         }, priority = -200, ignoreNULL = TRUE) # lower priority than seurat2duckdb
 
@@ -128,7 +129,11 @@ mod_UpdateMetaData_server <- function(id,
                 session$userData$tempDir,
                 "meta"
             )
-            extract_meta_patch$invoke(dirPath = promise_dirPath, cols = request$cols)
+            extract_meta_patch$invoke(
+                dirPath = promise_dirPath,
+                cols = request$cols,
+                metaVersion = request$version
+            )
         }, ignoreNULL = TRUE)
 
         observeEvent(extract_meta$status(), {

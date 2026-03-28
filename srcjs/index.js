@@ -37,6 +37,8 @@ import {
 
 import {
   readArrowIPC,
+  fetchArrowIPCBuffer,
+  decodeArrowIPC,
   getFloat32Column,
   parseMetaFromArrow,
 } from "./modules/arrowReader.js";
@@ -89,6 +91,51 @@ let vlnPlotSpinner;
 let dotPlotSpinner;
 let featurePlotSpinner;
 let mainPlotSpinner;
+
+const ipcCache = {
+  reductions: new Map(),
+  expr: new Map(),
+  reductionVersion: null,
+  exprVersion: null,
+};
+
+const updateReductionCacheKeys = () => {
+  Shiny.setInputValue(
+    "updateReduction-cachedReductionKeys",
+    Array.from(ipcCache.reductions.keys()),
+    { priority: "event" },
+  );
+};
+
+const updateExprCacheKeys = () => {
+  Shiny.setInputValue(
+    "inputFeatures-cachedExprKeys",
+    Array.from(ipcCache.expr.keys()),
+    { priority: "event" },
+  );
+};
+
+const ensureReductionCacheVersion = (version) => {
+  if (ipcCache.reductionVersion !== version) {
+    ipcCache.reductions.clear();
+    ipcCache.reductionVersion = version;
+    updateReductionCacheKeys();
+  }
+};
+
+const ensureExprCacheVersion = (version) => {
+  if (ipcCache.exprVersion !== version) {
+    ipcCache.expr.clear();
+    ipcCache.exprVersion = version;
+    updateExprCacheKeys();
+  }
+};
+
+const makeReductionCacheKey = (version, reductionName) =>
+  `${version}::${reductionName}`;
+
+const makeExprCacheKey = (version, assay, geneName) =>
+  `${version}::${assay}::${geneName}`;
 
 // init normal shelter for webR to gain better control of the r objects
 //const shelterInstance = await initShelter(plotWebR);
@@ -369,7 +416,16 @@ Shiny.addCustomMessageHandler("reduction_ready", (msg) => {
         mainPlotSpinner.style.display = "flex";
       }
 
-      const table = await readArrowIPC(reductionURL);
+      ensureReductionCacheVersion(msg.reductionVersion);
+      const cacheKey = makeReductionCacheKey(
+        msg.reductionVersion,
+        msg.reductionName,
+      );
+      const buffer = await fetchArrowIPCBuffer(reductionURL);
+      ipcCache.reductions.set(cacheKey, buffer);
+      updateReductionCacheKeys();
+
+      const table = decodeArrowIPC(buffer);
       const df = {
         X: getFloat32Column(table, "X"),
         Y: getFloat32Column(table, "Y"),
@@ -379,6 +435,40 @@ Shiny.addCustomMessageHandler("reduction_ready", (msg) => {
       console.log("reduction", df);
 
       // do not hide the spinner, since it will trigger the reglScatter_plot immediately
+    })().catch((error) => {
+      console.error("There was a problem:", error);
+      mainPlotSpinner.style.display = "none";
+    });
+  } catch (error) {
+    console.error("There was a problem:", error);
+    mainPlotSpinner.style.display = "none";
+  }
+});
+
+Shiny.addCustomMessageHandler("reduction_cached", (msg) => {
+  try {
+    (async () => {
+      if (mainPlotSpinner.style.display === "none") {
+        mainPlotSpinner.style.display = "flex";
+      }
+
+      ensureReductionCacheVersion(msg.reductionVersion);
+      const cacheKey = makeReductionCacheKey(
+        msg.reductionVersion,
+        msg.reductionName,
+      );
+      const buffer = ipcCache.reductions.get(cacheKey);
+      if (!buffer) {
+        throw new Error(`Cached reduction IPC missing for ${cacheKey}`);
+      }
+
+      const table = decodeArrowIPC(buffer);
+      const df = {
+        X: getFloat32Column(table, "X"),
+        Y: getFloat32Column(table, "Y"),
+      };
+      reglElementData.updateReductionData(df);
+      Shiny.setInputValue("reductionProcessed", true, { priority: "event" });
     })().catch((error) => {
       console.error("There was a problem:", error);
       mainPlotSpinner.style.display = "none";
@@ -492,7 +582,13 @@ Shiny.addCustomMessageHandler("expr_ready", (msg) => {
   try {
     const exprURL = window.location.origin + "/data/expr/" + msg.exprFile;
     (async () => {
-      const table = await readArrowIPC(exprURL);
+      ensureExprCacheVersion(msg.exprVersion);
+      const cacheKey = makeExprCacheKey(msg.exprVersion, msg.assay, msg.geneName);
+      const buffer = await fetchArrowIPCBuffer(exprURL);
+      ipcCache.expr.set(cacheKey, buffer);
+      updateExprCacheKeys();
+
+      const table = decodeArrowIPC(buffer);
       const expr = {};
       expr[msg.geneName] = getFloat32Column(table, "expr");
       reglElementData.updateExpressionData(expr);
@@ -516,6 +612,47 @@ Shiny.addCustomMessageHandler("expr_ready", (msg) => {
         "floatingFeaturePlot",
       ]);
     })();
+  } catch (error) {
+    console.error("There was a problem:", error);
+  }
+});
+
+Shiny.addCustomMessageHandler("expr_cached", (msg) => {
+  try {
+    (async () => {
+      ensureExprCacheVersion(msg.exprVersion);
+      const cacheKey = makeExprCacheKey(msg.exprVersion, msg.assay, msg.geneName);
+      const buffer = ipcCache.expr.get(cacheKey);
+      if (!buffer) {
+        throw new Error(`Cached expression IPC missing for ${cacheKey}`);
+      }
+
+      const table = decodeArrowIPC(buffer);
+      const expr = {};
+      expr[msg.geneName] = getFloat32Column(table, "expr");
+      reglElementData.updateExpressionData(expr);
+      console.log("exprData", reglElementData.origData.expressionData);
+      const feature = Object.keys(expr)[0];
+      const sparkLine = document
+        .getElementById("featureSparkLine")
+        .querySelectorAll(".featureSparkLine");
+      const sparkLineArray = [...sparkLine];
+      sparkLineArray.forEach((e) => {
+        if (e.querySelector("span").innerHTML == feature) {
+          updateSparkLine(e, reglElementData);
+        }
+      });
+      markVlnPlotDirty();
+      refreshVlnDropOptions();
+      markDotPlotDirty();
+      markFeaturePlotDirty();
+      requestFloatingPlotRefresh([
+        "floatingDotPlot",
+        "floatingFeaturePlot",
+      ]);
+    })().catch((error) => {
+      console.error("There was a problem:", error);
+    });
   } catch (error) {
     console.error("There was a problem:", error);
   }
