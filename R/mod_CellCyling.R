@@ -44,8 +44,7 @@ mod_CellCycling_server <- function(id,
                     type = "default",
                     session = session
                 )
-            }else if( all(GetAssayData(seuratObj(), layer = "counts")@x == GetAssayData(seuratObj(), layer = "data")@x) ||
-                          dim(GetAssayData(seuratObj(), layer = "data"))[1] == 0 ){
+            }else if(!dataNormalized(seuratObj())){
                 showNotification(
                     ui = "Please normalize data before adding cycling phase...",
                     action = NULL,
@@ -70,14 +69,6 @@ mod_CellCycling_server <- function(id,
                             set.ident = FALSE
                         )
                         seuratObj(obj)
-                        ## Update duckdb
-                        con <- duckConnect(session, read_only = FALSE)
-                        on.exit(dbDisconnect(con))
-                        updateDuckMeta(
-                            con,
-                            assay = assay(),
-                            data = rownames_to_column(seuratObj()[[]], "cell")
-                        )
                         nextPatchVersion <- metaPatchVersion() + 1L
                         metaPatchVersion(nextPatchVersion)
                         metaPatchRequest(list(

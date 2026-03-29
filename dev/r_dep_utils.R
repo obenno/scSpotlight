@@ -36,7 +36,7 @@ suggested_description_packages <- function() {
 }
 
 optional_performance_packages <- function() {
-    preferred <- c("BPCells", "presto")
+    preferred <- c("presto", "anndataR", "rhdf5")
     suggested <- suggested_description_packages()
 
     preferred[preferred %in% suggested]
