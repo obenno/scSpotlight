@@ -48,10 +48,6 @@ pandoc = "*"
 zlib = "*"
 xz = "*"
 
-[target.linux-64.dependencies]
-bioconductor-anndatar = { version = ">=1.0.2,<2", channel = "bioconda" }
-bioconductor-rhdf5 = { version = ">=2.54.1,<3", channel = "bioconda" }
-
 [target.osx-64.dependencies]
 
 [target.osx-arm64.dependencies]
