@@ -7,9 +7,6 @@
 #' @noRd
 #'
 #' @importFrom shiny NS tagList fileInput
-#' @importFrom shinyWidgets prettySwitch
-#' @importFrom DBI dbConnect dbListTables
-#' @importFrom duckdb duckdb
 #'
 mod_dataInput_inputUI <- function(id){
     ns <- NS(id)
@@ -47,7 +44,6 @@ mod_dataInput_inputUI <- function(id){
                 multiple = FALSE,
                 width = "100%",
               accept = c(
-                ".duckdb",
                 ".rds",
                 ".zip",
                 ".tar.gz", ".tgz",
@@ -63,17 +59,7 @@ mod_dataInput_inputUI <- function(id){
                 selectize = TRUE,
                 width = NULL
             ) %>%
-            tagAppendAttributes(class = c("mb-1")),
-            span(
-                "Enable BPCells", style = "display: inline-block; margin-bottom: 0.5rem",
-                infoIcon("This will use BPCells as the backend to store sparse matrix in seurat object.", "right")
-            ),
-            switchInput(
-                inputId = ns("enableBPCells"),
-                label = NULL,
-                size = "mini",
-                value = FALSE
-            )
+            tagAppendAttributes(class = c("mb-1"))
         )
     }
 }
@@ -83,7 +69,6 @@ mod_dataInput_inputUI <- function(id){
 #' @import Seurat
 #' @import shiny
 #' @importFrom readr read_tsv
-#' @importFrom shinyWidgets updateSwitchInput
 #' @importFrom SeuratObject LoadSeuratRds Layers
 #' @importFrom stringr str_detect
 #'
@@ -104,11 +89,10 @@ mod_dataInput_server <- function(id,
         runningMode <- golem::get_golem_options("runningMode")
         compressionFormatPattern <- "\\.zip$|\\.tar.gz$|\\.tgz$|\\.tar\\.bz2$|\\.tbz2"
         rdsFormatPattern <- "\\.rds$|\\.RDS$|\\.Rds$"
-        if(runningMode == "processing"){
-            supportedFileInputPattern <- paste0(rdsFormatPattern, "|", compressionFormatPattern)
-        }else{
-            supportedFileInputPattern <- paste0(rdsFormatPattern, "|", "duckdb")
-        }
+        supportedFileInputPattern <- paste0(rdsFormatPattern, "|", compressionFormatPattern)
+
+        assert_bpcells_available()
+
         if(isTruthy(dataDir)){
             if(!file.exists(dataDir)){
                 showNotification(
@@ -135,27 +119,6 @@ mod_dataInput_server <- function(id,
                 )
             }
         }
-
-        ## Check if BPCells was installed
-        observe({
-            req(input$enableBPCells)
-            if(!isTruthy(rlang::is_installed("BPCells"))){
-                ## update switchInput to false and shoot a notification
-                updateSwitchInput(
-                    session,
-                    inputId = "enableBPCells",
-                    value = FALSE
-                )
-                showNotification(
-                    ui = "Please install BPCells package to enable this function",
-                    action = NULL,
-                    duration = 5,
-                    closeButton = TRUE,
-                    type = "error",
-                    session = session
-                )
-            }
-        }, priority = 200)
 
         inputFilePath <- reactive({
             req(isTruthy(input$dataInput) || isTruthy(input$dataDirFile))
@@ -187,48 +150,27 @@ mod_dataInput_server <- function(id,
             seuratObj <- NULL
             if(str_detect(inputFileName(), rdsFormatPattern)){
 
-                seuratObj <- LoadSeuratRds(inputFilePath())
+                seuratObj <- load_scspotlight_bundle(inputFilePath())
                 assay <- DefaultAssay(seuratObj)
                 ## Convert v3 assay to v5 assay to save memory
                 if(class(seuratObj[[assay]]) == "Assay"){
                     seuratObj[[assay]] <- as(seuratObj[[assay]], Class = "Assay5")
                 }
                 message("conversion finished...")
-                if(isTruthy(input$enableBPCells)){
-                    ## converting counts and data layer to BPCells matrix
-                    if("counts" %in% Layers(seuratObj) &&
-                       class(seuratObj[[assay]]$counts) == "dgCMatrix"){
-                        bp_dir <- file.path(tempdir(), "BPCells_matrix")
-                        if(!dir.exists(bp_dir)){ dir.create(bp_dir) }
-                        seuratObj[[assay]]$counts <- BPCells::write_matrix_dir(
-                            seuratObj[[assay]]$counts,
-                            dir = file.path(bp_dir, "counts"),
-                            overwrite = TRUE
-                        )
-                    }
-                    if("data" %in% Layers(seuratObj) &&
-                       class(seuratObj[[assay]]$data) == "dgCMatrix"){
-                        bp_dir <- file.path(tempdir(), "BPCells_matrix")
-                        if(!dir.exists(bp_dir)){ dir.create(bp_dir) }
-                        seuratObj[[assay]]$data <- BPCells::write_matrix_dir(
-                            seuratObj[[assay]]$data,
-                            dir = file.path(bp_dir, "data"),
-                            overwrite = TRUE
-                        )
-                    }
-                    hvg_method <- "vst"
-                    if(isTruthy(hvgSelectMethod()) && hvgSelectMethod()!="vst"){
-                        showNotification(
-                            ui = HTML("BPCells enabled, enforce to use <b>vst</b> method and <b>counts</b> layer"),
-                            action = NULL,
-                            duration = 5,
-                            closeButton = TRUE,
-                            type = "warning",
-                            session = session
-                        )
-                    }
-                }else{
-                    hvg_method <- ifelse(isTruthy(hvgSelectMethod()), hvgSelectMethod(), "vst")
+                hvg_method <- ifelse(isTruthy(hvgSelectMethod()), hvgSelectMethod(), "vst")
+                seuratObj <- ensure_bpcells_backing(
+                    seuratObj,
+                    root_dir = file.path(session$userData$backendDir, "layers")
+                )
+                if(is_seurat_bpcells(seuratObj) && isTruthy(hvgSelectMethod()) && hvgSelectMethod()!="vst"){
+                    showNotification(
+                        ui = HTML("BPCells backend active, prefer <b>vst</b> on the <b>counts</b> layer for large datasets"),
+                        action = NULL,
+                        duration = 5,
+                        closeButton = TRUE,
+                        type = "warning",
+                        session = session
+                    )
                 }
 
                 seuratObj <- validate_seuratRDS(seuratObj, runningMode = runningMode,
@@ -246,62 +188,48 @@ mod_dataInput_server <- function(id,
                 BPCells_Rds <- dir(dataDir, recursive=TRUE, pattern = "*.[Rr][Dd][Ss]$")
 
                 if(length(BPCells_Rds)>0){
-                    if(rlang::is_installed("BPCells")){
-                        if(!isTruthy(input$enableBPCells)){
-                            updateSwitchInput(
-                                session,
-                                inputId = "enableBPCells",
-                                value = TRUE
-                            )
-                            showNotification(
-                                ui = HTML("Rds in compressed files detected, auto enable BPCells"),
-                                action = NULL,
-                                duration = 5,
-                                closeButton = TRUE,
-                                type = "warning",
-                                session = session
-                            )
+                    bundleRoot <- if (is_scspotlight_bundle_dir(dataDir)) {
+                        dataDir
+                    } else {
+                        candidate_roots <- unique(dirname(file.path(dataDir, BPCells_Rds)))
+                        matched_root <- candidate_roots[vapply(candidate_roots, is_scspotlight_bundle_dir, logical(1))]
+                        if (!length(matched_root)) {
+                            stop("Compressed RDS bundle detected, but manifest.json is missing or invalid")
                         }
-                        setwd(file.path(dataDir, dirname(BPCells_Rds)))
-                        message("setting working dir to ", dataDir)
-                        seuratObj <- LoadSeuratRds(file.path(dataDir, BPCells_Rds))
-                        if(isTruthy(hvgSelectMethod()) && hvgSelectMethod()!="vst"){
-                            showNotification(
-                                ui = HTML("BPCells enabled, enforce to use <b>vst</b> method and <b>counts</b> layer"),
-                                action = NULL,
-                                duration = 5,
-                                closeButton = TRUE,
-                                type = "warning",
-                                session = session
-                            )
-                        }
-                        seuratObj <- validate_seuratRDS(seuratObj, runningMode = runningMode,
-                                                        hvgSelectMethod = "vst",
-                                                        nDims = clusterDims(),
-                                                        resolution = clusterResolution())
-                    }else{
-                        waiter_update(html = waiting_screen("Rds in tarball deteced, please ensure BPCells is installed"))
-                        stop("BPCells not installed...")
+                        matched_root[[1]]
                     }
+                    bundleRds <- find_scspotlight_bundle_rds(bundleRoot)
+                    seuratObj <- load_scspotlight_bundle(bundleRds)
+                    if(isTruthy(hvgSelectMethod()) && hvgSelectMethod()!="vst"){
+                        showNotification(
+                            ui = HTML("BPCells enabled, enforce to use <b>vst</b> method and <b>counts</b> layer"),
+                            action = NULL,
+                            duration = 5,
+                            closeButton = TRUE,
+                            type = "warning",
+                            session = session
+                        )
+                    }
+                    seuratObj <- validate_seuratRDS(seuratObj, runningMode = runningMode,
+                                                    hvgSelectMethod = "vst",
+                                                    nDims = clusterDims(),
+                                                    resolution = clusterResolution())
                 }else{
                     waiter_update(html = waiting_screen("Reading Matrix..."))
-                    ## use sparse matrix in memory for now
-                    if(input$enableBPCells){
-                        counts <- BPCells_Read10X(dataDir)
-                        hvg_method <- "vst"
-                        if(isTruthy(hvgSelectMethod()) && hvgSelectMethod()!="vst"){
-                            showNotification(
-                                ui = HTML("BPCells enabled, enforce to use <b>vst</b> method and <b>counts</b> layer"),
-                                action = NULL,
-                                duration = 5,
-                                closeButton = TRUE,
-                                type = "warning",
-                                session = session
-                            )
-                        }
-                    }else{
-                        counts <- Read10X(dataDir)
-                        hvg_method <- ifelse(isTruthy(hvgSelectMethod()), hvgSelectMethod(), "vst")
+                    counts <- BPCells_Read10X(
+                        dataDir,
+                        temp_root = session$userData$backendDir
+                    )
+                    hvg_method <- ifelse(isTruthy(hvgSelectMethod()), hvgSelectMethod(), "vst")
+                    if(isTruthy(hvgSelectMethod()) && hvgSelectMethod()!="vst"){
+                        showNotification(
+                            ui = HTML("BPCells backend active, prefer <b>vst</b> on the <b>counts</b> layer for large datasets"),
+                            action = NULL,
+                            duration = 5,
+                            closeButton = TRUE,
+                            type = "warning",
+                            session = session
+                        )
                     }
 
                     waiter_update(html = waiting_screen("Creating seuratObj..."))
@@ -316,17 +244,6 @@ mod_dataInput_server <- function(id,
                                                          ndims = clusterDims(), res = clusterResolution())
 
                 }
-            }else if(str_detect(inputFileName(), ".duckdb$")){
-                file.symlink(from = inputFilePath(), to = session$userData$duckdb)
-                con <- duckConnect(session)
-                duckdbAssays <- queryDuckAssays(con)
-                dbDisconnect(con)
-                updateSelectInput(
-                    session = session,
-                    inputId = "selectAssay",
-                    choices = duckdbAssays,
-                    selected = duckdbAssays[1]
-                )
             }else{
                 waiter_update(html = waiting_screen("Input format not supported, please reload the page..."))
                 stop("Input format not supported")
@@ -341,16 +258,6 @@ mod_dataInput_server <- function(id,
                     selected = ifelse(isTruthy(seuratObj), DefaultAssay(seuratObj), NULL)
                 )
                 obj(seuratObj)
-
-                message("Converting seurat object to duckdb...")
-                selectedLayers <- intersect(c("counts", "data"), Layers(seuratObj))
-                seurat2duckdb(
-                    object = seuratObj,
-                    dbFile = session$userData$duckdb,
-                    assays = Assays(seuratObj),
-                    layers = selectedLayers
-                )
-                message("Finished convertion")
             }
 
 
@@ -371,13 +278,8 @@ mod_dataInput_server <- function(id,
             input$selectAssay
         })
 
-        BPCells <- reactive({
-            input$enableBPCells
-        })
-
         return(list(
-          selectedAssay = selectedAssay,
-          BPCells = BPCells
+          selectedAssay = selectedAssay
         ))
 
     })
@@ -396,10 +298,12 @@ BPCells_Read10X <- function(
   gene.column = 2,
   cell.column = 1,
   unique.features = TRUE,
-  strip.suffix = FALSE
+  strip.suffix = FALSE,
+  temp_root = tempdir()
 ) {
   full.data <- list()
   has_dt <- requireNamespace("data.table", quietly = TRUE) && requireNamespace("R.utils", quietly = TRUE)
+  dir.create(temp_root, recursive = TRUE, showWarnings = FALSE)
   for (i in seq_along(along.with = data.dir)) {
     run <- data.dir[i]
     if (!dir.exists(paths = run)) {
@@ -430,7 +334,7 @@ BPCells_Read10X <- function(
     message("Importing with BPCells...")
     data <- BPCells::import_matrix_market(
         mtx_path = matrix.loc,
-        outdir = tempfile("matrix_market"),
+        outdir = tempfile(pattern = "matrix_market_", tmpdir = temp_root),
         row_names = NULL,
         col_names = NULL,
         row_major = FALSE,
@@ -497,7 +401,8 @@ BPCells_Read10X <- function(
       rownames(x = data) <- make.unique(names = feature.names[, gene.column])
     }
     message("Finished generating matrix")
-    dirPath <- tempfile(pattern = "counts_")
+    dirPath <- tempfile(pattern = "counts_", tmpdir = temp_root)
+    data <- optimize_bpcells_matrix_type(data, layer = "counts")
     BPCells::write_matrix_dir(data, dir=dirPath, overwrite = TRUE)
     mat <- BPCells::open_matrix_dir(dirPath)
     # In cell ranger 3.0, a third column specifying the type of data was added
@@ -571,7 +476,7 @@ HVG_exist <- function(seuratObj){
 #' @noRd
 dataScaled <- function(seuratObj){
     m <- GetAssayData(seuratObj, assay = NULL, layer = "scale.data")
-    any(dim(m) > 0)
+    any(dim(m) > 0) || "pca" %in% Reductions(seuratObj)
 }
 
 #' reduction_exist
@@ -611,24 +516,21 @@ validate_seuratRDS <- function(seuratObj,
     }
     if(!HVG_exist(seuratObj) && runningMode == "processing"){
         waiter_update(html = waiting_screen("Finding HVGs..."))
-        if(hvgSelectMethod == "vst"){
-            layer <- "counts"
-        }else{
-            layer <- "data"
-        }
-        seuratObj <- FindVariableFeatures(seuratObj, selection.method = hvgSelectMethod, layer = layer)
-    }
-    if(!dataScaled(seuratObj) && runningMode == "processing"){
-        waiter_update(html = waiting_screen("Scaling Data..."))
-        seuratObj <- ScaleData(seuratObj)
+        seuratObj <- set_variable_features_backend(
+            seuratObj,
+            selection.method = hvgSelectMethod
+        )
     }
     if(!reduction_exist(seuratObj) &&
        runningMode == "processing"){
         waiter_update(html = waiting_screen("Calculating Reductions..."))
-        seuratObj <- RunPCA(seuratObj)
-        seuratObj <- FindNeighbors(seuratObj, dims = 1:nDims)
+        seuratObj <- run_memory_conserving_pca(
+            seuratObj,
+            npcs = max(nDims, 30L)
+        )
+        seuratObj <- FindNeighbors(seuratObj, dims = 1:nDims, reduction = "pca")
         seuratObj <- FindClusters(seuratObj, resolution = resolution)
-        seuratObj <- RunUMAP(seuratObj, dims = 1:nDims)
+        seuratObj <- RunUMAP(seuratObj, dims = 1:nDims, reduction = "pca")
     }
     message("Finished validating object...")
     return(seuratObj)
@@ -674,41 +576,15 @@ decompress_matrix_input <- function(fileName, filePath){
 #' @noRd
 standard_process_seurat <- function(seuratObj, normalization = TRUE,
                                     hvg_method = "mean.var.plot", ndims = 30, res = 0.5){
-    ##withProgress({
-    ##setProgress(0, message = paste("Normalizing Data...", "0/6"))
-    waiter_update(html = waiting_screen("Normalizing Data..."))
-    if(normalization){
-        seuratObj <- seuratObj %>%
-            NormalizeData()
-    }
-
-    ##incProgress(1/6, message = paste("Finding Variable Features...", "1/6"))
-    waiter_update(html = waiting_screen("Finding Variable Features..."))
-    ## FindVariableFeatures has to define layer parameter to use BPCells
-    if(hvg_method == "vst"){
-        seuratObj <- FindVariableFeatures(seuratObj, selection.method = hvg_method, layer = "counts")
-    }else{
-        seuratObj <- FindVariableFeatures(seuratObj, selection.method = hvg_method, layer = "data")
-    }
-
-    ##incProgress(1/6, message = paste("Scaling Data...", "2/6"))
-    waiter_update(html = waiting_screen("Scaling Data..."))
-    seuratObj <- ScaleData(seuratObj)
-
-    ##incProgress(1/6, message = paste("Running PCA...", "3/6"))
-    waiter_update(html = waiting_screen("Running PCA..."))
-    seuratObj <- RunPCA(seuratObj)
-
-    ##incProgress(1/6, message = paste("Finding Neighbours...", "4/6"))
-    waiter_update(html = waiting_screen("Finding Neighbours..."))
-    seuratObj <- FindNeighbors(seuratObj, dims = 1:ndims)
-    seuratObj <- FindClusters(seuratObj, resolution = res)
-
-    ##incProgress(1/6, message = paste("Calculating UMAP...", "5/6"))
-    waiter_update(html = waiting_screen("Calculating UMAP..."))
-    seuratObj <- RunUMAP(seuratObj, dims = 1:ndims)
-    ##})
-    return(seuratObj)
+    waiter_update(html = waiting_screen("Running memory-conserving processing..."))
+    run_memory_conserving_processing(
+        seuratObj,
+        normalization = normalization,
+        hvg_method = hvg_method,
+        ndims = ndims,
+        res = res,
+        npcs = max(ndims, 30L)
+    )
 }
 
 ## To be copied in the UI

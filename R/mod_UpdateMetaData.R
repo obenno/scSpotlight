@@ -17,72 +17,38 @@ mod_UpdateMetaData_ui <- function(id) {
 #' UpdateMetaData Server Functions
 #'
 #' @noRd
+clean_meta_frame <- function(d) {
+    d <- d %>% dplyr::mutate(cells = seq_len(nrow(d)) - 1L) %>% tibble::as_tibble()
+
+    for (col in colnames(d)) {
+        if (is.numeric(d[[col]])) {
+            v <- d[[col]]
+            v[is.nan(v) | is.infinite(v)] <- NA
+            d[[col]] <- v
+        } else if (is.character(d[[col]]) || is.logical(d[[col]])) {
+            d[[col]] <- as.factor(d[[col]])
+        }
+    }
+
+    d
+}
+
+#'
+#' @noRd
+#' @importFrom cli hash_md5
 #' @importFrom arrow as_arrow_table write_ipc_stream
+#' @importFrom promises future_promise %...>% %...!% finally
 mod_UpdateMetaData_server <- function(id,
+                                      seuratObj,
                                       metaUpdateIndicator,
                                       metaPatchRequest,
                                       metaProcessed){
     moduleServer(id, function(input, output, session){
         ns <- session$ns
 
-        clean_meta_frame <- function(d){
-            d <- d %>% mutate(cells = seq_len(nrow(d)) - 1L) %>% as_tibble()
-
-            for (col in colnames(d)) {
-                if (is.numeric(d[[col]])) {
-                    v <- d[[col]]
-                    v[is.na(v)] <- 0
-                    v[is.nan(v)] <- 0
-                    v[is.null(v)] <- 0
-                    v[is.infinite(v)] <- 0
-                    d[[col]] <- v
-                } else if (is.character(d[[col]]) || is.logical(d[[col]])) {
-                    d[[col]] <- as.factor(d[[col]])
-                }
-            }
-
-            d
-        }
-
-        ## extract_meta will now only extract one column each time
-        extract_meta <- ExtendedTask$new(function(dirPath, metaVersion){
-            future_promise({
-
-                con <- duckConnect(session)
-                on.exit(DBI::dbDisconnect(con))
-                d <- queryDuckMeta(con, "metaData")
-                d <- clean_meta_frame(d)
-                stopifnot(file.exists(dirPath))
-
-                filePath <- file.path(dirPath, hash_md5(paste0("meta_", metaVersion)))
-                write_ipc_stream(as_arrow_table(d), filePath)
-
-                return(list(metaFile = basename(filePath), metaVersion = metaVersion))
-
-            })
-        })
-
-        extract_meta_patch <- ExtendedTask$new(function(dirPath, cols, metaVersion){
-            future_promise({
-                con <- duckConnect(session)
-                on.exit(DBI::dbDisconnect(con))
-
-                stopifnot(length(cols) > 0)
-                d <- queryDuckMeta(con, "metaData", cols = cols)
-                d <- clean_meta_frame(d)
-                stopifnot(file.exists(dirPath))
-
-                patch_key <- paste(sort(cols), collapse = "|")
-                filePath <- file.path(dirPath, hash_md5(paste0("meta_patch_", patch_key, "_", metaVersion)))
-                write_ipc_stream(as_arrow_table(d), filePath)
-
-                return(list(metaFile = basename(filePath), cols = cols, metaVersion = metaVersion))
-            })
-        })
-
         observeEvent(metaUpdateIndicator(), {
             ## transfer metaData when metaUpdateIndicator changes
-            req(file.exists(session$userData$duckdb))
+            req(isTruthy(seuratObj()))
             showNotification(
                 ui = div(div(class = c("spinner-border", "spinner-border-sm", "text-primary"),
                              role = "status",
@@ -98,16 +64,42 @@ mod_UpdateMetaData_server <- function(id,
             message("Transferring metaData...")
             metaProcessed(FALSE)
             metaVersion <- metaUpdateIndicator()
-            promise_dirPath <- file.path(
-                session$userData$tempDir,
-                "meta"
+            dirPath <- file.path(session$userData$tempDir, "meta")
+            # BPCells-backed Seurat objects are not safe to ship across workers, so fetch on the main thread.
+            d <- clean_meta_frame(get_backend_metadata(seuratObj()))
+            meta_promise <- future_promise({
+                filePath <- file.path(dirPath, hash_md5(paste0("meta_", metaVersion)))
+                write_ipc_stream(as_arrow_table(d), filePath)
+                list(metaFile = basename(filePath), metaVersion = metaVersion)
+            }) %...>% (
+                function(result) {
+                    session$sendCustomMessage(type = "meta_ready", message = result)
+                    result
+                }
+            ) %...!% (
+                function(error) {
+                    showNotification(
+                        ui = paste("Metadata export failed:", conditionMessage(error)),
+                        action = NULL,
+                        duration = 6,
+                        closeButton = TRUE,
+                        type = "error",
+                        session = session
+                    )
+                }
             )
-            extract_meta$invoke(dirPath = promise_dirPath, metaVersion = metaVersion)
 
-        }, priority = -200, ignoreNULL = TRUE) # lower priority than seurat2duckdb
+            promises::finally(
+                meta_promise,
+                function() {
+                    removeNotification(id = "update_meta_notification", session = session)
+                }
+            )
+
+        }, priority = -200, ignoreNULL = TRUE)
 
         observeEvent(metaPatchRequest(), {
-            req(file.exists(session$userData$duckdb))
+            req(isTruthy(seuratObj()))
             request <- metaPatchRequest()
             req(is.list(request), length(request$cols) > 0)
 
@@ -125,36 +117,47 @@ mod_UpdateMetaData_server <- function(id,
             )
 
             message("Transferring metaData patch for columns: ", paste(request$cols, collapse = ", "))
-            promise_dirPath <- file.path(
-                session$userData$tempDir,
-                "meta"
+            dirPath <- file.path(session$userData$tempDir, "meta")
+            patch_cols <- request$cols
+            patch_version <- request$version
+            # Keep BPCells reads in-process; only Arrow serialization happens in the worker.
+            d <- clean_meta_frame(get_backend_metadata(seuratObj(), cols = patch_cols))
+            meta_patch_promise <- future_promise({
+                patch_key <- paste(sort(patch_cols), collapse = "|")
+                filePath <- file.path(dirPath, hash_md5(paste0("meta_patch_", patch_key, "_", patch_version)))
+                write_ipc_stream(as_arrow_table(d), filePath)
+                list(
+                    metaFile = basename(filePath),
+                    cols = patch_cols,
+                    metaVersion = patch_version
+                )
+            }) %...>% (
+                function(result) {
+                    session$sendCustomMessage(type = "meta_patch_ready", message = result)
+                    metaPatchRequest(NULL)
+                    result
+                }
+            ) %...!% (
+                function(error) {
+                    showNotification(
+                        ui = paste("Metadata patch export failed:", conditionMessage(error)),
+                        action = NULL,
+                        duration = 6,
+                        closeButton = TRUE,
+                        type = "error",
+                        session = session
+                    )
+                }
             )
-            extract_meta_patch$invoke(
-                dirPath = promise_dirPath,
-                cols = request$cols,
-                metaVersion = request$version
+
+            promises::finally(
+                meta_patch_promise,
+                function() {
+                    metaPatchRequest(NULL)
+                    removeNotification(id = "update_meta_patch_notification", session = session)
+                }
             )
         }, ignoreNULL = TRUE)
-
-        observeEvent(extract_meta$status(), {
-            if(extract_meta$status() == "success"){
-                removeNotification(id = "update_meta_notification", session)
-                session$sendCustomMessage(type = "meta_ready", extract_meta$result())
-            }else{
-                message("extract_meta error: ", extract_meta$result())
-            }
-        })
-
-        observeEvent(extract_meta_patch$status(), {
-            if(extract_meta_patch$status() == "success"){
-                removeNotification(id = "update_meta_patch_notification", session)
-                session$sendCustomMessage(type = "meta_patch_ready", extract_meta_patch$result())
-                metaPatchRequest(NULL)
-            }else if (extract_meta_patch$status() == "error"){
-                removeNotification(id = "update_meta_patch_notification", session)
-                message("extract_meta_patch error: ", extract_meta_patch$result())
-            }
-        })
     })
 }
 
