@@ -9,6 +9,7 @@ function makeUtils() {
   };
 
   const sortStringArray = (a, b) => String(a).localeCompare(String(b));
+  const getMetaLevels = (x) => [...new Set(expandMeta(x))].sort(sortStringArray);
 
   const splitArrByMeta = (arr, by) => {
     const out = {};
@@ -44,6 +45,7 @@ function makeUtils() {
 
   return {
     expandMeta,
+    getMetaLevels,
     sortStringArray,
     splitArrByMeta,
     convert_stringArr_to_integer,

@@ -23,6 +23,18 @@ describe("scatterLegend utilities", () => {
     delete global.document;
   });
 
+  it("accepts hyphenated legend titles", () => {
+    const dom = new JSDOM("<!doctype html><html><body></body></html>");
+    global.document = dom.window.document;
+
+    const hyphenated = createLegendEntryElement("CD4-T", "#ff0000", 2);
+
+    expect(hyphenated.id).toBe("legend_CD4-T");
+    expect(hyphenated.querySelector(".legend-label").textContent).toBe("CD4-T");
+
+    delete global.document;
+  });
+
   it("findIndexes returns matching indices", () => {
     expect(findIndexes([0, 1, 0, 2], 0)).toEqual([0, 2]);
     expect(findIndexes([1, 2, 3], 9)).toEqual([]);

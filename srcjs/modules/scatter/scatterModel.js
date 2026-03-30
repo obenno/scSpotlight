@@ -131,20 +131,15 @@ export class ScatterModel {
   }
 
   derivePlotMetaData(group_by = null, split_by = null, moduleScore = false) {
-    const expandMeta = this.utils.expandMeta;
-    const sortStringArray = this.utils.sortStringArray;
+    const getMetaLevels = this.utils.getMetaLevels;
     const hue_pal = this.utils.hue_pal;
 
     const groupByArray = group_by
-      ? [...new Set(expandMeta(this.origData.cellMetaData[group_by]))].sort(
-          sortStringArray,
-        )
+      ? getMetaLevels(this.origData.cellMetaData[group_by])
       : [];
 
     const splitByArray = split_by
-      ? [...new Set(expandMeta(this.origData.cellMetaData[split_by]))].sort(
-          sortStringArray,
-        )
+      ? getMetaLevels(this.origData.cellMetaData[split_by])
       : [];
 
     const nGroupBy = groupByArray.length;
@@ -226,8 +221,7 @@ export class ScatterModel {
     }
 
     const catLabelCoordinates = [];
-    const groupByValues = group_by ? this.utils.expandMeta(metaData[group_by]) : [];
-    const groupTitles = [...new Set(groupByValues)].sort(this.utils.sortStringArray);
+    const groupTitles = group_by ? this.utils.getMetaLevels(metaData[group_by]) : [];
     for (let i = 0; i < pointsData.length; i++) {
       if (zData.zType[i] === "category") {
         const panelData = pointsData[i];

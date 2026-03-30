@@ -248,6 +248,9 @@ These changes were implemented with the repo's large-dataset constraints in mind
 - Prefer partial metadata transfers for column-scoped changes. `R/mod_UpdateMetaData.R` supports Arrow IPC patches via `meta_patch_ready`, and `srcjs/index.js` merges them into the existing client metadata object instead of replacing the entire metadata payload. `Cell Cycling` uses this path for `S.Score`, `G2M.Score`, and `Phase`.
 - Version all Arrow IPC payload filenames by data epoch so the client can safely distinguish stale files from current files. Reduction, expression, metadata, metadata patches, and PCA standard deviations now include versioned hash inputs on the R side.
 - Keep a cold client-side IPC cache only for reduction and expression payloads. `srcjs/index.js` stores fetched Arrow IPC `ArrayBuffer`s keyed by `{version, reduction}` and `{version, assay, gene}` and rehydrates typed arrays on demand. This avoids repeated server fetches for reduction switching and cleared/reloaded expression panels while conserving memory by not keeping extra decoded hot copies.
+- Cache expanded categorical metadata and unique sorted levels per column object on the client. `srcjs/modules/deckScatter.js` now memoizes both expanded arrays and level lists so plot-mode derivation, legends, category selection, and rename-cluster filtering do not rebuild the same metadata repeatedly.
+- Keep rename-cluster category filtering on the client. `srcjs/index.js` now computes rename selections directly from cached metadata and only sends the final selected cells to R on assign.
+- Use adaptive split-panel grids for very high-cardinality `split.by` layouts. `srcjs/modules/scatter/scatterLayout.js` now balances columns/rows and shrinks minimum panel sizes as panel counts rise so the deck surface does not become excessively large.
 
 ## Validation Performed
 
@@ -258,7 +261,7 @@ Recent validation included:
 - `pixi run build-js`
 - parse validation for `R/app_ui.R`
 
-At the time of writing, the JS test suite passed with 55 tests.
+At the time of writing, the JS test suite passed with 69 tests.
 
 ## Backend Migration Notes
 
@@ -446,6 +449,123 @@ Implementation notes:
 
 - `R/fct_bpcells_backend.R` now prefers native BPCells `.h5ad` import and falls back to reconstructing CSR matrices via `rhdf5` when BPCells cannot open the AnnData matrix layout directly.
 - Direct `.h5ad` support in `R/mod_dataInput.R` is intentionally disabled for now because real-world AnnData layouts still vary enough to need more validation before interactive load should rely on them.
+
+## Scatter Interaction Notes
+
+These notes capture recent fixes and interaction decisions for the main scatter plot, category sidebar, and rename-cluster workflow.
+
+### 20. Multi-panel scatter interaction must treat every panel as a first-class viewport
+
+Decision:
+
+- Lasso hit-testing, highlight propagation, and legends must work across all scatter panels, not just the first panel.
+- Repeated cell views, such as paired cluster/expression panels, should keep selection state synchronized across every panel that contains the same cells.
+- Large `split.by` layouts should use adaptive grid geometry instead of a fixed two-column layout.
+
+Why:
+
+- The main scatter now operates in several true multi-panel modes, and panel-local assumptions caused hit-testing, highlight, and placement bugs.
+- Fixed two-column layouts produced very tall deck surfaces for large split counts, which made viewport placement unstable.
+
+Implementation notes:
+
+- `srcjs/modules/lasso.js` now tests lasso polygons against canvas-relative projected coordinates so non-origin panels can be selected correctly.
+- `srcjs/modules/deckScatter.js` now centralizes selection through `setSelectedCells()` and mirrors repeated selected cells across every panel.
+- `srcjs/modules/scatter/scatterLayout.js` now computes balanced panel grids and adaptive minimum panel sizes for high-cardinality split layouts.
+- `srcjs/modules/scatter/scatterRelayout.js` now measures panel rectangles relative to the deck container instead of relying only on offsets.
+
+### 21. Category sidebar stays hybrid, but metadata expansion is cached on the client
+
+Decision:
+
+- The browser remains the source of truth for expanded metadata arrays and level discovery.
+- The category sidebar still uses Shiny inputs, but those inputs are synchronized from one batched client snapshot.
+- Client metadata expansion and unique-level derivation should be cached aggressively.
+
+Why:
+
+- The client already holds Arrow-decoded metadata, so repeated `expandMeta()` work is wasted CPU and allocation churn.
+- Keeping `group.by` and `split.by` as Shiny inputs preserves existing module contracts while still removing expensive client recomputation.
+
+Implementation notes:
+
+- `srcjs/modules/deckScatter.js` now exposes cache-backed `expandMeta()`, `getMetaLevels()`, and `invalidateMetaCache()` helpers.
+- `srcjs/modules/scatter/scatterModel.js` now derives group/split levels from cached level lists instead of rebuilding `Set(expandMeta(...))` repeatedly.
+- `srcjs/index.js` now sends a single `metaSidebarState` payload containing available categorical columns plus current group/split levels.
+- `R/app_server.R` and `R/mod_UpdateCategory.R` now consume that single snapshot and preserve the currently selected `group.by` / `split.by` values when choices are rebuilt.
+- `R/mod_UpdateCategory.R` only increments `scatterUpdateIndicator` when the effective `(group.by, split.by)` pair actually changes.
+
+### 22. Rename Clusters selection UX is client-side; assignment persistence remains server-side
+
+Decision:
+
+- The `Rename Clusters` section should perform group/split-level filtering and selected-cell preview entirely in the browser.
+- Only the final assign action should round-trip to R for metadata persistence.
+- Rename selectors should use stable native multi-select widgets.
+
+Why:
+
+- The browser already has the metadata needed to compute rename selections instantly.
+- Server-side filtering introduced unnecessary latency and duplicated logic already present in the scatter client.
+- Native multi-selects avoid selectize option/item desynchronization during dynamic choice refresh.
+
+Implementation notes:
+
+- `srcjs/index.js` now owns rename-cluster selector choice population, selector visibility, category-based cell filtering, and selected-cell count text updates.
+- `srcjs/index.js` pushes `renameCluster-selectedCellsPayload` immediately before assign so the server receives the current client-side selection.
+- `R/mod_AssignCellCluster.R` now validates the selected-cell payload / lasso-derived selection and performs only assign-time notifications plus metadata write requests.
+- `R/mod_AssignCellCluster.R` now uses `selectize = FALSE` for `chosenGroup` and `chosenSplit`.
+- `R/app_server.R` no longer passes obsolete rename-cluster category-filtering reactives into `mod_AssignCellCluster_server()`.
+
+### 23. Main scatter overlays expose persistent total/selected cell counts
+
+Decision:
+
+- The main plot should show total and selected cell counts in a persistent top-right badge instead of relying on transient selection notifications.
+
+Why:
+
+- Selection is an ongoing interaction state, not a one-time event.
+- A persistent badge is easier to scan and avoids toast noise during repeated selection workflows.
+
+Implementation notes:
+
+- `srcjs/modules/scatter/scatterUI.js` now creates and updates a `Total | Selected` badge.
+- `srcjs/modules/deckScatter.js` updates that badge whenever lasso or category selection changes.
+
+### 24. Category legends and rename selectors must ignore null / missing category levels
+
+Decision:
+
+- Client UI should never synthesize a visible `undefined` category entry when metadata contains nulls or missing values.
+
+Why:
+
+- Null category values are a data condition, not a valid selectable level.
+- Rendering `undefined` as a visible level confuses both legends and rename-cluster dropdowns.
+
+Implementation notes:
+
+- `srcjs/modules/deckScatter.js` now filters null category titles before building legends.
+- `srcjs/index.js` now normalizes rename selector choices to distinct non-empty strings and ignores nullish values.
+
+### 25. Rename selectors should only persist within one grouping context
+
+Decision:
+
+- Rename-cluster category selections should persist only while the same `group.by` / `split.by` context remains active.
+- Explicit clear actions, including assign completion and manual deselect, must leave the rename selectors empty.
+
+Why:
+
+- Reused labels across different metadata columns can silently target the wrong cells if old rename selections carry into a new grouping context.
+- Users expect `Assign` and manual deselect to fully clear the rename selection rather than immediately restoring the previous category-based selection.
+
+Implementation notes:
+
+- `srcjs/index.js` now tracks the last active `group.by` / `split.by` pair and only preserves rename selector values when that pair has not changed.
+- `srcjs/index.js` now clears rename selector UI state after assign-time deselect and manual lasso deselect before resyncing category selection.
+- `srcjs/index.test.js` covers both regressions: grouping changes clear stale rename selections, and assign leaves the rename selectors cleared.
 
 ## Files to Check for Future Changes
 

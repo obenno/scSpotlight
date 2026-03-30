@@ -1,8 +1,5 @@
 export function createLegendEntryElement(title, color, number) {
-  let safeTitle = title;
-  if (typeof safeTitle === "number") {
-    safeTitle = safeTitle.toString();
-  }
+  const safeTitle = title == null ? "" : String(title);
 
   const scatterLegend = document.createElement("div");
   scatterLegend.classList.add("scatter-legend");

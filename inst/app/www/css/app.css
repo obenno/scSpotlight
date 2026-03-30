@@ -679,6 +679,40 @@ hr.setting {
     border-radius: 0.2rem;
 }
 
+.mainClusterPlotCellCount {
+    top: 0.5rem;
+    right: 0.5rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.35rem 0.55rem;
+    color: #fff;
+    background-color: rgba(var(--bs-secondary-rgb), 0.9);
+    border-radius: 999px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+    font-size: 0.85rem;
+    line-height: 1;
+}
+
+.mainClusterPlotCellCount .cell-count-metric {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.mainClusterPlotCellCount .cell-count-metric + .cell-count-metric {
+    padding-left: 0.45rem;
+    border-left: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.mainClusterPlotCellCount .cell-count-label {
+    opacity: 0.8;
+}
+
+.mainClusterPlotCellCount .cell-count-value {
+    font-weight: 700;
+}
+
 /* some class was defined by waiter, utilizing spinkit */
 /* Spinner container */
 .spinner-container {

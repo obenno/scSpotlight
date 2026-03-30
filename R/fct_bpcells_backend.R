@@ -640,8 +640,13 @@ extract_expr_vector <- function(mat, feature_name) {
     error = function(...) mat[feature_idx, , drop = FALSE]
   )
 
-  if (is.matrix(feature_values) || inherits(feature_values, "Matrix")) {
-    feature_values <- drop(feature_values)
+  if (isS4(feature_values) || is.matrix(feature_values) || inherits(feature_values, "Matrix")) {
+    # Some Assay5/BPCells-backed slices come back as 1 x N S4 matrices.
+    # Materialize that single feature row before coercing to numeric.
+    feature_values <- as.matrix(feature_values)
+    if (nrow(feature_values) == 1L || ncol(feature_values) == 1L) {
+      feature_values <- drop(feature_values)
+    }
   }
 
   as.numeric(feature_values)
