@@ -50,6 +50,11 @@ app_server <- function(input, output, session) {
     ## Init value to store user defined groups/metaData
     userMetaData <- reactiveVal(NULL)
 
+    active_plot_meta_cols <- reactive({
+        cols <- c(categoryInfo$group.by(), categoryInfo$split.by())
+        cols[!is.na(cols) & nzchar(cols) & cols != "None"]
+    })
+
     ## seuratObj changes, plottingMode will change, and indicators will increase
     ## Thus filterCells and ClusterSetting do not need to alter indicators
     inputData <- mod_dataInput_server(
@@ -116,7 +121,17 @@ app_server <- function(input, output, session) {
     })
 
     observeEvent(input$metaPatchProcessed, {
-        plotRefreshIndicator(plotRefreshIndicator() + 1)
+        patch_info <- input$metaPatchProcessed
+        patch_cols <- patch_info$cols %||% character()
+
+        if (!length(patch_cols)) {
+            plotRefreshIndicator(plotRefreshIndicator() + 1)
+            return()
+        }
+
+        if (length(intersect(patch_cols, active_plot_meta_cols())) > 0L) {
+            plotRefreshIndicator(plotRefreshIndicator() + 1)
+        }
     })
     ## Update reductions
     mod_UpdateReduction_server(
@@ -203,12 +218,10 @@ app_server <- function(input, output, session) {
                 }
             )
         }
-        nextPatchVersion <- metaPatchVersion() + 1L
-        metaPatchVersion(nextPatchVersion)
-        metaPatchRequest(list(
-            cols = colName,
-            version = nextPatchVersion
-        ))
+
+        if (colName %in% active_plot_meta_cols()) {
+            plotRefreshIndicator(plotRefreshIndicator() + 1)
+        }
     })
 
     mod_AssignCellCluster_server(
