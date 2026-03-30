@@ -89,6 +89,54 @@ export function createInfoWidgetElement({ plotEl, id }) {
   plotEl.appendChild(infoEl);
 }
 
+export function createCellCountElement({ plotEl, id, count }) {
+  const countEl = document.createElement("div");
+  countEl.id = id;
+  countEl.classList.add("mainClusterPlotCellCount");
+  countEl.style.position = "absolute";
+  countEl.style.zIndex = "30";
+  countEl.style.pointerEvents = "none";
+
+  const formatCount = (value) => new Intl.NumberFormat().format(Math.max(0, Number(value) || 0));
+  const createMetric = (label, value, valueClass) => {
+    const metricEl = document.createElement("span");
+    metricEl.classList.add("cell-count-metric");
+
+    const labelEl = document.createElement("span");
+    labelEl.classList.add("cell-count-label");
+    labelEl.textContent = label;
+
+    const valueEl = document.createElement("span");
+    valueEl.classList.add("cell-count-value", valueClass);
+    valueEl.textContent = formatCount(value);
+
+    metricEl.appendChild(labelEl);
+    metricEl.appendChild(valueEl);
+    return metricEl;
+  };
+
+  countEl.appendChild(createMetric("Total", count, "cell-count-total"));
+  countEl.appendChild(createMetric("Selected", 0, "cell-count-selected"));
+  plotEl.appendChild(countEl);
+}
+
+export function updateCellCountElement({ plotEl, id, totalCount = null, selectedCount = null }) {
+  const countEl = plotEl?.querySelector(`#${id}`);
+  if (!countEl) return;
+
+  const formatCount = (value) => new Intl.NumberFormat().format(Math.max(0, Number(value) || 0));
+
+  if (totalCount != null) {
+    const totalEl = countEl.querySelector(".cell-count-total");
+    if (totalEl) totalEl.textContent = formatCount(totalCount);
+  }
+
+  if (selectedCount != null) {
+    const selectedEl = countEl.querySelector(".cell-count-selected");
+    if (selectedEl) selectedEl.textContent = formatCount(selectedCount);
+  }
+}
+
 export function createDownloadIconElement({ plotEl, id, catLegendEl, expLegendEl }) {
   const downloadEl = document.createElement("div");
   downloadEl.id = id;

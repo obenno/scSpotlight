@@ -24,6 +24,8 @@ import "bootstrap-icons/font/bootstrap-icons.css";
 import {
   reglScatterCanvas,
   expandMeta,
+  getMetaLevels,
+  invalidateMetaCache,
   sortStringArray,
 } from "./modules/deckScatter.js";
 
@@ -57,6 +59,14 @@ import {
 const mainPlotElId = "mainClusterPlot-clusterPlot";
 // featurePlot canvas id
 const featurePlotElId = "featurePlotCanvas";
+const renameClusterIds = {
+  title: "renameCluster-selectCellFromCat",
+  chosenGroup: "renameCluster-chosenGroup",
+  chosenSplit: "renameCluster-chosenSplit",
+  selectedCellsText: "renameCluster-selectedCellsText",
+  assign: "renameCluster-assign",
+  selectedCellsPayload: "renameCluster-selectedCellsPayload",
+};
 // vlnSelect widget id
 const vlnDropDownId = "vlnDropDown";
 // vlnPlot canvas id
@@ -590,13 +600,214 @@ const metaColsAffectVlnPlot = (changedCols = []) => {
   return changedCols.some((col) => activeCols.includes(col));
 };
 
+const getSidebarMetaState = () => {
+  const metaData = reglElementData.origData.cellMetaData || {};
+  const cols = getNonNumericCols(reglElementData);
+  const groupBy = reglElementData.plotMetaData.group_by;
+  const splitBy = reglElementData.plotMetaData.split_by;
+
+  return {
+    cols,
+    groupBy,
+    splitBy,
+    groupByLevels: groupBy ? getMetaLevels(metaData[groupBy]) : null,
+    splitByLevels: splitBy ? getMetaLevels(metaData[splitBy]) : null,
+    timestamp: Date.now(),
+  };
+};
+
+const pushSidebarMetaState = () => {
+  Shiny.setInputValue("metaSidebarState", getSidebarMetaState(), {
+    priority: "event",
+  });
+};
+
+const getRenameSelectEl = (id) => document.getElementById(id);
+
+const getRenameSelectize = (id) => {
+  const el = getRenameSelectEl(id);
+  if (!el) return null;
+  return el.selectize || null;
+};
+
+const getRenameSelectedValues = (id) => {
+  const selectize = getRenameSelectize(id);
+  if (selectize) {
+    const value = selectize.getValue();
+    return Array.isArray(value) ? value : value ? [value] : [];
+  }
+  const el = getRenameSelectEl(id);
+  if (!el) return [];
+  return [...el.selectedOptions].map((option) => option.value).filter(Boolean);
+};
+
+const setRenameSelectChoices = (id, choices = []) => {
+  const normalizedChoices = [...new Set(
+    (choices || [])
+      .filter((value) => value != null)
+      .map((value) => String(value))
+      .filter((value) => value.length > 0 && value !== "undefined"),
+  )];
+  const selectize = getRenameSelectize(id);
+  if (selectize) {
+    const previous = getRenameSelectedValues(id);
+    selectize.clear(true);
+    selectize.clearOptions();
+    normalizedChoices.forEach((value) => {
+      selectize.addOption({ value, text: value });
+    });
+    selectize.refreshItems();
+    selectize.refreshOptions(false);
+    const next = previous.filter((value) => normalizedChoices.includes(value));
+    if (next.length > 0) {
+      selectize.setValue(next, true);
+    }
+    if (normalizedChoices.length > 0) {
+      selectize.enable();
+    } else {
+      selectize.disable();
+    }
+    return;
+  }
+
+  const el = getRenameSelectEl(id);
+  if (!el) return;
+  const previous = getRenameSelectedValues(id);
+  el.innerHTML = "";
+  normalizedChoices.forEach((value) => {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = value;
+    option.selected = previous.includes(value);
+    el.appendChild(option);
+  });
+  el.disabled = normalizedChoices.length === 0;
+  el.size = Math.min(Math.max(normalizedChoices.length, 1), 8);
+};
+
+const toggleRenameControl = (id, show) => {
+  const el = getRenameSelectEl(id) || document.getElementById(id);
+  if (!el) return;
+  const container = el.closest(".form-group, .shiny-input-container") || el;
+  container.style.display = show ? "" : "none";
+};
+
+const updateRenameSelectedCellsText = (count = 0) => {
+  const el = document.getElementById(renameClusterIds.selectedCellsText);
+  if (!el) return;
+  el.textContent = `${new Intl.NumberFormat().format(Math.max(0, Number(count) || 0))} Cells Selected`;
+};
+
+const computeRenameCategorySelectedCells = () => {
+  const groupBy = reglElementData.plotMetaData.group_by;
+  const splitBy = reglElementData.plotMetaData.split_by;
+  const metaData = reglElementData.origData.cellMetaData || {};
+  if (!groupBy || groupBy === "None") {
+    return [];
+  }
+
+  const selectedGroup = getRenameSelectedValues(renameClusterIds.chosenGroup);
+  if (selectedGroup.length === 0) {
+    return [];
+  }
+  const selectedGroupSet = new Set(selectedGroup);
+  const selectedSplit = splitBy && splitBy !== "None"
+    ? getRenameSelectedValues(renameClusterIds.chosenSplit)
+    : [];
+  const selectedSplitSet = new Set(selectedSplit);
+
+  if (splitBy && splitBy !== "None" && selectedSplitSet.size === 0) {
+    return [];
+  }
+
+  const groupValues = expandMeta(metaData[groupBy]) || [];
+  const splitValues = splitBy && splitBy !== "None" ? expandMeta(metaData[splitBy]) || [] : [];
+  const cells = expandMeta(metaData.cells) || [];
+  const selectedCells = [];
+
+  for (let i = 0; i < cells.length; i++) {
+    if (!selectedGroupSet.has(groupValues[i])) continue;
+    if (splitBy && splitBy !== "None" && !selectedSplitSet.has(splitValues[i])) continue;
+    selectedCells.push(cells[i]);
+  }
+  return selectedCells;
+};
+
+const applyRenameCategorySelection = () => {
+  if (reglElementData.selectionSource === "lasso" && reglElementData.plotData.selectedCells.length > 0) {
+    updateRenameSelectedCellsText(reglElementData.plotData.selectedCells.length);
+    return;
+  }
+  const selectedCells = computeRenameCategorySelectedCells();
+  reglElementData.setSelectedCells(selectedCells, { source: selectedCells.length > 0 ? "category" : null });
+  updateRenameSelectedCellsText(selectedCells.length);
+};
+
+const syncRenameClusterSelectionUi = () => {
+  const groupBy = reglElementData.plotMetaData.group_by;
+  const splitBy = reglElementData.plotMetaData.split_by;
+  const metaData = reglElementData.origData.cellMetaData || {};
+  const hasManualSelection =
+    reglElementData.selectionSource === "lasso" && reglElementData.plotData.selectedCells.length > 0;
+  const showCategoryControls = Boolean(groupBy) && groupBy !== "None" && !hasManualSelection;
+
+  toggleRenameControl(renameClusterIds.title, showCategoryControls);
+  toggleRenameControl(renameClusterIds.chosenGroup, showCategoryControls);
+  toggleRenameControl(
+    renameClusterIds.chosenSplit,
+    showCategoryControls && Boolean(splitBy) && splitBy !== "None",
+  );
+
+  if (showCategoryControls) {
+    setRenameSelectChoices(renameClusterIds.chosenGroup, getMetaLevels(metaData[groupBy]));
+    if (splitBy && splitBy !== "None") {
+      setRenameSelectChoices(renameClusterIds.chosenSplit, getMetaLevels(metaData[splitBy]));
+    } else {
+      setRenameSelectChoices(renameClusterIds.chosenSplit, []);
+    }
+  }
+
+  if (hasManualSelection) {
+    updateRenameSelectedCellsText(reglElementData.plotData.selectedCells.length);
+    return;
+  }
+
+  applyRenameCategorySelection();
+};
+
+const initRenameClusterClientSelection = () => {
+  [renameClusterIds.chosenGroup, renameClusterIds.chosenSplit].forEach((id) => {
+    const el = getRenameSelectEl(id);
+    if (!el || el.dataset.renameClusterBound === "true") return;
+    el.dataset.renameClusterBound = "true";
+    el.addEventListener("change", () => {
+      applyRenameCategorySelection();
+    });
+  });
+
+  const assignBtn = document.getElementById(renameClusterIds.assign);
+  if (assignBtn && assignBtn.dataset.renameClusterBound !== "true") {
+    assignBtn.dataset.renameClusterBound = "true";
+    const pushAssignSelection = () => {
+      Shiny.setInputValue(
+        renameClusterIds.selectedCellsPayload,
+        reglElementData.plotData.selectedCells || [],
+        { priority: "event" },
+      );
+    };
+    assignBtn.addEventListener("pointerdown", pushAssignSelection);
+    assignBtn.addEventListener("click", pushAssignSelection);
+  }
+
+  syncRenameClusterSelectionUi();
+};
+
 const syncMetaUiAfterUpdate = ({
   fullTransfer = false,
   changedCols = [],
   notifyServer = true,
 } = {}) => {
   const normalizedChangedCols = normalizeChangedMetaCols(changedCols);
-  const nonNumericCols = getNonNumericCols(reglElementData);
   const refreshMainPlot = fullTransfer || metaColsAffectMainPlot(normalizedChangedCols);
   const panelsToRefresh = [];
 
@@ -622,7 +833,7 @@ const syncMetaUiAfterUpdate = ({
     requestFloatingPlotRefresh(panelsToRefresh);
   }
 
-  Shiny.setInputValue("metaCols", nonNumericCols);
+  pushSidebarMetaState();
 
   if (notifyServer) {
     if (fullTransfer) {
@@ -815,50 +1026,7 @@ Shiny.addCustomMessageHandler("clear_expr", (msg) => {
 });
 
 Shiny.addCustomMessageHandler("selectPointsByCategory", (msg) => {
-  // handler for selecting cells by category
-  const groupBy = msg.groupBy;
-  const splitBy = msg.splitBy;
-  const selectedGroupBy = msg.selectedGroupBy;
-  const selectedSplitBy = msg.selectedSplitBy;
-  const selectedCells = [];
-  const groupByArray = groupBy
-    ? expandMeta(reglElementData.origData.cellMetaData[groupBy])
-    : [];
-  const splitByArray = splitBy
-    ? expandMeta(reglElementData.origData.cellMetaData[splitBy])
-    : [];
-  const colNames = Object.keys(reglElementData.origData.cellMetaData);
-  const cellsArray = colNames.includes("cells")
-    ? expandMeta(reglElementData.origData.cellMetaData["cells"])
-    : [];
-  if (groupBy && selectedGroupBy) {
-    if (!splitBy) {
-      groupByArray.forEach((e, i) => {
-        const currentCell = cellsArray[i];
-        if (selectedGroupBy.includes(e)) {
-          selectedCells.push(currentCell);
-        }
-      });
-    } else {
-      groupByArray.forEach((e, i) => {
-        const currentSplitBy = splitByArray[i];
-        const currentCell = cellsArray[i];
-        if (
-          selectedGroupBy.includes(e) &&
-          selectedSplitBy.includes(currentSplitBy)
-        ) {
-          selectedCells.push(currentCell);
-        }
-      });
-    }
-  }
-  if (selectedCells.length > 0) {
-    // update selectedCells in reglElementData
-    reglElementData.plotData.selectedCells = selectedCells;
-    Shiny.setInputValue("categorySelectedCells", selectedCells, {
-      priority: "event",
-    });
-  }
+  applyRenameCategorySelection();
 });
 
 Shiny.addCustomMessageHandler("addNewMeta", (msg) => {
@@ -913,6 +1081,7 @@ Shiny.addCustomMessageHandler("addNewMeta", (msg) => {
       return acc;
     }, {});
     reglElementData.origData.cellMetaData[newMetaCol].value = result;
+    invalidateMetaCache(reglElementData.origData.cellMetaData[newMetaCol]);
   }
   console.log({
     [newMetaCol]: expandMeta(reglElementData.origData.cellMetaData[newMetaCol]),
@@ -936,6 +1105,7 @@ Shiny.addCustomMessageHandler("addNewMeta", (msg) => {
   );
   // deselct points
   reglElementData.deselectAll();
+  syncRenameClusterSelectionUi();
   // reset selectedCells
   Shiny.setInputValue("categorySelectedCells", null, { priority: "event" });
 });
@@ -957,25 +1127,10 @@ Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
   const split_by = msg.split_by;
   const moduleScore = msg.moduleScore;
 
-  // update group_by levels to server side
-  let groupByLevels = group_by
-    ? new Set(expandMeta(reglElementData.origData.cellMetaData[group_by]))
-    : null;
-  groupByLevels = group_by ? [...groupByLevels].sort() : null;
-  // when split_by == null, this will return a set with size 0
-  //     // update split_by levels to server side
-  let splitByLevels = split_by
-    ? new Set(expandMeta(reglElementData.origData.cellMetaData[split_by]))
-    : null;
-  splitByLevels = split_by ? [...splitByLevels].sort() : null;
-  Shiny.setInputValue("metaColLevels", {
-    groupBy: groupByLevels,
-    splitBy: splitByLevels,
-  });
-
   reglElementData.clear();
   // update plotMetaData with previous one
   reglElementData.updatePlotMetaData(group_by, split_by, moduleScore);
+  pushSidebarMetaState();
   // then update with new msg, in case msg is empty
   //reglElementData.updatePlotMetaData(msg);
   console.log("reglElementData.plotMetaData: ", reglElementData.plotMetaData);
@@ -1005,14 +1160,19 @@ Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
   reglElementData.setSelectionHandlers({
     onSelect: ({ selectedCells }) => {
       console.log("selectedCells: ", selectedCells);
+      updateRenameSelectedCellsText(selectedCells.length);
+      syncRenameClusterSelectionUi();
       Shiny.setInputValue("selectedPoints", selectedCells, {
         priority: "event",
       });
     },
     onDeselect: () => {
+      syncRenameClusterSelectionUi();
       Shiny.setInputValue("selectedPoints", null);
     },
   });
+
+  initRenameClusterClientSelection();
 
   reglElementData.plotEl.style.display = "flex";
 
@@ -1032,6 +1192,18 @@ Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
     "floatingFeaturePlot",
   ]);
 });
+
+Shiny.addCustomMessageHandler("selected_cells_count", (msg) => {
+  reglElementData.updateCellCount({ selectedCount: msg?.selected ?? 0 });
+});
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", () => {
+    initRenameClusterClientSelection();
+  });
+} else {
+  initRenameClusterClientSelection();
+}
 
 const updateFeaturePlot = (canvas) => {
   if (!canvas || !featurePlotSpinner) return;

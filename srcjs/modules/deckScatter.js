@@ -6,7 +6,11 @@ import { ScatterRenderer } from "./scatter/scatterRenderer.js";
 import { ScatterOverlay } from "./scatter/scatterOverlay.js";
 import { ScatterInteractions } from "./scatter/scatterInteractions.js";
 import { ScatterLifecycle } from "./scatter/scatterLifecycle.js";
-import { computePanelLayout } from "./scatter/scatterLayout.js";
+import {
+  computePanelGrid,
+  computePanelLayout,
+  resolveMinPanelSize,
+} from "./scatter/scatterLayout.js";
 import {
   getGlobalBoundsFromPanels,
   computeViewStateFromBounds,
@@ -28,6 +32,8 @@ import {
 import {
   createLabelSliderElement,
   createInfoWidgetElement,
+  createCellCountElement,
+  updateCellCountElement,
   createDownloadIconElement,
   createNoteElement,
   showNoteElement,
@@ -76,6 +82,7 @@ export class reglScatterCanvas {
         sortStringArray,
         hue_pal,
         expandMeta,
+        getMetaLevels,
       },
     });
     // Keep backward-compatible property names used by index.js
@@ -94,6 +101,7 @@ export class reglScatterCanvas {
     this.noteId = null;
     this.hoveredPoint = null;
     this.highlightByPanel = null;
+    this.selectionSource = null;
     this.lassoTool = null;
     this.selectionHandlers = { onSelect: null, onDeselect: null };
     this.mountTimer = null;
@@ -196,6 +204,7 @@ export class reglScatterCanvas {
     this.globalBounds = null;
     this.highlightByPanel = null;
     this.hoveredPoint = null;
+    this.selectionSource = null;
     this.lastHoverKey = null;
     this.isRelayouting = false;
     this.isResizeBlank = false;
@@ -414,8 +423,13 @@ export class reglScatterCanvas {
     return { deckContainer, width, height };
   }
 
-  computeRelayoutViews(panelEls, deckWidth, deckHeight) {
-    const viewRects = this.computeViewRectsForPanels(panelEls, deckWidth, deckHeight);
+  computeRelayoutViews(panelEls, deckWidth, deckHeight, referenceEl = null) {
+    const viewRects = this.computeViewRectsForPanels(
+      panelEls,
+      deckWidth,
+      deckHeight,
+      referenceEl,
+    );
     const views = this.buildViewsFromRects(viewRects);
     return { viewRects, views };
   }
@@ -459,13 +473,14 @@ export class reglScatterCanvas {
     if (!deck) {
       return;
     }
-    const { width: deckWidth, height: deckHeight } = deck;
+    const { deckContainer, width: deckWidth, height: deckHeight } = deck;
 
     const panelEls = Array.from(this.plotEl.querySelectorAll(".deck-panel"));
     const { viewRects, views } = this.computeRelayoutViews(
       panelEls,
       deckWidth,
       deckHeight,
+      deckContainer,
     );
 
     if (hasInvalidPanelRects(viewRects)) {
@@ -492,6 +507,8 @@ export class reglScatterCanvas {
     this.createNote("scatterPlotNote");
     // create info widget
     this.createInfoWidget("info");
+    // create total cell badge
+    this.createCellCount("cellCount");
     // create slider widget
     this.createLabelSlider("labelSlider");
     // create download icon
@@ -511,16 +528,15 @@ export class reglScatterCanvas {
   // function to create grid view in the element (mainClusterPlot div)
   // here will always be div "parent-wrapper"
   createCanvas(canvasContainerID) {
-    // create plot panel
-    let nCols = null;
-
-    if (this.plotMetaData.nPanels >= 2) {
-      nCols = 2;
-    } else {
-      nCols = 1;
-    }
-    let nRows = Math.ceil(this.plotMetaData.nPanels / nCols);
     const panelGap = "0.2rem";
+    const minPanelSize = resolveMinPanelSize(this.plotMetaData.nPanels);
+    const { nCols, nRows } = computePanelGrid({
+      nPanels: this.plotMetaData.nPanels,
+      containerWidth: Math.max(1, this.plotEl.clientWidth || 1),
+      containerHeight: Math.max(1, this.plotEl.clientHeight || 1),
+      gap: 3.2,
+      minPanelSize,
+    });
 
     let canvasContainer = document.createElement("div");
     canvasContainer.id = canvasContainerID;
@@ -561,8 +577,8 @@ export class reglScatterCanvas {
     overlayGrid.style.position = "absolute";
     overlayGrid.style.inset = "0";
     overlayGrid.style.display = "grid";
-    overlayGrid.style.gridTemplateColumns = `repeat(${nCols}, minmax(400px, 1fr))`;
-    overlayGrid.style.gridTemplateRows = `repeat(${nRows}, minmax(400px, 1fr))`;
+    overlayGrid.style.gridTemplateColumns = `repeat(${nCols}, minmax(${minPanelSize}px, 1fr))`;
+    overlayGrid.style.gridTemplateRows = `repeat(${nRows}, minmax(${minPanelSize}px, 1fr))`;
     overlayGrid.style.gap = panelGap;
     overlayGrid.style.width = "max-content";
     overlayGrid.style.height = "max-content";
@@ -583,8 +599,8 @@ export class reglScatterCanvas {
       panel.style.background = "transparent";
       panel.style.overflow = "hidden";
       panel.style.boxSizing = "border-box";
-      panel.style.minWidth = "400px";
-      panel.style.minHeight = "400px";
+      panel.style.minWidth = `${minPanelSize}px`;
+      panel.style.minHeight = `${minPanelSize}px`;
       panel.style.aspectRatio = "auto";
       if (this.plotMetaData.nPanels > 1) {
         panel.style.borderWidth = "1px";
@@ -665,7 +681,7 @@ export class reglScatterCanvas {
       containerWidth: Math.max(1, canvasContainer.clientWidth),
       containerHeight: Math.max(1, canvasContainer.clientHeight),
       gap,
-      minPanelSize: 400,
+      minPanelSize: resolveMinPanelSize(nPanels),
     });
 
     overlayGrid.style.gridTemplateColumns = layout.gridTemplateColumns;
@@ -851,10 +867,16 @@ export class reglScatterCanvas {
     }
   }
 
-  computeViewRectsForPanels(panelEls, containerWidth, containerHeight) {
+  computeViewRectsForPanels(panelEls, containerWidth, containerHeight, referenceEl = null) {
     const nPanels = Math.max(1, panelEls.length);
-    const nCols = nPanels >= 2 ? 2 : 1;
-    const nRows = Math.ceil(nPanels / nCols);
+    const minPanelSize = resolveMinPanelSize(nPanels);
+    const { nCols, nRows } = computePanelGrid({
+      nPanels,
+      containerWidth,
+      containerHeight,
+      gap: 0,
+      minPanelSize,
+    });
     const fallbackPanelWidth = Math.max(1, containerWidth / nCols);
     const fallbackPanelHeight = Math.max(1, containerHeight / nRows);
     return getPanelViewRects({
@@ -863,6 +885,7 @@ export class reglScatterCanvas {
       nRows,
       fallbackPanelWidth,
       fallbackPanelHeight,
+      referenceEl,
     });
   }
 
@@ -919,6 +942,7 @@ export class reglScatterCanvas {
       panelEls,
       containerWidth,
       containerHeight,
+      deckContainer,
     );
     const views = this.buildViewsFromRects(viewRects);
 
@@ -1409,24 +1433,47 @@ export class reglScatterCanvas {
     this.selectionHandlers = { onSelect, onDeselect };
   }
 
+  setSelectedCells(selectedCells = [], { source = null } = {}) {
+    const normalizedCells = [...new Set((selectedCells || []).filter((value) => value !== undefined))];
+    this.selectionSource = source;
+    this.plotData.selectedCells = normalizedCells;
+
+    if (normalizedCells.length === 0) {
+      this.clearHighlight();
+      this.updateCellCount({ selectedCount: 0 });
+      return;
+    }
+
+    const selectedCellSet = new Set(normalizedCells);
+    this.highlightByPanel = this.panelBuffers.map((_, i) => {
+      const cells = this.plotData.cells[i] || [];
+      const matched = [];
+      for (let cellIdx = 0; cellIdx < cells.length; cellIdx++) {
+        if (selectedCellSet.has(cells[cellIdx])) {
+          matched.push(cellIdx);
+        }
+      }
+      return matched;
+    });
+    this.applyHighlight();
+    this.updateCellCount({ selectedCount: normalizedCells.length });
+  }
+
   handleLassoSelect(viewId, indices) {
     const panelIdx = Number.parseInt(String(viewId).replace("panel_", ""), 10);
     if (!Number.isFinite(panelIdx) || !Array.isArray(indices)) {
       return;
     }
     const panelCells = this.plotData.cells[panelIdx] || [];
-    const selectedCells = indices.map((idx) => panelCells[idx]).filter((v) => v !== undefined);
-    this.plotData.selectedCells = selectedCells;
-    this.highlightByPanel = this.panelBuffers.map((_, i) => (i === panelIdx ? indices : []));
-    this.applyHighlight();
+    const selectedCells = [...new Set(indices.map((idx) => panelCells[idx]).filter((v) => v !== undefined))];
+    this.setSelectedCells(selectedCells, { source: "lasso" });
     if (this.selectionHandlers.onSelect) {
       this.selectionHandlers.onSelect({ panelIdx, indices, selectedCells });
     }
   }
 
   handleLassoDeselect() {
-    this.plotData.selectedCells = [];
-    this.clearHighlight();
+    this.setSelectedCells([], { source: null });
     if (this.selectionHandlers.onDeselect) {
       this.selectionHandlers.onDeselect();
     }
@@ -1487,6 +1534,21 @@ export class reglScatterCanvas {
     createInfoWidgetElement({ plotEl: this.plotEl, id: infoId });
   }
 
+  createCellCount(countId) {
+    const cellMeta = this.origData?.cellMetaData?.cells;
+    const count = cellMeta ? expandMeta(cellMeta).length : 0;
+    createCellCountElement({ plotEl: this.plotEl, id: countId, count });
+  }
+
+  updateCellCount({ totalCount = null, selectedCount = null } = {}) {
+    updateCellCountElement({
+      plotEl: this.plotEl,
+      id: "cellCount",
+      totalCount,
+      selectedCount,
+    });
+  }
+
   createDownloadIcon(elId) {
     createDownloadIconElement({
       plotEl: this.plotEl,
@@ -1498,16 +1560,13 @@ export class reglScatterCanvas {
 
   updateCatLegend() {
     //const pointData_z = this.plotData["pointsData"].map((e) => e.z);
-    const groupByArray = this.plotMetaData.group_by
-      ? expandMeta(this.origData.cellMetaData[this.plotMetaData.group_by])
-      : [];
-
-    const splitByArray = this.plotMetaData.split_by
-      ? expandMeta(this.origData.cellMetaData[this.plotMetaData.split_by])
-      : [];
+    const groupMeta = this.plotMetaData.group_by
+      ? this.origData.cellMetaData[this.plotMetaData.group_by]
+      : null;
+    const groupByArray = groupMeta ? expandMeta(groupMeta) : [];
     // Add cluster legends, no legend for "cluster+expr+multiSplit" mode
     if (this.plotMetaData.mode != "cluster+expr+multiSplit") {
-      let catTitles = [...new Set(groupByArray)].sort(sortStringArray);
+      let catTitles = groupMeta ? getMetaLevels(groupMeta) : [];
       let catNumbers = catTitles.map((e, i) => {
         let counts = 0;
         groupByArray.forEach((d) => {
@@ -1517,10 +1576,14 @@ export class reglScatterCanvas {
         });
         return counts;
       });
-      this.plotMetaData.catColors.forEach((e, i) => {
+      catTitles.forEach((title, i) => {
+        const color = this.plotMetaData.catColors?.[i];
+        if (!color) {
+          return;
+        }
         let legendEl = this.constructor.createLegendEl(
-          catTitles[i],
-          e,
+          title,
+          color,
           catNumbers[i],
         );
 
@@ -1529,7 +1592,7 @@ export class reglScatterCanvas {
         legendEl.onmouseenter = (event) => {
           event.target.style.borderColor = "black";
           event.target.style.borderWidth = "2px";
-          let pointsIndex = this.highlight_index(catTitles[i]);
+          let pointsIndex = this.highlight_index(title);
           this.highlightByPanel = pointsIndex;
           this.applyHighlight();
         };
@@ -1896,23 +1959,55 @@ export function hue_pal(
   return direction === -1 ? colors.reverse() : colors;
 }
 
+const expandedMetaCache = new WeakMap();
+const metaLevelsCache = new WeakMap();
+
+export const invalidateMetaCache = (metaList) => {
+  if (!metaList || (typeof metaList !== "object" && typeof metaList !== "function")) {
+    return;
+  }
+  expandedMetaCache.delete(metaList);
+  metaLevelsCache.delete(metaList);
+};
+
 // Helper function to expand meta column data
 export const expandMeta = (metaList) => {
+  if (!metaList || (typeof metaList !== "object" && typeof metaList !== "function")) {
+    return null;
+  }
+  if (expandedMetaCache.has(metaList)) {
+    return expandedMetaCache.get(metaList);
+  }
+
+  let out = null;
   if (metaList.type === "number") {
-    return metaList.value;
+    out = metaList.value;
   } else if (metaList.type === "category") {
     const totalLength = Object.values(metaList.value).reduce(
       (sum, arr) => sum + arr.length,
       0,
     );
-    let out = Array(totalLength).fill(null);
+    out = Array(totalLength).fill(null);
     Object.keys(metaList.value).forEach((key) => {
       metaList.value[key].forEach((e) => {
         out[e] = key;
       });
     });
-    return out;
-  } else {
-    return null;
   }
+  expandedMetaCache.set(metaList, out);
+  return out;
+};
+
+export const getMetaLevels = (metaList) => {
+  if (!metaList || (typeof metaList !== "object" && typeof metaList !== "function")) {
+    return [];
+  }
+  if (metaLevelsCache.has(metaList)) {
+    return metaLevelsCache.get(metaList);
+  }
+
+  const expanded = expandMeta(metaList) || [];
+  const levels = [...new Set(expanded)].filter((value) => value != null).sort(sortStringArray);
+  metaLevelsCache.set(metaList, levels);
+  return levels;
 };

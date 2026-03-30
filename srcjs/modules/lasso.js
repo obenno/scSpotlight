@@ -1,3 +1,5 @@
+import { projectWorldToCanvas } from "./scatter/scatterCoordinates.js";
+
 export class LassoTool {
   constructor({
     container,
@@ -152,9 +154,7 @@ export class LassoTool {
     for (let i = 0; i < nPoints; i++) {
       const worldX = positions[i * 2];
       const worldY = positions[i * 2 + 1];
-      const projected = viewport.project([worldX, worldY]);
-      const px = projected[0];
-      const py = projected[1];
+      const [px, py] = projectWorldToCanvas(viewport, worldX, worldY);
       if (px < bbox.minX || px > bbox.maxX || py < bbox.minY || py > bbox.maxY) {
         continue;
       }

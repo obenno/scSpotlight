@@ -142,19 +142,21 @@ app_server <- function(input, output, session) {
     )
 
     ## Update category
+    metaSidebarState <- reactive({
+        input$metaSidebarState
+    })
+
     metaCols <- reactive({
         ## client side metaData column names
         ## only contains non-numeric columns
-        input$metaCols
-    })
-
-    metaColLevels <- reactive({
-        input$metaColLevels
+        state <- metaSidebarState()
+        state$cols
     })
 
     categoryInfo <- mod_UpdateCategory_server(
         "updateCategory",
         metaCols,
+        metaSidebarState,
         scatterUpdateIndicator
     )
 
@@ -197,10 +199,6 @@ app_server <- function(input, output, session) {
         input$selectedPoints
     }, ignoreNULL = FALSE)
 
-    categorySelectedCells <- reactive({
-        input$categorySelectedCells
-    })
-
     observeEvent(input$newMetaColData, {
         d <- input$newMetaColData[[1]] %>% unlist()
         str(d)
@@ -227,12 +225,7 @@ app_server <- function(input, output, session) {
     mod_AssignCellCluster_server(
         "renameCluster",
         seuratObj,
-        selectedPoints,
-        categorySelectedCells,
-        categoryInfo$group.by,
-        categoryInfo$split.by,
-        metaColLevels,
-        userMetaData
+        selectedPoints
     )
 
     ## Download Object

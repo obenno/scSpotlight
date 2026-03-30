@@ -1,13 +1,55 @@
+export function resolveMinPanelSize(nPanels) {
+  const panels = Math.max(1, nPanels || 1);
+  if (panels >= 96) return 180;
+  if (panels >= 72) return 200;
+  if (panels >= 48) return 240;
+  if (panels >= 24) return 280;
+  if (panels >= 12) return 320;
+  return 400;
+}
+
+export function computePanelGrid({
+  nPanels,
+  containerWidth,
+  containerHeight,
+  gap,
+  minPanelSize = resolveMinPanelSize(nPanels),
+}) {
+  const panels = Math.max(1, nPanels || 1);
+  const width = Math.max(1, containerWidth || 1);
+  const height = Math.max(1, containerHeight || 1);
+  const safeGap = Math.max(0, gap || 0);
+
+  if (panels === 1) {
+    return { nCols: 1, nRows: 1 };
+  }
+
+  const minColsFromWidth = Math.max(1, Math.floor((width + safeGap) / (minPanelSize + safeGap)));
+  const targetCols = Math.max(
+    2,
+    Math.ceil(Math.sqrt((panels * width) / Math.max(height, 1))),
+  );
+  const nCols = Math.min(panels, Math.max(minColsFromWidth, targetCols));
+  const nRows = Math.ceil(panels / nCols);
+
+  return { nCols, nRows };
+}
+
 export function computePanelLayout({
   nPanels,
   containerWidth,
   containerHeight,
   gap,
-  minPanelSize = 400,
+  minPanelSize = resolveMinPanelSize(nPanels),
 }) {
   const panels = Math.max(1, nPanels || 1);
-  const nCols = panels >= 2 ? 2 : 1;
-  const nRows = Math.ceil(panels / nCols);
+  const { nCols, nRows } = computePanelGrid({
+    nPanels: panels,
+    containerWidth,
+    containerHeight,
+    gap,
+    minPanelSize,
+  });
 
   const width = Math.max(1, containerWidth || 1);
   const height = Math.max(1, containerHeight || 1);
