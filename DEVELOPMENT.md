@@ -261,7 +261,7 @@ Recent validation included:
 - `pixi run build-js`
 - parse validation for `R/app_ui.R`
 
-At the time of writing, the JS test suite passed with 67 tests.
+At the time of writing, the JS test suite passed with 69 tests.
 
 ## Backend Migration Notes
 
@@ -548,6 +548,24 @@ Implementation notes:
 
 - `srcjs/modules/deckScatter.js` now filters null category titles before building legends.
 - `srcjs/index.js` now normalizes rename selector choices to distinct non-empty strings and ignores nullish values.
+
+### 25. Rename selectors should only persist within one grouping context
+
+Decision:
+
+- Rename-cluster category selections should persist only while the same `group.by` / `split.by` context remains active.
+- Explicit clear actions, including assign completion and manual deselect, must leave the rename selectors empty.
+
+Why:
+
+- Reused labels across different metadata columns can silently target the wrong cells if old rename selections carry into a new grouping context.
+- Users expect `Assign` and manual deselect to fully clear the rename selection rather than immediately restoring the previous category-based selection.
+
+Implementation notes:
+
+- `srcjs/index.js` now tracks the last active `group.by` / `split.by` pair and only preserves rename selector values when that pair has not changed.
+- `srcjs/index.js` now clears rename selector UI state after assign-time deselect and manual lasso deselect before resyncing category selection.
+- `srcjs/index.test.js` covers both regressions: grouping changes clear stale rename selections, and assign leaves the rename selectors cleared.
 
 ## Files to Check for Future Changes
 

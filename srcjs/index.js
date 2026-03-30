@@ -67,6 +67,10 @@ const renameClusterIds = {
   assign: "renameCluster-assign",
   selectedCellsPayload: "renameCluster-selectedCellsPayload",
 };
+const renameSelectionState = {
+  lastGroupBy: null,
+  lastSplitBy: null,
+};
 // vlnSelect widget id
 const vlnDropDownId = "vlnDropDown";
 // vlnPlot canvas id
@@ -641,7 +645,7 @@ const getRenameSelectedValues = (id) => {
   return [...el.selectedOptions].map((option) => option.value).filter(Boolean);
 };
 
-const setRenameSelectChoices = (id, choices = []) => {
+const setRenameSelectChoices = (id, choices = [], { preserveSelection = true } = {}) => {
   const normalizedChoices = [...new Set(
     (choices || [])
       .filter((value) => value != null)
@@ -650,7 +654,7 @@ const setRenameSelectChoices = (id, choices = []) => {
   )];
   const selectize = getRenameSelectize(id);
   if (selectize) {
-    const previous = getRenameSelectedValues(id);
+    const previous = preserveSelection ? getRenameSelectedValues(id) : [];
     selectize.clear(true);
     selectize.clearOptions();
     normalizedChoices.forEach((value) => {
@@ -672,7 +676,7 @@ const setRenameSelectChoices = (id, choices = []) => {
 
   const el = getRenameSelectEl(id);
   if (!el) return;
-  const previous = getRenameSelectedValues(id);
+  const previous = preserveSelection ? getRenameSelectedValues(id) : [];
   el.innerHTML = "";
   normalizedChoices.forEach((value) => {
     const option = document.createElement("option");
@@ -683,6 +687,21 @@ const setRenameSelectChoices = (id, choices = []) => {
   });
   el.disabled = normalizedChoices.length === 0;
   el.size = Math.min(Math.max(normalizedChoices.length, 1), 8);
+};
+
+const clearRenameCategorySelectionUi = () => {
+  [renameClusterIds.chosenGroup, renameClusterIds.chosenSplit].forEach((id) => {
+    const selectize = getRenameSelectize(id);
+    if (selectize) {
+      selectize.clear(true);
+      return;
+    }
+    const el = getRenameSelectEl(id);
+    if (!el) return;
+    [...el.options].forEach((option) => {
+      option.selected = false;
+    });
+  });
 };
 
 const toggleRenameControl = (id, show) => {
@@ -747,6 +766,9 @@ const syncRenameClusterSelectionUi = () => {
   const groupBy = reglElementData.plotMetaData.group_by;
   const splitBy = reglElementData.plotMetaData.split_by;
   const metaData = reglElementData.origData.cellMetaData || {};
+  const groupingChanged =
+    renameSelectionState.lastGroupBy !== groupBy ||
+    renameSelectionState.lastSplitBy !== splitBy;
   const hasManualSelection =
     reglElementData.selectionSource === "lasso" && reglElementData.plotData.selectedCells.length > 0;
   const showCategoryControls = Boolean(groupBy) && groupBy !== "None" && !hasManualSelection;
@@ -759,13 +781,20 @@ const syncRenameClusterSelectionUi = () => {
   );
 
   if (showCategoryControls) {
-    setRenameSelectChoices(renameClusterIds.chosenGroup, getMetaLevels(metaData[groupBy]));
+    setRenameSelectChoices(renameClusterIds.chosenGroup, getMetaLevels(metaData[groupBy]), {
+      preserveSelection: !groupingChanged,
+    });
     if (splitBy && splitBy !== "None") {
-      setRenameSelectChoices(renameClusterIds.chosenSplit, getMetaLevels(metaData[splitBy]));
+      setRenameSelectChoices(renameClusterIds.chosenSplit, getMetaLevels(metaData[splitBy]), {
+        preserveSelection: !groupingChanged,
+      });
     } else {
       setRenameSelectChoices(renameClusterIds.chosenSplit, []);
     }
   }
+
+  renameSelectionState.lastGroupBy = groupBy;
+  renameSelectionState.lastSplitBy = splitBy;
 
   if (hasManualSelection) {
     updateRenameSelectedCellsText(reglElementData.plotData.selectedCells.length);
@@ -1105,6 +1134,7 @@ Shiny.addCustomMessageHandler("addNewMeta", (msg) => {
   );
   // deselct points
   reglElementData.deselectAll();
+  clearRenameCategorySelectionUi();
   syncRenameClusterSelectionUi();
   // reset selectedCells
   Shiny.setInputValue("categorySelectedCells", null, { priority: "event" });
@@ -1167,6 +1197,7 @@ Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
       });
     },
     onDeselect: () => {
+      clearRenameCategorySelectionUi();
       syncRenameClusterSelectionUi();
       Shiny.setInputValue("selectedPoints", null);
     },
