@@ -2,7 +2,7 @@
 
 source("dev/r_dep_utils.R")
 
-prepare_pixi_r_session(clear_toolchain = TRUE)
+prepare_pixi_r_session(clear_toolchain = FALSE)
 
 optional_pkgs <- optional_performance_packages()
 if (!length(optional_pkgs)) {
@@ -33,37 +33,44 @@ current_pixi_platform <- function() {
     NA_character_
 }
 
-conda_exact_package <- function(pkg) {
-    paste0("r-", tolower(pkg))
+pixi_package_spec <- function(pkg) {
+    overrides <- list(
+        anndataR = list(package = "bioconductor-anndatar", channel = "bioconda"),
+        rhdf5 = list(package = "bioconductor-rhdf5", channel = "bioconda")
+    )
+
+    if (pkg %in% names(overrides)) {
+        spec <- overrides[[pkg]]
+        return(c(package = spec$package, channel = spec$channel))
+    }
+
+    c(package = paste0("r-", tolower(pkg)), channel = "conda-forge")
 }
 
-conda_has_exact_package <- function(conda_pkg, platform) {
+pixi_has_exact_package <- function(pkg, channel, platform) {
     if (is.na(platform) || !nzchar(Sys.which("pixi"))) {
         return(FALSE)
     }
 
     result <- suppressWarnings(system2(
         "pixi",
-        c("search", conda_pkg, "--channel", "conda-forge", "--platform", platform),
+        c("search", pkg, "--channel", channel, "--platform", platform),
         stdout = TRUE,
         stderr = TRUE
     ))
     status <- attr(result, "status") %||% 0L
 
-    identical(status, 0L) && any(grepl(paste0("^", conda_pkg, "-"), result))
+    identical(status, 0L) && any(grepl(paste0("^", pkg, "-"), result))
 }
 
-install_with_conda <- function(conda_pkgs) {
-    conda_bin <- Sys.which("conda")
-    prefix <- Sys.getenv("CONDA_PREFIX", unset = "")
-
-    if (!length(conda_pkgs) || !nzchar(conda_bin) || !nzchar(prefix)) {
+install_with_pixi <- function(specs, platform) {
+    if (!length(specs) || is.na(platform) || !nzchar(Sys.which("pixi"))) {
         return(FALSE)
     }
 
     status <- system2(
-        conda_bin,
-        c("install", "-y", "-p", prefix, "-c", "conda-forge", unname(conda_pkgs))
+        "pixi",
+        c("add", "--manifest-path", ".", "--platform", platform, unname(specs))
     )
 
     identical(status, 0L)
@@ -74,25 +81,36 @@ install_with_conda <- function(conda_pkgs) {
 }
 
 platform <- current_pixi_platform()
-conda_candidates <- vapply(optional_pkgs, conda_exact_package, character(1), USE.NAMES = TRUE)
-conda_available <- names(conda_candidates)[vapply(conda_candidates, conda_has_exact_package, logical(1), platform = platform)]
+pixi_specs <- lapply(optional_pkgs, pixi_package_spec)
+pixi_candidates <- vapply(pixi_specs, `[[`, character(1), "package")
+pixi_channels <- vapply(pixi_specs, `[[`, character(1), "channel")
+names(pixi_candidates) <- optional_pkgs
+names(pixi_channels) <- optional_pkgs
+pixi_available <- names(pixi_candidates)[vapply(seq_along(pixi_candidates), function(i) {
+    pixi_has_exact_package(pixi_candidates[[i]], pixi_channels[[i]], platform = platform)
+}, logical(1))]
 pak_install <- optional_pkgs
 
-if (length(conda_available)) {
+if (length(pixi_available)) {
     message(
-        "Trying Pixi-native conda-forge install for: ",
-        paste(conda_available, collapse = ", "),
+        "Trying Pixi-native add for: ",
+        paste(sprintf("%s (%s:%s)", pixi_available, pixi_channels[pixi_available], pixi_candidates[pixi_available]), collapse = ", "),
         "."
     )
-    conda_success <- install_with_conda(conda_candidates[conda_available])
-    if (conda_success) {
-        pak_install <- setdiff(optional_pkgs, conda_available)
-        message("Pixi-native install completed for available conda packages.")
+    add_specs <- ifelse(
+        pixi_channels[pixi_available] == "conda-forge",
+        pixi_candidates[pixi_available],
+        paste0(pixi_channels[pixi_available], "::", pixi_candidates[pixi_available])
+    )
+    pixi_success <- install_with_pixi(add_specs, platform = platform)
+    if (pixi_success) {
+        pak_install <- setdiff(optional_pkgs, pixi_available)
+        message("Pixi-native install completed for available channel packages.")
     } else {
-        message("Pixi-native conda install was unavailable or failed; falling back to pak for all optional packages.")
+        message("Pixi-native add was unavailable or failed; falling back to pak for all optional packages.")
     }
 } else {
-    message("No exact conda-forge packages found for the optional package set on this platform; using pak fallback.")
+    message("No exact conda-channel packages found for the optional package set on this platform; using pak fallback.")
 }
 
 if (!length(pak_install)) {

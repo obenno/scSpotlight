@@ -32,7 +32,7 @@ if (length(missing)) {
 }
 
 if (length(perf_pkgs)) {
-    cat("\nOptional Seurat performance packages installed:", length(perf_installed), "/", length(perf_pkgs), "\n")
+    cat("\nOptional performance packages installed:", length(perf_installed), "/", length(perf_pkgs), "\n")
     if (length(perf_installed)) {
         for (pkg in perf_installed) {
             cat("+", pkg, "\n")
@@ -44,6 +44,6 @@ if (length(perf_pkgs)) {
         }
         cat("These packages are intentionally excluded from pixi run setup\n")
         cat("Install them with: pixi run install-optional-packages\n")
-        cat("That command prefers Pixi-native conda-forge installs and then uses pak as a fallback\n")
+        cat("That command prefers Pixi-native pixi add installs from conda-forge/bioconda and then uses pak as a fallback\n")
     }
 }

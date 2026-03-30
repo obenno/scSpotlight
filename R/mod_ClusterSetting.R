@@ -75,47 +75,14 @@ mod_ClusterSetting_server <- function(id,
             if(input$updateClusterOpt == "Update All"){
                 incProgress(0, message = paste("Updating HVGs...", "0/4"))
                 obj <- seuratObj()
-                if(input$hvgSelectMethod == "vst"){
-                    obj <- FindVariableFeatures(obj, selection.method = input$hvgSelectMethod, layer = "counts")
-                }else{
-                    obj <- FindVariableFeatures(obj, selection.method = input$hvgSelectMethod, layer = "data")
-                }
-
                 incProgress(1/4, message = paste("Updating PCA...", "1/4"))
-                obj <- ScaleData(obj)
-                obj <- RunPCA(obj)
-
-                incProgress(1/4, message = paste("Updating UMAP...", "2/4"))
-                obj <- RunUMAP(obj, dims = 1:input$cluster_dims)
-
-                incProgress(1/4, message = paste("Updating Cluster...", "3/4"))
-                obj <- FindNeighbors(obj, dims = 1:input$cluster_dims)
-                obj <- FindClusters(obj, resolution = input$cluster_resolution)
-
-                ## update duckdb
-                con <- duckConnect(session, read_only = FALSE)
-                on.exit(dbDisconnect(con))
-
-                reductionData = list()
-                objReductions <- Reductions(obj)
-                for(i in seq_along(objReductions)){
-                  dr <- objReductions[i]
-                  d <- Embeddings(obj[[dr]])[,1:2] %>%
-                    as.data.frame() %>%
-                    rownames_to_column("cell")
-                  reductionData[[i]] <- d
-                }
-                names(reductionData) <- Reductions(obj)
-                updateDuckReduction(
-                  con,
-                  reductions = Reductions(obj),
-                  data = reductionData
-                )
-                message("Finished updating reduction")
-                updateDuckMeta(
-                  con,
-                  assay = selectedAssay(),
-                  data = rownames_to_column(obj[[]], "cell")
+                obj <- run_memory_conserving_processing(
+                    obj,
+                    normalization = FALSE,
+                    hvg_method = input$hvgSelectMethod,
+                    ndims = input$cluster_dims,
+                    res = input$cluster_resolution,
+                    npcs = max(input$cluster_dims, 30)
                 )
 
                 message("ClusterSetting module increased meta and reduction indicator")
@@ -124,36 +91,11 @@ mod_ClusterSetting_server <- function(id,
 
             }else if(input$updateClusterOpt == "Update nDim Only"){
                 incProgress(0, message = paste("Updating UMAP...", "0/2"))
-                obj <- RunUMAP(seuratObj(), dims = 1:input$cluster_dims)
+                obj <- RunUMAP(seuratObj(), dims = 1:input$cluster_dims, reduction = "pca")
 
                 incProgress(1/2, message = paste("Updating Cluster...", "1/2"))
-                obj <- FindNeighbors(obj, dims = 1:input$cluster_dims)
+                obj <- FindNeighbors(obj, dims = 1:input$cluster_dims, reduction = "pca")
                 obj <- FindClusters(obj, resolution = input$cluster_resolution)
-
-                ## update duckdb
-                con <- duckConnect(session, read_only = FALSE)
-                on.exit(dbDisconnect(con))
-
-                reductionData = list()
-                objReductions <- Reductions(obj)
-                for(i in seq_along(objReductions)){
-                    dr <- objReductions[i]
-                    d <- Embeddings(obj[[dr]])[,1:2] %>%
-                        as.data.frame() %>%
-                        rownames_to_column("cell")
-                    reductionData[[i]] <- d
-                }
-                names(reductionData) <- Reductions(obj)
-                updateDuckReduction(
-                    con,
-                    reductions = Reductions(obj),
-                    data = reductionData
-                )
-                updateDuckMeta(
-                    con,
-                    assay = selectedAssay(),
-                    data = rownames_to_column(obj[[]], "cell")
-                )
 
                 message("ClusterSetting module increased meta and reduction indicator")
                 metaUpdateIndicator(metaUpdateIndicator()+1)
@@ -168,19 +110,10 @@ mod_ClusterSetting_server <- function(id,
                     obj <- FindClusters(obj, resolution = input$cluster_resolution)
                 }else{
                     incProgress(0, message = paste("Updating SNN...", "0/2"))
-                    obj <- FindNeighbors(obj, dims = 1:input$cluster_dims)
+                    obj <- FindNeighbors(obj, dims = 1:input$cluster_dims, reduction = "pca")
                     incProgress(1/2, message = paste("Updating Cluster...", "1/2"))
                     obj <- FindClusters(obj, resolution = input$cluster_resolution)
                 }
-                ## update duckdb
-                con <- duckConnect(session, read_only = FALSE)
-                on.exit(dbDisconnect(con))
-                message("selectedAssay(): ", isolate(selectedAssay()))
-                updateDuckMeta(
-                    con,
-                    assay = selectedAssay(),
-                    data = rownames_to_column(obj[[]], "cell")
-                )
 
                 message("ClusterSetting module increased meta and reduction indicator")
                 metaUpdateIndicator(metaUpdateIndicator()+1)

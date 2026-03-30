@@ -1,6 +1,6 @@
 [workspace]
 name = "scspotlight"
-channels = ["conda-forge"]
+channels = ["conda-forge", "bioconda"]
 platforms = ["linux-64", "osx-64", "osx-arm64", "win-64"]
 description = "scSpotlight unified development environment"
 requires-pixi = ">=0.40"
@@ -48,11 +48,7 @@ pandoc = "*"
 zlib = "*"
 xz = "*"
 
-[target.linux-64.dependencies]
-r-duckdb = "*"
-
 [target.osx-64.dependencies]
-r-duckdb = "*"
 
 [target.osx-arm64.dependencies]
 

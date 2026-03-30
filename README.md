@@ -52,10 +52,12 @@ pak::pkg_install("obenno/scSpotlight")
 - Run `pixi run setup` to install conda-first R dependencies,
   install `pak` fallbacks for missing required packages, install
   `scSpotlight`, and install JavaScript dependencies.
+- `BPCells >= 0.3.1` is a required runtime dependency and is installed
+  by `pixi run setup` via the fallback R package bootstrap.
 - Run `pixi run install-optional-packages` when you want optional
-  Seurat performance helpers such as `BPCells` and `presto`. It
-  prefers Pixi-native conda-forge installs and then uses `pak` as a
-  fallback.
+  extras such as `presto` and `.h5ad` conversion support (`anndataR`
+  and `rhdf5`). It prefers Pixi-native `pixi add` installs from
+  `conda-forge`/`bioconda` and then uses `pak` as a fallback.
 - Run `pixi run doctor-env` to verify `scSpotlight` is installed,
   `.libPaths()` points to Pixi, and no required package is missing.
 - Run `pixi run run-app` to start the app in viewer mode.
@@ -72,9 +74,8 @@ pak::pkg_install("obenno/scSpotlight")
 - The `bootstrap-r` task clears conflicting library and toolchain
   environment variables inside R, so `pixi run setup` works on native
   Windows as well as Unix shells.
-- `r-duckdb` is available from conda-forge for Linux and macOS Intel
-  in the current R 4.5 stack. macOS Apple Silicon and Windows still
-  fall back to `pak` for `duckdb` in this repo's setup flow.
+- `pixi run setup` installs the BPCells-backed runtime used by both
+  viewer mode and processing mode.
 
 ### Quickstart with pixi
 
@@ -100,7 +101,7 @@ pixi run run-app-processing
 - `pixi run setup` - install required R and JavaScript dependencies
   and install `scSpotlight`
 - `pixi run install-optional-packages` - install optional
-  performance packages such as `BPCells` and `presto`
+  extras such as `presto` and `.h5ad` conversion support
 - `pixi run doctor-env` - verify the active Pixi/R environment and
   report missing optional packages
 - `pixi run run-app` - launch the app in viewer mode

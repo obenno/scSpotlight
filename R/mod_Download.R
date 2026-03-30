@@ -19,11 +19,18 @@ mod_Download_ui <- function(id){
           selectize = TRUE,
           width = NULL
       ),
-      downloadButton(
-          ns("downloadData"),
+      actionButton(
+          ns("downloadTrigger"),
           "Download",
           style = "width:200px",
           class = "border border-1 border-primary shadow"
+      ),
+      shinyjs::hidden(
+          downloadButton(
+              ns("downloadData"),
+              "Download",
+              style = "width:200px"
+          )
       )
   )
 }
@@ -36,36 +43,71 @@ mod_Download_ui <- function(id){
 #'
 #' @noRd
 mod_Download_server <- function(id,
-                                seuratObj,
-                                BPCells){
+                                seuratObj){
     moduleServer( id, function(input, output, session){
         ns <- session$ns
         ## Download code
 
+        should_warn_rds_export <- function(object) {
+            if (!isTruthy(object)) {
+                return(FALSE)
+            }
+
+            is_large_object <- tryCatch(ncol(object) >= 1e+05, error = function(...) FALSE)
+            is_large_object || is_seurat_bpcells(object)
+        }
+
         observe({
             runningMode <- golem::get_golem_options("runningMode")
             message("download, runningMode: ", runningMode)
-            if(runningMode == "processing" && isTruthy(seuratObj()) && isTruthy(BPCells())){
-                downloadFormat <- c("Rds", "duckdb", "BPCells", "metaData")
-            }else if(runningMode == "processing" && isTruthy(seuratObj())){
-                downloadFormat <- c("Rds", "duckdb", "metaData")
-            }else if(runningMode == "processing"){
-                downloadFormat <- c("duckdb", "metaData")
+            if(runningMode == "processing" && isTruthy(seuratObj())){
+                downloadFormat <- c("BPCells", "Rds", "metaData")
             }else{
                 downloadFormat <- c("metaData")
             }
 
-            if(!file.exists(session$userData$duckdb) && !isTruthy(seuratObj())){
+            if(!isTruthy(seuratObj())){
                 downloadFormat <- character(0)
             }
             updateSelectInput(
-                "downloadFormat",
                 session = session,
+                inputId = "downloadFormat",
                 label = "Result Format",
-                selected="",
+                selected = if (length(downloadFormat)) downloadFormat[[1]] else character(0),
                 choices = downloadFormat
             )
         })
+
+        trigger_download <- function() {
+            shinyjs::click("downloadData")
+        }
+
+        observeEvent(input$downloadTrigger, {
+            obj <- seuratObj()
+            req(isTruthy(obj), isTruthy(input$downloadFormat))
+
+            if (!identical(input$downloadFormat, "Rds") || !should_warn_rds_export(obj)) {
+                trigger_download()
+                return()
+            }
+
+            showModal(
+                modalDialog(
+                    title = "Confirm standard Rds export",
+                    "This export materializes BPCells-backed layers and can be slow or memory-intensive for large objects.",
+                    footer = tagList(
+                        modalButton("Cancel"),
+                        actionButton(ns("confirmRdsExport"), "Download Rds")
+                    ),
+                    easyClose = TRUE
+                )
+            )
+        }, ignoreNULL = TRUE)
+
+        observeEvent(input$confirmRdsExport, {
+            removeModal()
+            trigger_download()
+        }, ignoreNULL = TRUE)
 
         output$downloadData <- downloadHandler(
             filename = function(){
@@ -73,7 +115,6 @@ mod_Download_server <- function(id,
                 prefix <- "scSpotlight."
                 outFile <- case_when(
                     input$downloadFormat == "metaData" ~ paste0(prefix, "metaData.", Sys.Date(), ".tsv.gz"),
-                    input$downloadFormat == "duckdb" ~ paste0(prefix, Sys.Date(), ".duckdb"),
                     input$downloadFormat == "BPCells" ~ paste0(prefix, Sys.Date(), ".tar.gz"),
                     TRUE ~ paste0(prefix, Sys.Date(), ".Rds")
                 )
@@ -81,59 +122,58 @@ mod_Download_server <- function(id,
             },
             content = function(file){
                 obj <- seuratObj()
-                assay <- DefaultAssay(obj)
+                req(isTruthy(obj), isTruthy(input$downloadFormat))
+                prefix <- "scSpotlight."
                 message("file: ", file)
-                showSpinnerNotification(
-                    message = "Saving...",
-                    id = "savingNotification",
-                    session = session
-                )
                 if(str_detect(file, "\\.Rds$")){
                     message("Saving Rds...")
-                    SaveSeuratRds(obj, file)
-                }else if(str_detect(file, "\\.duckdb$")){
-                    ## code chunk for duckdb
-                    if(file.exists(session$userData$duckdb)){
-                        file.symlink(session$userData$duckdb, file)
-                    }else{
-                        showNotification(
-                            ui = "The duckdb file does not exist",
-                            action = NULL,
-                            duration = 5,
-                            closeButton = TRUE,
-                            type = "error",
-                            session = session
-                        )
-                    }
+                    progressr::withProgressShiny(
+                        {
+                            rds_progress <- progressr::progressor(steps = 3)
+                            rds_progress(message = "Preparing Rds export")
+                            obj <- materialize_bpcells_layers(obj)
+                            rds_progress(message = "Writing Rds file")
+                            saveRDS(obj, file)
+                            rds_progress(message = "Rds export ready")
+                        },
+                        message = "Saving Rds...",
+                        detail = "Preparing export"
+                    )
                 }else if(input$downloadFormat == "metaData"){
-                    ## Extract meta data from duckdb
-                    con <- duckConnect(session)
-                    on.exit(dbDisconnect(con))
-                    metaData <- queryDuckMeta(con) %>%
+                    metaData <- get_backend_metadata(obj) %>%
                         tibble::rownames_to_column("cell")
                     readr::write_tsv(metaData, file)
                 }else if(input$downloadFormat == "BPCells"){
-                    ## code chunk for BPCells
-                    subPath <- tempfile(pattern = "scSpotlight_out_") %>%
-                        basename()
-                    dir.create(subPath)
-                    prefix <- "scSpotlight."
-                    rdsOut <- paste0(prefix, Sys.Date(), ".Rds")
-                    SaveSeuratRds(
-                        obj,
-                        file.path(subPath, rdsOut),
-                        move = TRUE,
-                        relative = TRUE
+                    bundleDir <- tempfile(pattern = "scspotlight_bundle_")
+                    dir.create(bundleDir)
+                    on.exit(unlink(bundleDir, recursive = TRUE, force = TRUE), add = TRUE)
+                    progressr::withProgressShiny(
+                        {
+                            bundle_progress <- progressr::progressor(steps = 6)
+                            write_scspotlight_bundle(
+                                obj,
+                                bundleDir,
+                                file_name = paste0(prefix, Sys.Date(), ".Rds"),
+                                progress = bundle_progress
+                            )
+                            bundle_progress(message = "Creating archive")
+                            old_wd <- getwd()
+                            on.exit(setwd(old_wd), add = TRUE)
+                            setwd(dirname(bundleDir))
+                            tar(tarfile = file, files = basename(bundleDir), compression = "gzip")
+                        },
+                        message = "Saving BPCells bundle...",
+                        detail = "Preparing bundle"
                     )
-                    tar(tarfile = file, files = subPath, compression = c("gzip"))
                 }else{
                     stop("Format is not supported")
                 }
-                removeNotification(id = "savingNotification", session)
             },
             contentType = NULL,
             outputArgs = list()
         )
+
+        outputOptions(output, "downloadData", suspendWhenHidden = FALSE)
 
   })
 }

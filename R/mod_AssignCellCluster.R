@@ -77,6 +77,7 @@ mod_AssignCellCluster_ui <- function(id){
 #'
 #' @noRd
 mod_AssignCellCluster_server <- function(id,
+                                         seuratObj,
                                          selectedPoints,
                                          categorySelectedCells,
                                          group.by,
@@ -160,7 +161,6 @@ mod_AssignCellCluster_server <- function(id,
         input$chosenGroup,
         input$chosenSplit
     ), {
-        req(file.exists(session$userData$duckdb))
         req(input_group.by())
         req(!isTruthy(selectedPoints()))
 
@@ -182,14 +182,11 @@ mod_AssignCellCluster_server <- function(id,
     manuallySelectedCells <- reactive({
 
         ## Do not use req() here, or it will block the validation chain
-        if(isTruthy(selectedPoints()) && file.exists(session$userData$duckdb)){
-            con <- duckConnect(session)
-            on.exit(dbDisconnect(con))
-            d <- queryDuckMeta(con)
-            cells <- d %>%
-                mutate(idx = row_number()) %>%
-                filter(idx %in% selectedPoints()) %>%
-                rownames()
+        if(isTruthy(selectedPoints()) && isTruthy(seuratObj())){
+            all_cells <- rownames(seuratObj()[[]])
+            selected_idx <- as.integer(selectedPoints()) + 1L
+            selected_idx <- selected_idx[selected_idx >= 1L & selected_idx <= length(all_cells)]
+            cells <- all_cells[selected_idx]
 
         }else{
             cells <- NULL

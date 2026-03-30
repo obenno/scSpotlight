@@ -260,6 +260,193 @@ Recent validation included:
 
 At the time of writing, the JS test suite passed with 55 tests.
 
+## Backend Migration Notes
+
+These notes capture the recent backend reconstruction from a DuckDB-centered runtime to a Seurat v5 + BPCells runtime.
+
+### 11. BPCells is now the primary assay backend
+
+Decision:
+
+- Processing mode and viewer mode now treat Seurat objects as the single source of truth.
+- DuckDB-backed assay/query storage has been removed from the active app runtime.
+- BPCells is a required part of the runtime rather than an optional acceleration path.
+- Counts and normalized data layers are stored as BPCells-backed on-disk matrices whenever possible.
+
+Why:
+
+- The app already keeps metadata, reductions, clustering state, and other analysis state inside the Seurat object.
+- Maintaining both Seurat and DuckDB introduced duplicated storage, conversion work, and synchronization overhead.
+- BPCells keeps large assay layers memory-efficient while preserving Seurat workflows.
+- The app's large-dataset guarantees depend on BPCells-backed storage being available in every supported environment.
+
+Implementation notes:
+
+- `R/fct_bpcells_backend.R` now owns BPCells detection, conversion, querying, bundle save/load helpers, and memory-conserving PCA helpers.
+- `R/mod_dataInput.R` converts loaded Seurat objects to BPCells-backed assay layers through `ensure_bpcells_backing()`.
+- Metadata, reduction, and expression transfers now read directly from the Seurat object rather than querying DuckDB.
+
+### 12. Client data exports should remain asynchronous
+
+Decision:
+
+- Metadata, reduction, and expression IPC generation should still use `future_promise()` for Arrow file writing and browser notification.
+- BPCells-backed Seurat reads should remain on the Shiny main thread before the async boundary.
+
+Why:
+
+- BPCells-backed assay data is not a good fit for inter-process transfer or forked worker access.
+- Arrow serialization can still be moved off the reactive loop after the in-process data extraction step.
+
+Implementation notes:
+
+- `R/mod_UpdateMetaData.R`, `R/mod_UpdateReduction.R`, and `R/mod_InputFeature.R` fetch Seurat/BPCells data in-process, then wrap Arrow IPC writing in background promises before notifying the browser on completion.
+
+### 13. Metadata and reductions are exported directly from Seurat
+
+Decision:
+
+- Metadata Arrow IPC payloads come from `object[[]]`.
+- Reduction Arrow IPC payloads come from `Embeddings(object[[reduction]])`.
+
+Why:
+
+- These structures are already in memory in Seurat and are faster to access directly than round-tripping through an external query engine.
+
+Implementation notes:
+
+- `R/mod_UpdateMetaData.R` now builds full and partial metadata payloads from `get_backend_metadata()`.
+- `R/mod_UpdateReduction.R` now builds reduction payloads from `get_backend_reduction()` and sends PCA standard deviations directly from the Seurat object.
+
+### 14. Expression queries now use Seurat/BPCells layer access
+
+Decision:
+
+- Feature expression extraction for the main scatter plot now reads from the selected Seurat assay layer directly.
+
+Why:
+
+- The backend is no longer split between Seurat state and DuckDB tables.
+- This keeps expression serving consistent with the BPCells-backed assay storage model.
+
+Implementation notes:
+
+- `R/mod_InputFeature.R` uses `get_backend_expr()` for expression payload generation.
+- `R/fct_bpcells_backend.R` chooses the preferred layer via `preferred_expr_layer()` and extracts feature vectors from the active BPCells or in-memory layer.
+
+### 15. Processing mode should prefer BPCells-compatible code paths
+
+Decision:
+
+- Processing mode should assume Seurat calls may densify unexpectedly and should prefer BPCells-native or BPCells-compatible code paths.
+- Full dense `scale.data` should not be preserved in portable BPCells bundles.
+
+Why:
+
+- Large datasets cannot tolerate accidental dense layer persistence.
+- `ScaleData()` and related workflows can create expensive dense intermediates if left unchecked.
+
+Implementation notes:
+
+- `R/fct_bpcells_backend.R` provides `run_memory_conserving_processing()` and `run_memory_conserving_pca()`.
+- BPCells-backed PCA uses BPCells matrix stats and truncated SVD when available.
+- BPCells bundle export removes `scale.data` before saving to avoid shipping large dense matrices in portable archives.
+
+### 15a. Seurat `ScaleData()` on BPCells supports scaling but not regression
+
+Decision:
+
+- Do not rely on `ScaleData(..., vars.to.regress = ...)` for BPCells-backed assay layers.
+- BPCells-backed processing should use explicit BPCells-native scaling/PCA paths instead of Seurat regression-driven scaling.
+
+Why:
+
+- Seurat 5 provides an `IterableMatrix` method for `ScaleData()`, but that method only implements feature centering/scaling.
+- The BPCells `IterableMatrix` path does not use `vars.to.regress`, `latent.data`, `split.by`, or regression models.
+- This matches the behavior discussed in Seurat issue `#9676`, where users observed that regression requests on BPCells-backed data had no effect.
+
+Implementation notes:
+
+- Seurat's documented `ScaleData.IterableMatrix` signature omits `vars.to.regress`.
+- The current Seurat implementation uses `BPCells::matrix_stats()` and row-wise transforms for scaling, but does not run regression in the `IterableMatrix` method.
+- `R/fct_bpcells_backend.R` avoids this gap in the main processing route by using `run_bpcells_pca()` / `run_memory_conserving_pca()` instead of relying on `ScaleData()` for BPCells-backed objects.
+
+### 16. BPCells layer types are optimized for storage
+
+Decision:
+
+- BPCells counts layers should be written as integer-like storage.
+- BPCells normalized data layers should be written as float storage rather than raw doubles.
+
+Why:
+
+- BPCells warns that compression performs poorly for non-integer matrices.
+- Counts compress better as `uint32_t`, while normalized data is more efficient as `float` than as double.
+
+Implementation notes:
+
+- `R/fct_bpcells_backend.R` uses `optimize_bpcells_matrix_type()` before `write_matrix_dir()`.
+- `R/mod_dataInput.R` applies the same optimization in `BPCells_Read10X()`.
+
+### 17. Portable BPCells downloads use a scSpotlight bundle contract
+
+Decision:
+
+- The BPCells download format is a self-identifying tarball bundle, not just a generic compressed folder.
+- The download menu also keeps a standard `.Rds` export for compatibility with tooling that expects a plain serialized Seurat object.
+
+Why:
+
+- A plain `.tar.gz` does not indicate whether it contains a valid scSpotlight BPCells-backed Seurat bundle.
+- Portable reuse requires a stable contract for locating the entrypoint RDS and the supporting BPCells layer directories.
+- Some downstream workflows still expect a conventional `.Rds`, even though that path may need to materialize BPCells-backed layers first.
+
+Implementation notes:
+
+- `R/mod_Download.R` now defaults to `BPCells` format in processing mode.
+- `R/mod_Download.R` now uses a single confirm modal before standard `Rds` export for large or BPCells-backed objects.
+- `R/mod_Download.R` uses `progressr::withProgressShiny()` for BPCells bundle export and for coarse-grained standard `Rds` export progress.
+- `R/fct_bpcells_backend.R` writes bundles containing:
+  - `manifest.json`
+  - the Seurat `.Rds`
+  - `supporting/<assay>/<layer>/...` BPCells directories
+  - `load_bundle.R`
+  - `README.txt`
+- `manifest.json` includes `bundle_type = "scspotlight_bpcells_seurat_bundle"` and `rds_file` so the app can identify valid bundles.
+
+### 18. Bundled BPCells Seurat objects must be loaded from the bundle directory context
+
+Decision:
+
+- Reusable BPCells tarballs should be loaded through the app import path or the bundle loader helper, not by calling `LoadSeuratRds()` on the RDS from an arbitrary working directory.
+
+Why:
+
+- `SeuratObject::LoadSeuratRds()` rehydrates on-disk layers from the cached paths stored in the object.
+- For relative paths like `supporting/RNA/counts`, path resolution depends on loading from the bundle directory context.
+
+Implementation notes:
+
+- `R/fct_bpcells_backend.R` provides `load_scspotlight_bundle()` to set the bundle directory context before calling `LoadSeuratRds()`.
+- `R/mod_dataInput.R` uses the bundle-aware loader for direct `.Rds` input and for decompressed BPCells bundles.
+- The saved bundle RDS now exposes the tool cache under `SaveSeuratRds`, matching what `LoadSeuratRds()` expects.
+
+### 19. `.h5ad` bundle conversion should stream matrices through BPCells
+
+Decision:
+
+- `.h5ad` to BPCells bundle conversion should use `BPCells::open_matrix_anndata_hdf5()` for the matrix payload instead of first materializing a full Seurat object through `anndataR`.
+
+Why:
+
+- Large AnnData inputs can exceed memory limits if `X` is loaded fully into RAM before BPCells conversion.
+- BPCells can read AnnData matrices lazily from HDF5, which keeps the conversion path aligned with the app's large-dataset constraints.
+
+Implementation notes:
+
+- `R/fct_bpcells_backend.R` now prefers native BPCells `.h5ad` import and falls back to reconstructing CSR matrices via `rhdf5` when BPCells cannot open the AnnData matrix layout directly.
+- Direct `.h5ad` support in `R/mod_dataInput.R` is intentionally disabled for now because real-world AnnData layouts still vary enough to need more validation before interactive load should rely on them.
+
 ## Files to Check for Future Changes
 
 If behavior changes again, review these files together:
@@ -271,6 +458,11 @@ If behavior changes again, review these files together:
 - `srcjs/modules/scatter/scatterModel.js`
 - `srcjs/modules/deckScatter.js`
 - `R/mod_UpdateMetaData.R`
+- `R/fct_bpcells_backend.R`
+- `R/mod_dataInput.R`
+- `R/mod_Download.R`
+- `R/mod_InputFeature.R`
+- `R/mod_UpdateReduction.R`
 - `R/mod_mainClusterPlot.R`
 - `R/app_server.R`
 - `srcjs/modules/floatingPlots.js`

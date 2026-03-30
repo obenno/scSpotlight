@@ -3,32 +3,25 @@
 #' @param input,output,session Internal parameters for {shiny}.
 #'     DO NOT REMOVE.
 #' @import shiny
-#' @import DBI
 #' @importFrom rlang %||%
 #' @noRd
 app_server <- function(input, output, session) {
 
-    ## create temp dir to store expression binary files, reduction, metaData and
-    ## newly created duckdb file
+    ## create temp dir to store Arrow IPC files and BPCells-backed session data
     tempDir <- file.path(getwd(), paste0("tmp_", session$token))
     if(dir.create(tempDir)){
         ## create dir to store reduction, meta and expr files
         dir.create(file.path(tempDir, "reduction"))
         dir.create(file.path(tempDir, "meta"))
         dir.create(file.path(tempDir, "expr"))
+        dir.create(file.path(tempDir, "backend"))
         addResourcePath("data", tempDir)
         session$userData$tempDir <- tempDir
+        session$userData$backendDir <- file.path(tempDir, "backend")
         message("temp dir created: ", session$userData$tempDir)
     }else{
         stop("Failed to create temp dir")
     }
-
-    ## store duckdb file in userData space
-    session$userData$duckdb <- tempfile(
-        pattern = paste0("session_", session$token),
-        fileext = ".duckdb",
-        tmpdir = session$userData$tempDir
-    )
 
     ## setup nCores
     session$userData$nCores <- as.character(golem::get_golem_options("nCores"))
@@ -56,6 +49,11 @@ app_server <- function(input, output, session) {
     metaPatchVersion <- reactiveVal(0)
     ## Init value to store user defined groups/metaData
     userMetaData <- reactiveVal(NULL)
+
+    active_plot_meta_cols <- reactive({
+        cols <- c(categoryInfo$group.by(), categoryInfo$split.by())
+        cols[!is.na(cols) & nzchar(cols) & cols != "None"]
+    })
 
     ## seuratObj changes, plottingMode will change, and indicators will increase
     ## Thus filterCells and ClusterSetting do not need to alter indicators
@@ -109,6 +107,7 @@ app_server <- function(input, output, session) {
     ## Update metaData
     mod_UpdateMetaData_server(
         "updateMetaData",
+        seuratObj,
         metaUpdateIndicator,
         metaPatchRequest,
         metaProcessed
@@ -122,7 +121,17 @@ app_server <- function(input, output, session) {
     })
 
     observeEvent(input$metaPatchProcessed, {
-        plotRefreshIndicator(plotRefreshIndicator() + 1)
+        patch_info <- input$metaPatchProcessed
+        patch_cols <- patch_info$cols %||% character()
+
+        if (!length(patch_cols)) {
+            plotRefreshIndicator(plotRefreshIndicator() + 1)
+            return()
+        }
+
+        if (length(intersect(patch_cols, active_plot_meta_cols())) > 0L) {
+            plotRefreshIndicator(plotRefreshIndicator() + 1)
+        }
     })
     ## Update reductions
     mod_UpdateReduction_server(
@@ -158,6 +167,7 @@ app_server <- function(input, output, session) {
     ## Input Features
     featureInfo <- mod_InputFeature_server(
         "inputFeatures",
+        seuratObj,
         inputData$selectedAssay,
         geneUpdateIndicator,
         scatterUpdateIndicator
@@ -208,35 +218,15 @@ app_server <- function(input, output, session) {
                 }
             )
         }
-        ## update duckdb
-        if(file.exists(session$userData$duckdb)){
-            withProgress(
-                message = "Updating duckdb...",
-                {
-                    con <- duckConnect(session, read_only=FALSE)
-                    on.exit(dbDisconnect(con))
-                    if(!(colName %in% colnames(tbl(con, "metaData")))){
-                        dbExecute(
-                            con,
-                            sprintf("ALTER TABLE metaData ADD COLUMN %s VARCHAR", colName)
-                        )
-                    }
-                    ## duckdb rowid starts from 0, not 1 !
-                    for(i in seq_along(d)) {
-                        dbExecute(
-                            con,
-                            sprintf("UPDATE metaData SET %s = '%s' WHERE rowid = %d", colName, d[i], i-1)
-                        )
-                    }
 
-                }
-            )
+        if (colName %in% active_plot_meta_cols()) {
+            plotRefreshIndicator(plotRefreshIndicator() + 1)
         }
-        ##userMetaData(input$newMetaColData)
     })
 
     mod_AssignCellCluster_server(
         "renameCluster",
+        seuratObj,
         selectedPoints,
         categorySelectedCells,
         categoryInfo$group.by,
@@ -248,11 +238,9 @@ app_server <- function(input, output, session) {
     ## Download Object
     mod_Download_server(
         "downloadObj",
-        seuratObj,
-        inputData$BPCells
+        seuratObj
     )
 
-    ## close duckdb when session ends
     session$onSessionEnded(function(){
         tryCatch(
         {

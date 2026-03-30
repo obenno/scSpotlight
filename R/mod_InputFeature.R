@@ -94,11 +94,12 @@ mod_InputFeature_ui <- function(id){
 #' @importFrom htmltools tagAppendAttributes
 #' @importFrom shinyWidgets updateSwitchInput
 #' @import shiny
-#' @importFrom promises future_promise %...>% %...!%
+#' @importFrom promises future_promise %...>% %...!% finally
 #' @importFrom cli hash_md5
 #' @importFrom arrow arrow_table write_ipc_stream float32 Array
 #' @noRd
 mod_InputFeature_server <- function(id,
+                                    seuratObj,
                                     assay,
                                     geneUpdateIndicator,
                                     scatterUpdateIndicator){
@@ -130,13 +131,8 @@ mod_InputFeature_server <- function(id,
       }, priority = -10)
 
       genes <- eventReactive(geneUpdateIndicator(), {
-          req(file.exists(session$userData$duckdb), assay())
-          con <- duckConnect(session)
-          on.exit(dbDisconnect(con))
-          genes <- queryDuckFeatures(
-              con = con,
-              assay = assay()
-          )
+          req(isTruthy(seuratObj()), assay())
+          get_backend_features(seuratObj(), assay = assay())
       })
 
       observeEvent(genes(), {
@@ -179,7 +175,7 @@ mod_InputFeature_server <- function(id,
 
           geneSet <- unique(uploadedFeatureList()$geneSet)
 
-          updateSelectInput(
+          updateSelectizeInput(
               session = session,
               inputId = "geneSet",
               choices = geneSet,
@@ -188,48 +184,12 @@ mod_InputFeature_server <- function(id,
           )
       })
 
-      ## Extracting gene expression or calculating module score
-      ## Init expression extraction as extendedTask class
-      ## Note DBI connection cannot be shared accross R threads
-      ## https://github.com/rstudio/pool/issues/83
-      ## https://cran.r-project.org/web/packages/future/vignettes/future-4-non-exportable-objects.html
-      ## future codes needs to be installed before testing:
-      ## https://github.com/HenrikBengtsson/future/issues/206
-      extract_expression <- ExtendedTask$new(function(assay, features, layer = "data", filePath, exprVersion) {
-          future_promise({
-              con <- duckConnect(session)
-              on.exit(DBI::dbDisconnect(con))
-              expr <- queryDuckExpr(
-                  con = con,
-                  assay = assay,
-                  layer = layer,
-                  features = features,
-                  populateZero = TRUE, # populate zero
-                  cellNames = FALSE # remove cellnames to shrink object size
-              )
-
-              if(file.exists(filePath)){
-                  file.remove(filePath)
-              }
-              write_ipc_stream(
-                  arrow_table(expr = Array$create(expr[[features]], type = float32())),
-                  filePath
-              )
-              return(list(
-                  geneName = features,
-                  assay = assay,
-                  exprVersion = exprVersion,
-                  exprFile = basename(filePath)
-              ))
-          })
-      })
-
       cachedExprKeys <- reactive({
           input$cachedExprKeys
       })
 
       invoke_expression_transfer <- function(feature, create_sparkline = TRUE){
-          req(file.exists(session$userData$duckdb), assay(), isTruthy(feature))
+          req(isTruthy(seuratObj()), assay(), isTruthy(feature))
 
           if (create_sparkline) {
               start_extract_expr(feature, session)
@@ -242,15 +202,69 @@ mod_InputFeature_server <- function(id,
               "expr",
               hash_md5(paste0("expr_", promise_assay, "_", feature, "_", exprVersion))
           )
-          extract_expression$invoke(assay = promise_assay,
-                                    features = feature,
-                                    filePath = promise_filePath,
-                                    exprVersion = exprVersion)
+          # BPCells-backed layer access stays on the main thread; the worker only writes IPC.
+          expr <- tryCatch(
+              get_backend_expr(seuratObj(), assay = promise_assay, features = feature),
+              error = function(error) {
+                  showNotification(
+                      ui = paste("Expression extraction failed:", conditionMessage(error)),
+                      action = NULL,
+                      duration = 6,
+                      closeButton = TRUE,
+                      type = "error",
+                      session = session
+                  )
+                  removeNotification(id = "extract_expr_notification", session = session)
+                  NULL
+              }
+          )
+          if (is.null(expr)) {
+              return(invisible(NULL))
+          }
+
+          expr_promise <- future_promise({
+              if(file.exists(promise_filePath)){
+                  file.remove(promise_filePath)
+              }
+              write_ipc_stream(
+                  arrow_table(expr = Array$create(expr[[feature]], type = float32())),
+                  promise_filePath
+              )
+              list(
+                  geneName = feature,
+                  assay = promise_assay,
+                  exprVersion = exprVersion,
+                  exprFile = basename(promise_filePath)
+              )
+          }) %...>% (
+              function(result) {
+                  session$sendCustomMessage(type = "expr_ready", message = result)
+                  result
+              }
+          ) %...!% (
+              function(error) {
+                  showNotification(
+                      ui = paste("Expression export failed:", conditionMessage(error)),
+                      action = NULL,
+                      duration = 6,
+                      closeButton = TRUE,
+                      type = "error",
+                      session = session
+                  )
+              }
+          )
+
+          promises::finally(
+              expr_promise,
+              function() {
+                  removeNotification(id = "extract_expr_notification", session = session)
+              }
+          )
       }
 
       observeEvent(input$geneSet, {
           req(uploadedFeatureList(), input$geneSet,
-              file.exists(session$userData$duckdb), assay(), genes())
+              isTruthy(seuratObj()), assay(), genes())
           geneSetFeatures <- uploadedFeatureList() %>%
               filter(`geneSet` == input$geneSet) %>%
               pull(`geneName`)
@@ -325,18 +339,13 @@ mod_InputFeature_server <- function(id,
           input$moduleScore
       })
 
-      extracted_expr <- reactiveVal(NULL)
       observeEvent(input$features, {
 
-          req(file.exists(session$userData$duckdb), assay(), input$features)
+          req(isTruthy(seuratObj()), assay(), input$features)
 
           ##if(isTruthy(moduleScore())){
           ##    tryCatch({
-          ##        moduleScore <- duckModuleScore(
-          ##            con = duckdbConnection(),
-          ##            assay = assay(),
-          ##            features = filteredInputFeatures()
-          ##        )
+          ##        moduleScore <- NULL
           ##        ## transfer moduleScore data
           ##        transfer_expression(moduleScore, session)
           ##        rm(moduleScore)
@@ -376,7 +385,7 @@ mod_InputFeature_server <- function(id,
       }, priority = -10, ignoreNULL = FALSE) # lower priority than plottingMode()
 
       observeEvent(input$cacheMissFeature, {
-          req(file.exists(session$userData$duckdb), assay(), isTruthy(input$cacheMissFeature))
+          req(isTruthy(seuratObj()), assay(), isTruthy(input$cacheMissFeature))
           invoke_expression_transfer(input$cacheMissFeature, create_sparkline = FALSE)
       }, priority = -10, ignoreNULL = TRUE)
 
@@ -384,16 +393,6 @@ mod_InputFeature_server <- function(id,
           message("Plotting featuerPlot...")
           scatterUpdateIndicator(scatterUpdateIndicator()+1)
       })
-
-
-      observeEvent(extract_expression$status(), {
-
-          if(extract_expression$status() == "success"){
-              session$sendCustomMessage(type = "expr_ready", extract_expression$result())
-          }else{
-              message("extract_expression error: ", extract_expression$result())
-          }
-      }, ignoreNULL = FALSE)
 
       filteredInputFeatures <- reactive({
           input$features

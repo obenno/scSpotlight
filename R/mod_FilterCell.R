@@ -77,7 +77,6 @@ mod_FilterCell_server <- function(id,
         ns <- session$ns
         observeEvent(input$filter_cell, {
             req(seuratObj())
-            req(file.exists(session$userData$duckdb))
             withProgress(
                 message = "Filtering Cells & Updating Reductions...",
                 {
@@ -89,49 +88,19 @@ mod_FilterCell_server <- function(id,
                         rownames()
                     obj <- subset(seuratObj(),
                                   cells = selectedCells)
-                    obj <- standard_process_seurat(obj, normalization = FALSE,
-                                                   hvg_method = hvgSelectMethod(),
-                                                   ndims = clusterDims(),
-                                                   res = clusterResolution())
+                    obj <- standard_process_seurat(
+                        obj,
+                        normalization = FALSE,
+                        hvg_method = hvgSelectMethod(),
+                        ndims = clusterDims(),
+                        res = clusterResolution()
+                    )
                     seuratObj(obj)
-
-                    ## Update the duckdb database
-                    ## open new duckdbconnection
-                    con <- duckConnect(session, read_only = FALSE)
-                    on.exit(dbDisconnect(con))
-                    subsetDuckMatrix(
-                      con,
-                      assay = selectedAssay(),
-                      cells = Cells(seuratObj()),
-                      features = Features(seuratObj())
-                    )
-                    reductionData = list()
-                    objReductions <- Reductions(seuratObj())
-                    for(i in seq_along(objReductions)){
-                        dr <- objReductions[i]
-                        d <- Embeddings(seuratObj()[[dr]])[,1:2] %>%
-                            as.data.frame() %>%
-                            rownames_to_column("cell")
-                        reductionData[[i]] <- d
-                    }
-                    names(reductionData) <- Reductions(seuratObj())
-                    updateDuckReduction(
-                        con,
-                        reductions = Reductions(seuratObj()),
-                        data = reductionData
-                    )
-                    updateDuckMeta(
-                        con,
-                        assay = selectedAssay(),
-                        data = rownames_to_column(seuratObj()[[]], "cell")
-                    )
 
                 }
             )
 
-            con <- duckConnect(session)
-            nCells <- length(queryDuckCells(con, assay = selectedAssay()))
-            dbDisconnect(con)
+            nCells <- length(Cells(seuratObj()))
             showNotification(
                 ui = paste0(scales::label_comma()(nCells), " Cells Left."),
                 action = NULL,

@@ -9,7 +9,7 @@ perf_pkgs <- optional_performance_packages()
 
 if (length(perf_pkgs)) {
     message(
-        "Optional Seurat performance packages are not installed by `pixi run setup`: ",
+        "Optional performance packages are not installed by `pixi run setup`: ",
         paste(perf_pkgs, collapse = ", "),
         "."
     )
@@ -24,9 +24,6 @@ if (length(perf_pkgs)) {
 }
 
 fallback <- required
-if (identical(Sys.info()[["sysname"]], "Linux")) {
-    fallback <- setdiff(fallback, "duckdb")
-}
 
 missing <- fallback[!vapply(fallback, requireNamespace, logical(1), quietly = TRUE)]
 

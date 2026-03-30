@@ -26,7 +26,9 @@ mod_UpdateReduction_ui <- function(id){
 #'
 #' @noRd
 #'
+#' @importFrom cli hash_md5
 #' @importFrom arrow arrow_table write_ipc_stream float32 Array
+#' @importFrom promises future_promise %...>% %...!% finally
 mod_UpdateReduction_server <- function(id,
                                        seuratObj,
                                        reductionUpdateIndicator,
@@ -36,10 +38,8 @@ mod_UpdateReduction_server <- function(id,
       ns <- session$ns
 
       observeEvent(reductionUpdateIndicator(), {
-          req(file.exists(session$userData$duckdb))
-          con <- duckConnect(session)
-          on.exit(dbDisconnect(con))
-          k <- listDuckReduction(con)
+          req(isTruthy(seuratObj()))
+          k <- get_backend_reduction_names(seuratObj())
           idx <- na.omit(match(c("umap", "tsne", "pca"), k))
           ordered_reduction <- k[c(idx, setdiff(1:length(k), idx))]
           ## update input list
@@ -86,37 +86,6 @@ mod_UpdateReduction_server <- function(id,
       ##   reductionUpdateIndicator(reductionUpdateIndicator()+1)
       ##}, ignoreNULL = TRUE)
 
-      extract_reduction <- ExtendedTask$new(function(reduction, dirPath, reductionVersion){
-          future_promise({
-
-              con <- duckConnect(session)
-              on.exit(DBI::dbDisconnect(con))
-
-              d <- queryDuckReduction(
-                  con = con,
-                  reduction = reduction
-              )
-              colnames(d) <- c("X", "Y")
-              if(!file.exists(dirPath)){
-                  stop(paste0(dirPath, " does not exist."))
-              }
-              reductionFileName <- hash_md5(paste0("reduction_", reduction, "_", reductionVersion))
-              write_ipc_stream(
-                  arrow_table(
-                      X = Array$create(d$X, type = float32()),
-                      Y = Array$create(d$Y, type = float32())
-                  ),
-                  file.path(dirPath, reductionFileName)
-              )
-              return(list(
-                  reductionFile = reductionFileName,
-                  reductionName = reduction,
-                  reductionVersion = reductionVersion
-              ))
-          })
-
-      })
-
       invoke_reduction_transfer <- function(reduction_name){
           showNotification(
               ui = div(div(class = c("spinner-border", "spinner-border-sm", "text-primary"),
@@ -132,14 +101,52 @@ mod_UpdateReduction_server <- function(id,
           )
           message("Transferring reductionData...")
           reductionProcessed(FALSE)
-          promise_dirPath <- file.path(session$userData$tempDir, "reduction")
-          extract_reduction$invoke(reduction = reduction_name,
-                                   dirPath = promise_dirPath,
-                                   reductionVersion = reductionUpdateIndicator())
+          dirPath <- file.path(session$userData$tempDir, "reduction")
+          reductionVersion <- reductionUpdateIndicator()
+          # Keep BPCells/Seurat access on the main thread; only file export is delegated.
+          d <- get_backend_reduction(seuratObj(), reduction = reduction_name)
+          reduction_promise <- future_promise({
+              reductionFileName <- hash_md5(paste0("reduction_", reduction_name, "_", reductionVersion))
+              write_ipc_stream(
+                  arrow_table(
+                      X = Array$create(d$X, type = float32()),
+                      Y = Array$create(d$Y, type = float32())
+                  ),
+                  file.path(dirPath, reductionFileName)
+              )
+              list(
+                  reductionFile = reductionFileName,
+                  reductionName = reduction_name,
+                  reductionVersion = reductionVersion
+              )
+          }) %...>% (
+              function(result) {
+                  session$sendCustomMessage(type = "reduction_ready", message = result)
+                  result
+              }
+          ) %...!% (
+              function(error) {
+                  showNotification(
+                      ui = paste("Reduction export failed:", conditionMessage(error)),
+                      action = NULL,
+                      duration = 6,
+                      closeButton = TRUE,
+                      type = "error",
+                      session = session
+                  )
+              }
+          )
+
+          promises::finally(
+              reduction_promise,
+              function() {
+                  removeNotification(id = "update_reduction_notification", session = session)
+              }
+          )
       }
 
       observeEvent(input$reduction, {
-          req(file.exists(session$userData$duckdb))
+          req(isTruthy(seuratObj()))
           req(input$reduction!="None")
 
           reductionVersion <- reductionUpdateIndicator()
@@ -162,19 +169,10 @@ mod_UpdateReduction_server <- function(id,
       }, priority = -500)
 
       observeEvent(input$cacheMissReduction, {
-          req(file.exists(session$userData$duckdb))
+          req(isTruthy(seuratObj()))
           req(isTruthy(input$cacheMissReduction), input$cacheMissReduction != "None")
           invoke_reduction_transfer(input$cacheMissReduction)
       }, priority = -500)
-
-      observeEvent(extract_reduction$status(), {
-          if(extract_reduction$status() == "success"){
-              removeNotification(id = "update_reduction_notification", session)
-              session$sendCustomMessage(type = "reduction_ready", extract_reduction$result())
-          }else{
-              message("extract_reduction error: ", extract_reduction$result())
-          }
-      }, ignoreNULL = FALSE)
 
       ##selectedReduction <- reactive({
       ##  input$reduction
