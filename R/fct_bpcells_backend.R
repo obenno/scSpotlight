@@ -1219,6 +1219,7 @@ write_h5ad_scanpy <- function(object,
                               gzip_level = 0L,
                               obsm_chunk_rows = 4096L) {
   assert_h5ad_write_dependencies()
+  on.exit(rhdf5::h5closeAll(), add = TRUE)
 
   if (!inherits(object, "Seurat")) {
     stop("object must be a Seurat object")
