@@ -447,8 +447,9 @@ Why:
 
 Implementation notes:
 
-- `R/fct_bpcells_backend.R` now prefers native BPCells `.h5ad` import and falls back to reconstructing CSR matrices via `rhdf5` when BPCells cannot open the AnnData matrix layout directly.
-- Direct `.h5ad` support in `R/mod_dataInput.R` is intentionally disabled for now because real-world AnnData layouts still vary enough to need more validation before interactive load should rely on them.
+- `R/fct_bpcells_backend.R` now prefers native BPCells `.h5ad` import and falls back to reconstructing CSR/CSC matrices plus AnnData dataframe encodings via `rhdf5` when BPCells cannot open the matrix layout directly.
+- `R/mod_dataInput.R` now accepts direct `.h5ad` uploads and routes them through the same BPCells-backed import path used by bundle conversion.
+- `R/fct_bpcells_backend.R` also provides Scanpy-compatible `.h5ad` export. It writes `X` and sparse matrix layers with BPCells, then fills the AnnData structure (`obs`, `var`, `raw`, `obsm`, `varm`, `uns`) with `rhdf5`.
 
 ## Scatter Interaction Notes
 

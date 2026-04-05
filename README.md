@@ -54,10 +54,11 @@ pak::pkg_install("obenno/scSpotlight")
   `scSpotlight`, and install JavaScript dependencies.
 - `BPCells >= 0.3.1` is a required runtime dependency and is installed
   by `pixi run setup` via the fallback R package bootstrap.
+- `rhdf5` is a required runtime dependency for full `.h5ad`
+  import/export support and is installed by `pixi run setup`.
 - Run `pixi run install-optional-packages` when you want optional
-  extras such as `presto` and `.h5ad` conversion support (`anndataR`
-  and `rhdf5`). It prefers Pixi-native `pixi add` installs from
-  `conda-forge`/`bioconda` and then uses `pak` as a fallback.
+  performance support via `presto`. It uses `pak`, with `presto`
+  sourced from `immunogenomics/presto`.
 - Run `pixi run doctor-env` to verify `scSpotlight` is installed,
   `.libPaths()` points to Pixi, and no required package is missing.
 - Run `pixi run run-app` to start the app in viewer mode.
@@ -101,7 +102,7 @@ pixi run run-app-processing
 - `pixi run setup` - install required R and JavaScript dependencies
   and install `scSpotlight`
 - `pixi run install-optional-packages` - install optional
-  extras such as `presto` and `.h5ad` conversion support
+  performance support
 - `pixi run doctor-env` - verify the active Pixi/R environment and
   report missing optional packages
 - `pixi run run-app` - launch the app in viewer mode

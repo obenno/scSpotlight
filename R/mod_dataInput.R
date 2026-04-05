@@ -18,7 +18,7 @@ mod_dataInput_inputUI <- function(id){
         tagList(
             selectInput(
                 ns("dataDirFile"),
-                label = "Choose a RDS input file",
+                label = "Choose an input file",
                 choices = "",
                 selected = NULL,
                 multiple = FALSE,
@@ -40,11 +40,12 @@ mod_dataInput_inputUI <- function(id){
             fileInput(
                 ns("dataInput"),
                 tagList("Upload Input File",
-                        infoIcon("Please upload processed seuratObj (RDS), or compressed matrix directory (zip, tgz, tbz2)", "right")),
+                        infoIcon("Please upload a processed Seurat object (RDS), a Scanpy/AnnData h5ad file, or a compressed matrix directory (zip, tgz, tbz2)", "right")),
                 multiple = FALSE,
                 width = "100%",
               accept = c(
                 ".rds",
+                ".h5ad",
                 ".zip",
                 ".tar.gz", ".tgz",
                 ".tar.bz2", ".tbz2"
@@ -89,7 +90,8 @@ mod_dataInput_server <- function(id,
         runningMode <- golem::get_golem_options("runningMode")
         compressionFormatPattern <- "\\.zip$|\\.tar.gz$|\\.tgz$|\\.tar\\.bz2$|\\.tbz2"
         rdsFormatPattern <- "\\.rds$|\\.RDS$|\\.Rds$"
-        supportedFileInputPattern <- paste0(rdsFormatPattern, "|", compressionFormatPattern)
+        h5adFormatPattern <- "\\.[Hh]5[Aa][Dd]$"
+        supportedFileInputPattern <- paste0(rdsFormatPattern, "|", h5adFormatPattern, "|", compressionFormatPattern)
 
         assert_bpcells_available()
 
@@ -161,6 +163,30 @@ mod_dataInput_server <- function(id,
                 seuratObj <- ensure_bpcells_backing(
                     seuratObj,
                     root_dir = file.path(session$userData$backendDir, "layers")
+                )
+                if(is_seurat_bpcells(seuratObj) && isTruthy(hvgSelectMethod()) && hvgSelectMethod()!="vst"){
+                    showNotification(
+                        ui = HTML("BPCells backend active, prefer <b>vst</b> on the <b>counts</b> layer for large datasets"),
+                        action = NULL,
+                        duration = 5,
+                        closeButton = TRUE,
+                        type = "warning",
+                        session = session
+                    )
+                }
+
+                seuratObj <- validate_seuratRDS(seuratObj, runningMode = runningMode,
+                                                hvgSelectMethod = hvg_method,
+                                                nDims = clusterDims(),
+                                                resolution = clusterResolution())
+
+            }else if(str_detect(inputFileName(), h5adFormatPattern)){
+
+                waiter_update(html = waiting_screen("Importing h5ad..."))
+                hvg_method <- ifelse(isTruthy(hvgSelectMethod()), hvgSelectMethod(), "vst")
+                seuratObj <- import_h5ad_as_seurat_bpcells(
+                    inputFilePath(),
+                    backend_root = file.path(session$userData$backendDir, "layers")
                 )
                 if(is_seurat_bpcells(seuratObj) && isTruthy(hvgSelectMethod()) && hvgSelectMethod()!="vst"){
                     showNotification(

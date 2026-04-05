@@ -365,6 +365,26 @@ h5ad_decode_categorical <- function(codes, categories) {
 }
 
 #' @noRd
+h5ad_decode_nullable <- function(values, mask, type = c("character", "integer", "logical")) {
+  type <- match.arg(type)
+  values <- h5ad_simplify_value(values)
+  mask <- as.logical(h5ad_simplify_value(mask))
+
+  out <- switch(
+    type,
+    character = as.character(values),
+    integer = as.integer(values),
+    logical = as.logical(values)
+  )
+
+  if (length(mask) == length(out)) {
+    out[mask] <- NA
+  }
+
+  out
+}
+
+#' @noRd
 h5ad_read_dataframe_column <- function(path, index, group, column) {
   column_path <- file.path(group, column)
   attrs <- h5ad_read_attrs(path, column_path)
@@ -374,6 +394,30 @@ h5ad_read_dataframe_column <- function(path, index, group, column) {
     return(h5ad_decode_categorical(
       h5ad_read_dataset(path, file.path(column_path, "codes")),
       h5ad_read_dataset(path, file.path(column_path, "categories"))
+    ))
+  }
+
+  if (identical(encoding_type, "nullable-integer")) {
+    return(h5ad_decode_nullable(
+      h5ad_read_dataset(path, file.path(column_path, "values")),
+      h5ad_read_dataset(path, file.path(column_path, "mask")),
+      type = "integer"
+    ))
+  }
+
+  if (identical(encoding_type, "nullable-boolean")) {
+    return(h5ad_decode_nullable(
+      h5ad_read_dataset(path, file.path(column_path, "values")),
+      h5ad_read_dataset(path, file.path(column_path, "mask")),
+      type = "logical"
+    ))
+  }
+
+  if (identical(encoding_type, "nullable-string-array")) {
+    return(h5ad_decode_nullable(
+      h5ad_read_dataset(path, file.path(column_path, "values")),
+      h5ad_read_dataset(path, file.path(column_path, "mask")),
+      type = "character"
     ))
   }
 
@@ -437,10 +481,20 @@ h5ad_read_index_names <- function(path, index, group) {
 }
 
 #' @noRd
-h5ad_read_csr_matrix <- function(path, group, feature_names = NULL, cell_names = NULL) {
+h5ad_matrix_feature_group <- function(index, group) {
+  if (startsWith(group, "raw/") && h5ad_path_exists(index, "raw/var")) {
+    return("raw/var")
+  }
+
+  "var"
+}
+
+#' @noRd
+h5ad_read_sparse_matrix <- function(path, group, feature_names = NULL, cell_names = NULL) {
   attrs <- h5ad_read_attrs(path, group)
-  if (!identical(as.character(attrs[["encoding-type"]] %||% ""), "csr_matrix")) {
-    stop("Only csr_matrix encoding is supported for fallback h5ad import")
+  encoding_type <- as.character(attrs[["encoding-type"]] %||% "")
+  if (!encoding_type %in% c("csr_matrix", "csc_matrix")) {
+    stop("Only csr_matrix and csc_matrix encodings are supported for fallback h5ad import")
   }
 
   shape <- as.integer(attrs[["shape"]])
@@ -449,14 +503,24 @@ h5ad_read_csr_matrix <- function(path, group, feature_names = NULL, cell_names =
   data <- as.numeric(h5ad_read_dataset(path, file.path(group, "data")))
   indices <- as.integer(h5ad_read_dataset(path, file.path(group, "indices"))) + 1L
   indptr <- as.integer(h5ad_read_dataset(path, file.path(group, "indptr")))
-  row_ids <- rep.int(seq_len(cell_count), diff(indptr))
 
-  mat <- Matrix::sparseMatrix(
-    i = row_ids,
-    j = indices,
-    x = data,
-    dims = c(cell_count, feature_count)
-  )
+  mat <- if (identical(encoding_type, "csr_matrix")) {
+    row_ids <- rep.int(seq_len(cell_count), diff(indptr))
+    Matrix::sparseMatrix(
+      i = row_ids,
+      j = indices,
+      x = data,
+      dims = c(cell_count, feature_count)
+    )
+  } else {
+    col_ids <- rep.int(seq_len(feature_count), diff(indptr))
+    Matrix::sparseMatrix(
+      i = indices,
+      j = col_ids,
+      x = data,
+      dims = c(cell_count, feature_count)
+    )
+  }
   mat <- Matrix::t(mat)
 
   if (!is.null(feature_names) && length(feature_names) == nrow(mat)) {
@@ -567,10 +631,11 @@ h5ad_open_data_matrix <- function(path, index, counts_group) {
 
 #' @noRd
 h5ad_fallback_sparse_layers <- function(path, index, counts_group) {
-  feature_names <- if (h5ad_path_exists(index, "var")) h5ad_read_index_names(path, index, "var") else NULL
+  feature_group <- h5ad_matrix_feature_group(index, counts_group)
+  feature_names <- if (h5ad_path_exists(index, feature_group)) h5ad_read_index_names(path, index, feature_group) else NULL
   cell_names <- if (h5ad_path_exists(index, "obs")) h5ad_read_index_names(path, index, "obs") else NULL
 
-  counts <- h5ad_read_csr_matrix(
+  counts <- h5ad_read_sparse_matrix(
     path,
     counts_group,
     feature_names = feature_names,
@@ -579,10 +644,10 @@ h5ad_fallback_sparse_layers <- function(path, index, counts_group) {
 
   data <- NULL
   if (h5ad_path_exists(index, "layers/data")) {
-    data <- h5ad_read_csr_matrix(
+    data <- h5ad_read_sparse_matrix(
       path,
       "layers/data",
-      feature_names = feature_names,
+      feature_names = if (h5ad_path_exists(index, "var")) h5ad_read_index_names(path, index, "var") else feature_names,
       cell_names = cell_names
     )
   }
@@ -620,8 +685,11 @@ import_h5ad_as_seurat_bpcells <- function(input_file, backend_root, assay = "RNA
   object <- ensure_assay5(object, assay = assay)
 
   if (!is.null(data_info)) {
-    SeuratObject::LayerData(object, assay = assay, layer = "data") <-
-      data_info$matrix
+    same_shape <- identical(dim(data_info$matrix), dim(SeuratObject::LayerData(object, assay = assay, layer = "counts")))
+    if (isTRUE(same_shape)) {
+      SeuratObject::LayerData(object, assay = assay, layer = "data") <-
+        data_info$matrix
+    }
   }
 
   object <- h5ad_add_reductions(object, input_file, index, assay = assay)
@@ -796,6 +864,568 @@ run_memory_conserving_processing <- function(seuratObj, normalization = TRUE,
   seuratObj <- Seurat::FindClusters(seuratObj, resolution = res)
   seuratObj <- Seurat::RunUMAP(seuratObj, dims = seq_len(ndims), reduction = "pca")
   seuratObj
+}
+
+#' @noRd
+assert_h5ad_write_dependencies <- function() {
+  assert_bpcells_available()
+
+  if (!requireNamespace("rhdf5", quietly = TRUE)) {
+    stop("rhdf5 must be installed for Scanpy-compatible .h5ad export")
+  }
+
+  invisible(TRUE)
+}
+
+#' @noRd
+h5ad_write_attribute <- function(value, file, name, attr_name) {
+  fid <- rhdf5::H5Fopen(file)
+  on.exit(rhdf5::H5Fclose(fid), add = TRUE)
+
+  h5obj <- if (identical(name, "/")) {
+    fid
+  } else {
+    rhdf5::H5Oopen(fid, name)
+  }
+
+  if (!identical(name, "/")) {
+    on.exit(rhdf5::H5Oclose(h5obj), add = TRUE)
+  }
+
+  rhdf5::h5writeAttribute(value, h5obj, name = attr_name)
+}
+
+#' @noRd
+h5ad_write_encoding <- function(file, name, encoding_type, encoding_version) {
+  h5ad_write_attribute(encoding_type, file = file, name = name, attr_name = "encoding-type")
+  h5ad_write_attribute(encoding_version, file = file, name = name, attr_name = "encoding-version")
+}
+
+#' @noRd
+h5ad_create_group <- function(file, name, encoding_type = NULL, encoding_version = NULL) {
+  fid <- rhdf5::H5Fopen(file)
+  group_exists <- rhdf5::H5Lexists(fid, name)
+  rhdf5::H5Fclose(fid)
+  if (!group_exists) {
+    rhdf5::h5createGroup(file, name)
+  }
+  if (!is.null(encoding_type) && !is.null(encoding_version)) {
+    h5ad_write_encoding(file, name, encoding_type = encoding_type, encoding_version = encoding_version)
+  }
+}
+
+#' @noRd
+h5ad_write_string_dataset <- function(value, file, name) {
+  rhdf5::h5write(
+    as.character(value),
+    file = file,
+    name = name,
+    variableLengthString = TRUE,
+    encoding = "UTF-8"
+  )
+  h5ad_write_encoding(file, name, encoding_type = "string-array", encoding_version = "0.2.0")
+}
+
+#' @noRd
+h5ad_write_array_dataset <- function(value, file, name, chunk = NULL, level = 0L) {
+  if (is.character(value)) {
+    h5ad_write_string_dataset(value, file = file, name = name)
+    return(invisible(NULL))
+  }
+
+  if (is.matrix(value) && !is.null(chunk)) {
+    rhdf5::h5createDataset(
+      file = file,
+      dataset = name,
+      dims = dim(value),
+      storage.mode = storage.mode(value),
+      chunk = chunk,
+      level = level
+    )
+    rhdf5::h5write(value, file = file, name = name)
+  } else {
+    rhdf5::h5write(value, file = file, name = name)
+  }
+
+  h5ad_write_encoding(file, name, encoding_type = "array", encoding_version = "0.2.0")
+}
+
+#' @noRd
+h5ad_write_scalar <- function(value, file, name) {
+  if (is.character(value)) {
+    rhdf5::h5write(
+      as.character(value),
+      file = file,
+      name = name,
+      variableLengthString = TRUE,
+      encoding = "UTF-8"
+    )
+  } else {
+    rhdf5::h5write(value, file = file, name = name)
+  }
+  if (is.character(value)) {
+    h5ad_write_encoding(file, name, encoding_type = "string", encoding_version = "0.2.0")
+  } else {
+    h5ad_write_encoding(file, name, encoding_type = "numeric-scalar", encoding_version = "0.2.0")
+  }
+}
+
+#' @noRd
+h5ad_write_categorical <- function(value, file, name) {
+  h5ad_create_group(file, name, encoding_type = "categorical", encoding_version = "0.2.0")
+  codes <- as.integer(value) - 1L
+  codes[is.na(codes)] <- -1L
+  h5ad_write_array_dataset(codes, file = file, name = file.path(name, "codes"))
+  h5ad_write_string_dataset(levels(value), file = file, name = file.path(name, "categories"))
+  h5ad_write_attribute(isTRUE(is.ordered(value)), file = file, name = name, attr_name = "ordered")
+}
+
+#' @noRd
+h5ad_write_nullable <- function(value, file, name, type) {
+  encoding_type <- switch(
+    type,
+    integer = "nullable-integer",
+    logical = "nullable-boolean",
+    character = "nullable-string-array",
+    stop("Unsupported nullable type: ", type)
+  )
+
+  h5ad_create_group(file, name, encoding_type = encoding_type, encoding_version = "0.1.0")
+  mask <- is.na(value)
+  values <- switch(
+    type,
+    integer = {
+      out <- as.integer(value)
+      out[mask] <- 0L
+      out
+    },
+    logical = {
+      out <- as.logical(value)
+      out[mask] <- FALSE
+      out
+    },
+    character = {
+      out <- as.character(value)
+      out[mask] <- ""
+      out
+    }
+  )
+
+  if (identical(type, "character")) {
+    h5ad_write_attribute("NA", file = file, name = name, attr_name = "na-value")
+    h5ad_write_string_dataset(values, file = file, name = file.path(name, "values"))
+  } else {
+    h5ad_write_array_dataset(values, file = file, name = file.path(name, "values"))
+  }
+  h5ad_write_array_dataset(mask, file = file, name = file.path(name, "mask"))
+}
+
+#' @noRd
+h5ad_write_dataframe_column <- function(value, file, name) {
+  if (is.factor(value)) {
+    h5ad_write_categorical(value, file = file, name = name)
+    return(invisible(NULL))
+  }
+
+  if (is.integer(value) && anyNA(value)) {
+    h5ad_write_nullable(value, file = file, name = name, type = "integer")
+    return(invisible(NULL))
+  }
+
+  if (is.logical(value) && anyNA(value)) {
+    h5ad_write_nullable(value, file = file, name = name, type = "logical")
+    return(invisible(NULL))
+  }
+
+  if (is.character(value) && anyNA(value)) {
+    h5ad_write_nullable(value, file = file, name = name, type = "character")
+    return(invisible(NULL))
+  }
+
+  if (is.character(value)) {
+    h5ad_write_string_dataset(value, file = file, name = name)
+    return(invisible(NULL))
+  }
+
+  if (is.logical(value) || is.integer(value) || is.numeric(value)) {
+    h5ad_write_array_dataset(value, file = file, name = name)
+    return(invisible(NULL))
+  }
+
+  stop("Unsupported dataframe column type for AnnData export: ", paste(class(value), collapse = "/"))
+}
+
+#' @noRd
+h5ad_write_dataframe <- function(data, file, name) {
+  if (!is.data.frame(data)) {
+    stop("Expected a data.frame for AnnData dataframe export")
+  }
+
+  if ("_index" %in% colnames(data)) {
+    stop("'_index' is a reserved dataframe column name for AnnData export")
+  }
+
+  h5ad_create_group(file, name, encoding_type = "dataframe", encoding_version = "0.2.0")
+  h5ad_write_attribute(colnames(data), file = file, name = name, attr_name = "column-order")
+  h5ad_write_attribute("_index", file = file, name = name, attr_name = "_index")
+  h5ad_write_string_dataset(rownames(data), file = file, name = file.path(name, "_index"))
+
+  for (column in colnames(data)) {
+    h5ad_write_dataframe_column(data[[column]], file = file, name = file.path(name, column))
+  }
+}
+
+#' @noRd
+h5ad_write_matrix_group <- function(mat, file, group, buffer_size, chunk_size, gzip_level) {
+  BPCells::write_matrix_anndata_hdf5(
+    mat = mat,
+    path = file,
+    group = group,
+    buffer_size = buffer_size,
+    chunk_size = chunk_size,
+    gzip_level = gzip_level
+  )
+  rhdf5::h5closeAll()
+}
+
+#' @noRd
+h5ad_write_dense_matrix <- function(mat, file, name, chunk_rows = 4096L, gzip_level = 0L) {
+  mat <- as.matrix(mat)
+  chunk <- if (length(dim(mat)) == 2L) c(min(nrow(mat), chunk_rows), ncol(mat)) else NULL
+  h5ad_write_array_dataset(mat, file = file, name = name, chunk = chunk, level = gzip_level)
+}
+
+#' @noRd
+h5ad_assay_meta <- function(object, assay, features) {
+  meta <- tryCatch(object[[assay]][[]], error = function(...) NULL)
+
+  if (is.null(meta)) {
+    meta <- data.frame(row.names = features)
+  } else if (!length(features)) {
+    meta <- meta[0, , drop = FALSE]
+  } else if (!all(features %in% rownames(meta))) {
+    meta <- data.frame(row.names = features)
+  } else {
+    meta <- meta[features, , drop = FALSE]
+  }
+
+  hvgs <- tryCatch(VariableFeatures(object), error = function(...) character(0))
+  meta$highly_variable <- rownames(meta) %in% hvgs
+
+  meta
+}
+
+#' @noRd
+h5ad_layer_features <- function(object, assay, layer) {
+  SeuratObject::Features(object[[assay]], layer = layer)
+}
+
+#' @noRd
+h5ad_layer_matches_x <- function(object, assay, layer, x_features, x_cells) {
+  mat <- SeuratObject::LayerData(object, assay = assay, layer = layer)
+  features <- h5ad_layer_features(object, assay = assay, layer = layer)
+  identical(dim(mat), c(length(features), length(x_cells))) &&
+    identical(features, x_features) &&
+    identical(colnames(mat), x_cells)
+}
+
+#' @noRd
+h5ad_reduction_export_name <- function(name) {
+  if (startsWith(name, "X_")) {
+    return(name)
+  }
+
+  paste0("X_", name)
+}
+
+#' @noRd
+h5ad_uns_payload <- function(object, assay, x_layer) {
+  payload <- list(
+    scspotlight = list(
+      default_assay = assay,
+      x_layer = x_layer
+    )
+  )
+
+  if ("pca" %in% SeuratObject::Reductions(object)) {
+    stdev <- tryCatch(Seurat::Stdev(object[["pca"]]), error = function(...) numeric(0))
+    if (length(stdev)) {
+      variance <- stdev^2
+      variance_ratio <- variance / sum(variance)
+      payload$pca <- list(
+        variance = variance,
+        variance_ratio = variance_ratio
+      )
+    }
+  }
+
+  payload
+}
+
+#' @noRd
+h5ad_write_mapping <- function(values, file, name) {
+  h5ad_create_group(file, name, encoding_type = "dict", encoding_version = "0.1.0")
+
+  for (key in names(values)) {
+    value <- values[[key]]
+    target <- file.path(name, key)
+
+    if (is.list(value) && !is.data.frame(value)) {
+      h5ad_write_mapping(value, file = file, name = target)
+    } else if ((is.atomic(value) || is.matrix(value)) && length(value) == 1L && is.null(dim(value))) {
+      h5ad_write_scalar(value, file = file, name = target)
+    } else if (is.character(value)) {
+      h5ad_write_string_dataset(value, file = file, name = target)
+    } else if (is.atomic(value) || is.matrix(value)) {
+      h5ad_write_array_dataset(value, file = file, name = target)
+    } else {
+      stop("Unsupported uns value for AnnData export at key '", key, "'")
+    }
+  }
+}
+
+#' Write a Scanpy-compatible h5ad file
+#'
+#' Writes the active Seurat assay to a Scanpy-compatible `.h5ad` file using the
+#' AnnData on-disk structure. Matrix payloads are streamed with BPCells and the
+#' surrounding AnnData metadata structure is written with `rhdf5`.
+#'
+#' @param object A Seurat object.
+#' @param output_file Path to the output `.h5ad` file.
+#' @param assay Assay name to export. Defaults to the active assay.
+#' @param x_layer Layer to write as `X`. Defaults to the preferred expression
+#'   layer (`data` when present, otherwise `counts`).
+#' @param include_raw Whether to write the `raw` group when a counts layer is
+#'   available and differs from `X`.
+#' @param matrix_buffer_size BPCells write buffer size for sparse matrix export.
+#' @param matrix_chunk_size BPCells write chunk size for sparse matrix export.
+#' @param gzip_level Gzip compression level used for matrix and dense array output.
+#' @param obsm_chunk_rows Chunk row count for dense `obsm`/`varm` arrays.
+#'
+#' @return The normalized output `.h5ad` path.
+#'
+#' @examples
+#' \dontrun{
+#' write_h5ad_scanpy(pbmc, "pbmc.h5ad")
+#' }
+#' @export
+write_h5ad_scanpy <- function(object,
+                              output_file,
+                              assay = NULL,
+                              x_layer = NULL,
+                              include_raw = TRUE,
+                              matrix_buffer_size = 16384L,
+                              matrix_chunk_size = 1024L,
+                              gzip_level = 0L,
+                              obsm_chunk_rows = 4096L) {
+  assert_h5ad_write_dependencies()
+
+  if (!inherits(object, "Seurat")) {
+    stop("object must be a Seurat object")
+  }
+
+  assay <- assay %||% DefaultAssay(object)
+  if (!assay %in% Assays(object)) {
+    stop("Assay not found in object: ", assay)
+  }
+
+  object <- ensure_assay5(object, assay = assay)
+  x_layer <- x_layer %||% preferred_expr_layer(object, assay)
+  layers <- SeuratObject::Layers(object[[assay]])
+  if (!x_layer %in% layers) {
+    stop("Layer not found in assay '", assay, "': ", x_layer)
+  }
+
+  if (!is_seurat_bpcells(object, assay = assay)) {
+    export_backend_root <- tempfile("scspotlight_h5ad_layers_")
+    dir.create(export_backend_root, recursive = TRUE, showWarnings = FALSE)
+    on.exit(unlink(export_backend_root, recursive = TRUE, force = TRUE), add = TRUE)
+    object <- ensure_bpcells_backing(
+      object,
+      root_dir = export_backend_root,
+      assays = assay,
+      layers = setdiff(layers, "scale.data")
+    )
+  }
+
+  x_mat <- SeuratObject::LayerData(object, assay = assay, layer = x_layer)
+  x_mat_write <- SeuratObject::LayerData(object, assay = assay, layer = x_layer, fast = TRUE)
+  x_features <- h5ad_layer_features(object, assay = assay, layer = x_layer)
+  x_cells <- colnames(x_mat)
+  obs <- object[[]][x_cells, , drop = FALSE]
+  var <- h5ad_assay_meta(object, assay = assay, features = x_features)
+
+  counts_exists <- "counts" %in% layers
+  counts_mat <- if (counts_exists) SeuratObject::LayerData(object, assay = assay, layer = "counts") else NULL
+  counts_mat_write <- if (counts_exists) SeuratObject::LayerData(object, assay = assay, layer = "counts", fast = TRUE) else NULL
+  counts_features <- if (counts_exists) h5ad_layer_features(object, assay = assay, layer = "counts") else character(0)
+  counts_same_as_x <- counts_exists &&
+    identical(counts_features, x_features) &&
+    identical(colnames(counts_mat), x_cells)
+
+  if (file.exists(output_file)) {
+    unlink(output_file)
+  }
+  rhdf5::h5createFile(output_file)
+  h5ad_write_encoding(output_file, "/", encoding_type = "anndata", encoding_version = "0.1.0")
+
+  h5ad_write_matrix_group(
+    x_mat_write,
+    file = output_file,
+    group = "X",
+    buffer_size = as.integer(matrix_buffer_size),
+    chunk_size = as.integer(matrix_chunk_size),
+    gzip_level = as.integer(gzip_level)
+  )
+
+  h5ad_create_group(output_file, "layers", encoding_type = "dict", encoding_version = "0.1.0")
+  same_space_layers <- setdiff(layers, c(x_layer, "scale.data"))
+  same_space_layers <- same_space_layers[vapply(same_space_layers, function(layer) {
+    h5ad_layer_matches_x(object, assay = assay, layer = layer, x_features = x_features, x_cells = x_cells)
+  }, logical(1))]
+  for (layer in same_space_layers) {
+    h5ad_write_matrix_group(
+      SeuratObject::LayerData(object, assay = assay, layer = layer, fast = TRUE),
+      file = output_file,
+      group = file.path("layers", layer),
+      buffer_size = as.integer(matrix_buffer_size),
+      chunk_size = as.integer(matrix_chunk_size),
+      gzip_level = as.integer(gzip_level)
+    )
+  }
+
+  write_raw <- isTRUE(include_raw) && counts_exists && (!identical(x_layer, "counts") || !counts_same_as_x)
+  if (write_raw) {
+    h5ad_create_group(output_file, "raw", encoding_type = "raw", encoding_version = "0.1.0")
+    h5ad_write_matrix_group(
+      counts_mat_write,
+      file = output_file,
+      group = "raw/X",
+      buffer_size = as.integer(matrix_buffer_size),
+      chunk_size = as.integer(matrix_chunk_size),
+      gzip_level = as.integer(gzip_level)
+    )
+  }
+
+  h5ad_write_dataframe(obs, file = output_file, name = "obs")
+  h5ad_write_dataframe(var, file = output_file, name = "var")
+  if (write_raw) {
+    h5ad_write_dataframe(h5ad_assay_meta(object, assay = assay, features = counts_features), file = output_file, name = "raw/var")
+    h5ad_create_group(output_file, "raw/varm", encoding_type = "dict", encoding_version = "0.1.0")
+  }
+
+  h5ad_create_group(output_file, "obsm", encoding_type = "dict", encoding_version = "0.1.0")
+  reductions <- SeuratObject::Reductions(object)
+  for (reduction in reductions) {
+    embeddings <- Seurat::Embeddings(object[[reduction]])
+    embeddings <- embeddings[x_cells, , drop = FALSE]
+    h5ad_write_dense_matrix(
+      embeddings,
+      file = output_file,
+      name = file.path("obsm", h5ad_reduction_export_name(reduction)),
+      chunk_rows = as.integer(obsm_chunk_rows),
+      gzip_level = as.integer(gzip_level)
+    )
+  }
+
+  h5ad_create_group(output_file, "varm", encoding_type = "dict", encoding_version = "0.1.0")
+  if ("pca" %in% reductions) {
+    loadings <- tryCatch(Seurat::Loadings(object[["pca"]]), error = function(...) NULL)
+    if (!is.null(loadings) && nrow(loadings) && all(x_features %in% rownames(loadings))) {
+      loadings <- loadings[x_features, , drop = FALSE]
+      h5ad_write_dense_matrix(
+        loadings,
+        file = output_file,
+        name = "varm/PCs",
+        chunk_rows = as.integer(obsm_chunk_rows),
+        gzip_level = as.integer(gzip_level)
+      )
+    }
+  }
+
+  h5ad_write_mapping(h5ad_uns_payload(object, assay = assay, x_layer = x_layer), file = output_file, name = "uns")
+
+  normalizePath(output_file, winslash = "/", mustWork = FALSE)
+}
+
+#' Convert a file to a Scanpy-compatible h5ad file
+#'
+#' Reads a Seurat `.Rds` or `.h5ad` file and writes a Scanpy-compatible `.h5ad`
+#' file using the current Seurat / BPCells backend.
+#'
+#' @param input_file Path to an input Seurat `.Rds` or `.h5ad` file.
+#' @param output_file Path to the output `.h5ad` file. If `NULL`, it is created
+#'   next to `input_file` with the same base name and a `.h5ad` suffix.
+#' @param assay Assay name to export. Defaults to the active assay.
+#' @param x_layer Layer to write as `X`.
+#' @param include_raw Whether to write Scanpy `raw` from the counts layer.
+#' @param matrix_buffer_size BPCells write buffer size for sparse matrix export.
+#' @param matrix_chunk_size BPCells write chunk size for sparse matrix export.
+#' @param gzip_level Gzip compression level used for matrix and dense array output.
+#' @param obsm_chunk_rows Chunk row count for dense `obsm`/`varm` arrays.
+#'
+#' @return The normalized output `.h5ad` path.
+#'
+#' @examples
+#' \dontrun{
+#' convert_to_scanpy_h5ad("pbmc3k.Rds")
+#' }
+#' @export
+convert_to_scanpy_h5ad <- function(input_file,
+                                   output_file = NULL,
+                                   assay = NULL,
+                                   x_layer = NULL,
+                                   include_raw = TRUE,
+                                   matrix_buffer_size = 16384L,
+                                   matrix_chunk_size = 1024L,
+                                   gzip_level = 0L,
+                                   obsm_chunk_rows = 4096L) {
+  assert_h5ad_write_dependencies()
+
+  if (!file.exists(input_file)) {
+    stop("Input file does not exist: ", input_file)
+  }
+
+  input_type <- if (grepl("\\.[Rr][Dd][Ss]$", input_file)) {
+    "rds"
+  } else if (grepl("\\.[Hh]5[Aa][Dd]$", input_file)) {
+    "h5ad"
+  } else {
+    stop("input_file must point to a .Rds or .h5ad file")
+  }
+
+  if (is.null(output_file)) {
+    output_file <- sub("\\.[^.]+$", ".h5ad", input_file)
+  }
+  if (!grepl("\\.[Hh]5[Aa][Dd]$", output_file)) {
+    stop("output_file must end with .h5ad")
+  }
+
+  work_root <- tempfile("scspotlight_h5ad_export_")
+  dir.create(work_root, recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(work_root, recursive = TRUE, force = TRUE), add = TRUE)
+
+  object <- switch(
+    input_type,
+    rds = readRDS(input_file),
+    h5ad = import_h5ad_as_seurat_bpcells(input_file, backend_root = file.path(work_root, "backend_layers"))
+  )
+
+  if (!inherits(object, "Seurat")) {
+    stop("input_file did not produce a Seurat object")
+  }
+
+  write_h5ad_scanpy(
+    object = object,
+    output_file = output_file,
+    assay = assay,
+    x_layer = x_layer,
+    include_raw = include_raw,
+    matrix_buffer_size = matrix_buffer_size,
+    matrix_chunk_size = matrix_chunk_size,
+    gzip_level = gzip_level,
+    obsm_chunk_rows = obsm_chunk_rows
+  )
 }
 
 #' @noRd

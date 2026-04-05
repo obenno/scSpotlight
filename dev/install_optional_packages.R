@@ -34,10 +34,7 @@ current_pixi_platform <- function() {
 }
 
 pixi_package_spec <- function(pkg) {
-    overrides <- list(
-        anndataR = list(package = "bioconductor-anndatar", channel = "bioconda"),
-        rhdf5 = list(package = "bioconductor-rhdf5", channel = "bioconda")
-    )
+    overrides <- list()
 
     if (pkg %in% names(overrides)) {
         spec <- overrides[[pkg]]
@@ -45,6 +42,18 @@ pixi_package_spec <- function(pkg) {
     }
 
     c(package = paste0("r-", tolower(pkg)), channel = "conda-forge")
+}
+
+pak_package_spec <- function(pkg) {
+    overrides <- c(
+        presto = "immunogenomics/presto"
+    )
+
+    if (pkg %in% names(overrides)) {
+        return(unname(overrides[[pkg]]))
+    }
+
+    pkg
 }
 
 pixi_has_exact_package <- function(pkg, channel, platform) {
@@ -129,4 +138,5 @@ pak::repo_add(
     bnprks = "https://bnprks.r-universe.dev",
     immunogenomics = "https://immunogenomics.r-universe.dev"
 )
-pak::pkg_install(pak_install, upgrade = FALSE)
+pak_specs <- vapply(pak_install, pak_package_spec, character(1), USE.NAMES = FALSE)
+pak::pkg_install(pak_specs, upgrade = FALSE)

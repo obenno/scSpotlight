@@ -61,7 +61,7 @@ mod_Download_server <- function(id,
             runningMode <- golem::get_golem_options("runningMode")
             message("download, runningMode: ", runningMode)
             if(runningMode == "processing" && isTruthy(seuratObj())){
-                downloadFormat <- c("BPCells", "Rds", "metaData")
+                downloadFormat <- c("BPCells", "h5ad", "Rds", "metaData")
             }else{
                 downloadFormat <- c("metaData")
             }
@@ -116,6 +116,7 @@ mod_Download_server <- function(id,
                 outFile <- case_when(
                     input$downloadFormat == "metaData" ~ paste0(prefix, "metaData.", Sys.Date(), ".tsv.gz"),
                     input$downloadFormat == "BPCells" ~ paste0(prefix, Sys.Date(), ".tar.gz"),
+                    input$downloadFormat == "h5ad" ~ paste0(prefix, Sys.Date(), ".h5ad"),
                     TRUE ~ paste0(prefix, Sys.Date(), ".Rds")
                 )
                 outFile
@@ -164,6 +165,20 @@ mod_Download_server <- function(id,
                         },
                         message = "Saving BPCells bundle...",
                         detail = "Preparing bundle"
+                    )
+                }else if(input$downloadFormat == "h5ad"){
+                    progressr::withProgressShiny(
+                        {
+                            h5ad_progress <- progressr::progressor(steps = 4)
+                            h5ad_progress(message = "Preparing h5ad export")
+                            write_h5ad_scanpy(
+                                obj,
+                                output_file = file
+                            )
+                            h5ad_progress(message = "h5ad export ready")
+                        },
+                        message = "Saving h5ad...",
+                        detail = "Preparing Scanpy export"
                     )
                 }else{
                     stop("Format is not supported")

@@ -17,7 +17,6 @@ r-roxygen2 = "*"
 r-bslib = "*"
 r-cli = "*"
 r-config = "*"
-r-dbplyr = "*"
 r-dplyr = "*"
 r-dt = "*"
 r-future = "*"
@@ -25,7 +24,6 @@ r-ggplot2 = "*"
 r-golem = "*"
 r-htmltools = "*"
 r-magrittr = "*"
-r-plotly = "*"
 r-promises = "*"
 r-rhpcblasctl = "*"
 r-readr = "*"
@@ -49,8 +47,13 @@ zlib = "*"
 xz = "*"
 
 [target.osx-64.dependencies]
+bioconductor-rhdf5 = "*"
 
 [target.osx-arm64.dependencies]
+bioconductor-rhdf5 = "*"
+
+[target.linux-64.dependencies]
+bioconductor-rhdf5 = "*"
 
 [target.win-64.dependencies]
 

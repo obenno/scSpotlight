@@ -234,6 +234,10 @@ app_server <- function(input, output, session) {
         seuratObj
     )
 
+    mod_DataConversion_server(
+        "dataConversion"
+    )
+
     session$onSessionEnded(function(){
         tryCatch(
         {
