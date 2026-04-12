@@ -93,7 +93,8 @@ mod_FilterCell_server <- function(id,
                         normalization = FALSE,
                         hvg_method = hvgSelectMethod(),
                         ndims = clusterDims(),
-                        res = clusterResolution()
+                        res = clusterResolution(),
+                        backend_root = file.path(session$userData$backendDir, "layers")
                     )
                     seuratObj(obj)
 

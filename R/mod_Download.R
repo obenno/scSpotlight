@@ -11,12 +11,12 @@ mod_Download_ui <- function(id){
   ns <- NS(id)
 
   tagList(
-      selectInput(
+      selectizeInput(
           inputId = ns("downloadFormat"),
           label = "Result Format",
           choices = "",
           selected = "",
-          selectize = TRUE,
+          options = list(dropdownParent = "body"),
           width = NULL
       ),
       actionButton(
@@ -69,7 +69,7 @@ mod_Download_server <- function(id,
             if(!isTruthy(seuratObj())){
                 downloadFormat <- character(0)
             }
-            updateSelectInput(
+            updateSelectizeInput(
                 session = session,
                 inputId = "downloadFormat",
                 label = "Result Format",

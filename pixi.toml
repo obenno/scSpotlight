@@ -58,11 +58,8 @@ bioconductor-rhdf5 = "*"
 [target.win-64.dependencies]
 
 [tasks]
-bootstrap-r = "Rscript dev/bootstrap_r_deps.R"
 install-optional-packages = "Rscript dev/install_optional_packages.R"
-install-js = "npm install"
-setup = { depends-on = ["install-local", "install-js"] }
-install-local = { cmd = "R CMD INSTALL .", depends-on = ["bootstrap-r"] }
+setup = "Rscript dev/bootstrap_r_deps.R && npm install && Rscript dev/install_local_package.R"
 dev = "npm run dev"
 build-js = "npm run build"
 test-js = "npm test"

@@ -16,21 +16,21 @@ mod_dataInput_inputUI <- function(id){
     ##if(isTruthy(dataDir) && runningMode == "viewer"){
     if(isTruthy(dataDir)){
         tagList(
-            selectInput(
+            selectizeInput(
                 ns("dataDirFile"),
                 label = "Choose an input file",
                 choices = "",
                 selected = NULL,
                 multiple = FALSE,
-                selectize = TRUE
+                options = list(dropdownParent = "body")
             ),
-            selectInput(
+            selectizeInput(
                 ns("selectAssay"),
                 "Switch Assays",
                 choices = "",
                 selected = NULL,
                 multiple = FALSE,
-                selectize = TRUE,
+                options = list(dropdownParent = "body"),
                 width = NULL
             ) %>%
             tagAppendAttributes(class = c("mb-1"))
@@ -51,13 +51,13 @@ mod_dataInput_inputUI <- function(id){
                 ".tar.bz2", ".tbz2"
               )
             ),
-            selectInput(
+            selectizeInput(
                 ns("selectAssay"),
                 "Switch Assays",
                 choices = "",
                 selected = NULL,
                 multiple = FALSE,
-                selectize = TRUE,
+                options = list(dropdownParent = "body"),
                 width = NULL
             ) %>%
             tagAppendAttributes(class = c("mb-1"))
@@ -109,7 +109,7 @@ mod_dataInput_server <- function(id,
                 ## set working directory to the dataDir
                 ## to ensure BPCells matrix path is correct
                 setwd(dataDir)
-                updateSelectInput(
+                updateSelectizeInput(
                     session,
                     inputId = "dataDirFile",
                   choices = list.files(
@@ -162,7 +162,8 @@ mod_dataInput_server <- function(id,
                 hvg_method <- ifelse(isTruthy(hvgSelectMethod()), hvgSelectMethod(), "vst")
                 seuratObj <- ensure_bpcells_backing(
                     seuratObj,
-                    root_dir = file.path(session$userData$backendDir, "layers")
+                    root_dir = file.path(session$userData$backendDir, "layers"),
+                    layers = NULL
                 )
                 if(is_seurat_bpcells(seuratObj) && isTruthy(hvgSelectMethod()) && hvgSelectMethod()!="vst"){
                     showNotification(
@@ -178,7 +179,14 @@ mod_dataInput_server <- function(id,
                 seuratObj <- validate_seuratRDS(seuratObj, runningMode = runningMode,
                                                 hvgSelectMethod = hvg_method,
                                                 nDims = clusterDims(),
-                                                resolution = clusterResolution())
+                                                resolution = clusterResolution(),
+                                                backend_root = file.path(session$userData$backendDir, "layers"))
+                seuratObj <- ensure_bpcells_backing(
+                    seuratObj,
+                    root_dir = file.path(session$userData$backendDir, "layers"),
+                    layers = NULL
+                )
+                assert_scspotlight_backend(seuratObj)
 
             }else if(str_detect(inputFileName(), h5adFormatPattern)){
 
@@ -202,7 +210,9 @@ mod_dataInput_server <- function(id,
                 seuratObj <- validate_seuratRDS(seuratObj, runningMode = runningMode,
                                                 hvgSelectMethod = hvg_method,
                                                 nDims = clusterDims(),
-                                                resolution = clusterResolution())
+                                                resolution = clusterResolution(),
+                                                backend_root = file.path(session$userData$backendDir, "layers"))
+                assert_scspotlight_backend(seuratObj)
 
             }else if(str_detect(inputFileName(), compressionFormatPattern)){
 
@@ -239,7 +249,9 @@ mod_dataInput_server <- function(id,
                     seuratObj <- validate_seuratRDS(seuratObj, runningMode = runningMode,
                                                     hvgSelectMethod = "vst",
                                                     nDims = clusterDims(),
-                                                    resolution = clusterResolution())
+                                                    resolution = clusterResolution(),
+                                                    backend_root = file.path(session$userData$backendDir, "layers"))
+                    assert_scspotlight_backend(seuratObj)
                 }else{
                     waiter_update(html = waiting_screen("Reading Matrix..."))
                     counts <- BPCells_Read10X(
@@ -267,7 +279,8 @@ mod_dataInput_server <- function(id,
                     seuratObj[["percent.rp"]] <- PercentageFeatureSet(seuratObj, pattern = "^(RPL|RPS|Rpl|Rps)")
 
                     seuratObj <- standard_process_seurat(seuratObj, hvg_method = hvg_method,
-                                                         ndims = clusterDims(), res = clusterResolution())
+                                                         ndims = clusterDims(), res = clusterResolution(),
+                                                         backend_root = file.path(session$userData$backendDir, "layers"))
 
                 }
             }else{
@@ -277,7 +290,7 @@ mod_dataInput_server <- function(id,
 
             ## update assay list
             if(isTruthy(seuratObj)){
-                updateSelectInput(
+                updateSelectizeInput(
                     session = session,
                     inputId = "selectAssay",
                     choices = ifelse(isTruthy(seuratObj), Assays(seuratObj), ""),
@@ -495,16 +508,6 @@ HVG_exist <- function(seuratObj){
     length(VariableFeatures(seuratObj))>0
 }
 
-#' dataScaled
-#'
-#' Check if seurat object is scaled
-#'
-#' @noRd
-dataScaled <- function(seuratObj){
-    m <- GetAssayData(seuratObj, assay = NULL, layer = "scale.data")
-    any(dim(m) > 0) || "pca" %in% Reductions(seuratObj)
-}
-
 #' reduction_exist
 #'
 #' Check if seurat object has reductions
@@ -523,42 +526,15 @@ validate_seuratRDS <- function(seuratObj,
                                runningMode = "viewer",
                                hvgSelectMethod = "vst",
                                nDims = 30,
-                               resolution = 1){
-    message("calculating mt")
-    if("counts" %in% Layers(seuratObj) &&
-       !("percent.mt" %in% colnames(seuratObj[[]]))){
-        seuratObj[["percent.mt"]] <- PercentageFeatureSet(seuratObj, pattern = "^(MT-|mt-)")
-    }
-    message("calculating rp")
-    if("counts" %in% Layers(seuratObj) &&
-       !("percent.rp" %in% colnames(seuratObj[[]]))){
-        seuratObj[["percent.rp"]] <- PercentageFeatureSet(seuratObj, pattern = "^(RPL|RPS|Rpl|Rps)")
-    }
-
-    ## Added rds verify code
-    if(!dataNormalized(seuratObj)){
-        waiter_update(html = waiting_screen("Normalizing Data..."))
-        seuratObj <- NormalizeData(seuratObj)
-    }
-    if(!HVG_exist(seuratObj) && runningMode == "processing"){
-        waiter_update(html = waiting_screen("Finding HVGs..."))
-        seuratObj <- set_variable_features_backend(
-            seuratObj,
-            selection.method = hvgSelectMethod
-        )
-    }
-    if(!reduction_exist(seuratObj) &&
-       runningMode == "processing"){
-        waiter_update(html = waiting_screen("Calculating Reductions..."))
-        seuratObj <- run_memory_conserving_pca(
-            seuratObj,
-            npcs = max(nDims, 30L)
-        )
-        seuratObj <- FindNeighbors(seuratObj, dims = 1:nDims, reduction = "pca")
-        seuratObj <- FindClusters(seuratObj, resolution = resolution)
-        seuratObj <- RunUMAP(seuratObj, dims = 1:nDims, reduction = "pca")
-    }
-    message("Finished validating object...")
+                               resolution = 1,
+                               backend_root = NULL){
+    seuratObj <- ensure_normalized_layer(
+        seuratObj,
+        backend_root = backend_root,
+        input_label = "Input object"
+    )
+    assert_processed_input_requirements(seuratObj, input_label = "Input object")
+    message("Finished validating object requirements...")
     return(seuratObj)
 }
 
@@ -601,9 +577,10 @@ decompress_matrix_input <- function(fileName, filePath){
 #'
 #' @noRd
 standard_process_seurat <- function(seuratObj, normalization = TRUE,
-                                    hvg_method = "mean.var.plot", ndims = 30, res = 0.5){
+                                    hvg_method = "mean.var.plot", ndims = 30, res = 0.5,
+                                    backend_root = NULL){
     waiter_update(html = waiting_screen("Running memory-conserving processing..."))
-    run_memory_conserving_processing(
+    seuratObj <- run_memory_conserving_processing(
         seuratObj,
         normalization = normalization,
         hvg_method = hvg_method,
@@ -611,6 +588,15 @@ standard_process_seurat <- function(seuratObj, normalization = TRUE,
         res = res,
         npcs = max(ndims, 30L)
     )
+    if (isTruthy(backend_root)) {
+        seuratObj <- ensure_bpcells_backing(
+            seuratObj,
+            root_dir = backend_root,
+            layers = NULL
+        )
+        assert_scspotlight_backend(seuratObj)
+    }
+    seuratObj
 }
 
 ## To be copied in the UI

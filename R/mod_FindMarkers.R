@@ -10,11 +10,12 @@
 mod_FindMarkers_ui <- function(id){
   ns <- NS(id)
   tagList(
-      selectInput(
+      selectizeInput(
           inputId = ns("DEG_method"),
           label = "Choose DEG Calculation Method",
           choices = c("wilcox", "MAST"),
-          selected = "wilcox"
+          selected = "wilcox",
+          options = list(dropdownParent = "body")
       ),
       numericInput(
           inputId = ns("min.pct"),

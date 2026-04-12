@@ -10,13 +10,13 @@
 mod_UpdateReduction_ui <- function(id){
     ns <- NS(id)
     tagList(
-        selectInput(
+        selectizeInput(
             ns("reduction"),
             "Choose reduction",
             choices = "None",
             selected = "None",
             multiple = FALSE,
-            selectize = TRUE,
+            options = list(dropdownParent = "body"),
             width = NULL
         )
     )
@@ -36,19 +36,27 @@ mod_UpdateReduction_server <- function(id,
 
   moduleServer( id, function(input, output, session){
       ns <- session$ns
+      prefetchingReductionVersion <- reactiveVal(NULL)
 
       observeEvent(reductionUpdateIndicator(), {
           req(isTruthy(seuratObj()))
           k <- get_backend_reduction_names(seuratObj())
           idx <- na.omit(match(c("umap", "tsne", "pca"), k))
-          ordered_reduction <- k[c(idx, setdiff(1:length(k), idx))]
+          ordered_reduction <- k[c(idx, setdiff(seq_along(k), idx))]
+          selected_reduction <- if (isTruthy(input$reduction) && input$reduction %in% ordered_reduction) {
+              input$reduction
+          } else if (length(ordered_reduction)) {
+              ordered_reduction[[1]]
+          } else {
+              character(0)
+          }
           ## update input list
-          updateSelectInput(
+          updateSelectizeInput(
             session = session,
             inputId = "reduction",
             label = "Choose reduction",
             choices = ordered_reduction,
-            selected = NULL
+            selected = selected_reduction
           )
 
           obj <- seuratObj()
@@ -80,11 +88,32 @@ mod_UpdateReduction_server <- function(id,
                   )
               )
           }
-      }, priority = -200)
+
+          prefetched_reductions <- utils::head(ordered_reduction, 5L)
+          if (length(prefetched_reductions) > 0) {
+              invoke_all_reduction_transfer(prefetched_reductions, selected_reduction)
+          }
+       }, priority = -200)
 
       ##observeEvent(input$reduction, {
       ##   reductionUpdateIndicator(reductionUpdateIndicator()+1)
       ##}, ignoreNULL = TRUE)
+
+      write_reduction_ipc <- function(reduction_name, reduction_data, reduction_version, dir_path) {
+          reduction_file_name <- hash_md5(paste0("reduction_", reduction_name, "_", reduction_version))
+          write_ipc_stream(
+              arrow_table(
+                  X = Array$create(reduction_data$X, type = float32()),
+                  Y = Array$create(reduction_data$Y, type = float32())
+              ),
+              file.path(dir_path, reduction_file_name)
+          )
+          list(
+              reductionFile = reduction_file_name,
+              reductionName = reduction_name,
+              reductionVersion = reduction_version
+          )
+      }
 
       invoke_reduction_transfer <- function(reduction_name){
           showNotification(
@@ -106,19 +135,7 @@ mod_UpdateReduction_server <- function(id,
           # Keep BPCells/Seurat access on the main thread; only file export is delegated.
           d <- get_backend_reduction(seuratObj(), reduction = reduction_name)
           reduction_promise <- future_promise({
-              reductionFileName <- hash_md5(paste0("reduction_", reduction_name, "_", reductionVersion))
-              write_ipc_stream(
-                  arrow_table(
-                      X = Array$create(d$X, type = float32()),
-                      Y = Array$create(d$Y, type = float32())
-                  ),
-                  file.path(dirPath, reductionFileName)
-              )
-              list(
-                  reductionFile = reductionFileName,
-                  reductionName = reduction_name,
-                  reductionVersion = reductionVersion
-              )
+              write_reduction_ipc(reduction_name, d, reductionVersion, dirPath)
           }) %...>% (
               function(result) {
                   session$sendCustomMessage(type = "reduction_ready", message = result)
@@ -145,6 +162,73 @@ mod_UpdateReduction_server <- function(id,
           )
       }
 
+      invoke_all_reduction_transfer <- function(reduction_names, active_reduction_name){
+          req(length(reduction_names) > 0)
+          showNotification(
+              ui = div(div(class = c("spinner-border", "spinner-border-sm", "text-primary"),
+                           role = "status",
+                           span(class = "sr-only", "Loading...")),
+                       "Preparing all reduction data..."),
+              action = NULL,
+              duration = NULL,
+              closeButton = FALSE,
+              type = "default",
+              id = "update_reduction_notification",
+              session = session
+          )
+          message("Transferring all reductionData...")
+          reductionProcessed(FALSE)
+          dirPath <- file.path(session$userData$tempDir, "reduction")
+          reductionVersion <- reductionUpdateIndicator()
+          prefetchingReductionVersion(reductionVersion)
+          reduction_payloads <- lapply(reduction_names, function(reduction_name) {
+              get_backend_reduction(seuratObj(), reduction = reduction_name)
+          })
+          names(reduction_payloads) <- reduction_names
+
+          reductions_promise <- future_promise({
+              lapply(reduction_names, function(reduction_name) {
+                  write_reduction_ipc(
+                      reduction_name,
+                      reduction_payloads[[reduction_name]],
+                      reductionVersion,
+                      dirPath
+                  )
+              })
+          }) %...>% (
+              function(result) {
+                  session$sendCustomMessage(
+                      type = "reductions_ready",
+                      message = list(
+                          reductions = result,
+                          activeReduction = active_reduction_name,
+                          reductionVersion = reductionVersion
+                      )
+                  )
+                  result
+              }
+          ) %...!% (
+              function(error) {
+                  showNotification(
+                      ui = paste("Reduction export failed:", conditionMessage(error)),
+                      action = NULL,
+                      duration = 6,
+                      closeButton = TRUE,
+                      type = "error",
+                      session = session
+                  )
+              }
+          )
+
+          promises::finally(
+              reductions_promise,
+              function() {
+                  prefetchingReductionVersion(NULL)
+                  removeNotification(id = "update_reduction_notification", session = session)
+              }
+          )
+      }
+
       observeEvent(input$reduction, {
           req(isTruthy(seuratObj()))
           req(input$reduction!="None")
@@ -161,6 +245,11 @@ mod_UpdateReduction_server <- function(id,
                       reductionVersion = reductionVersion
                   )
               )
+              return()
+          }
+
+          if (identical(prefetchingReductionVersion(), reductionVersion)) {
+              reductionProcessed(FALSE)
               return()
           }
 

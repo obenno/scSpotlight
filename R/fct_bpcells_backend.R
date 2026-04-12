@@ -37,6 +37,11 @@ is_bpcells_matrix <- function(x) {
 }
 
 #' @noRd
+bpcells_target_layers <- function(object, assay) {
+  tryCatch(SeuratObject::Layers(object[[assay]]), error = function(...) character(0))
+}
+
+#' @noRd
 optimize_bpcells_matrix_type <- function(mat, layer = NULL) {
   if (!bpcells_available() || is_bpcells_matrix(mat)) {
     return(mat)
@@ -265,7 +270,11 @@ ensure_bpcells_backing <- function(object, root_dir, assays = NULL, layers = c("
 
   for (assay in assays) {
     object <- ensure_assay5(object, assay)
-    assay_layers <- intersect(layers, SeuratObject::Layers(object[[assay]]))
+    assay_layers <- if (is.null(layers)) {
+      bpcells_target_layers(object, assay)
+    } else {
+      intersect(layers, SeuratObject::Layers(object[[assay]]))
+    }
     if (!length(assay_layers)) {
       next
     }
@@ -287,6 +296,27 @@ ensure_bpcells_backing <- function(object, root_dir, assays = NULL, layers = c("
   }
 
   object
+}
+
+#' @noRd
+assert_scspotlight_backend <- function(object) {
+  assays <- Assays(object)
+  missing_layers <- unlist(lapply(assays, function(assay) {
+    layers <- bpcells_target_layers(object, assay)
+    layers[!vapply(layers, function(layer) {
+      is_bpcells_matrix(SeuratObject::LayerData(object, assay = assay, layer = layer))
+    }, logical(1))]
+  }), use.names = FALSE)
+
+  if (length(missing_layers)) {
+    stop(
+      "scSpotlight requires BPCells-backed assay layers before app state is updated. ",
+      "Non-BPCells layers found: ",
+      paste(unique(missing_layers), collapse = ", ")
+    )
+  }
+
+  invisible(TRUE)
 }
 
 #' @noRd
@@ -692,6 +722,13 @@ import_h5ad_as_seurat_bpcells <- function(input_file, backend_root, assay = "RNA
     }
   }
 
+  object <- ensure_normalized_layer(
+    object,
+    assay = assay,
+    backend_root = backend_root,
+    input_label = "Input h5ad file"
+  )
+
   object <- h5ad_add_reductions(object, input_file, index, assay = assay)
   ensure_bpcells_backing(object, root_dir = backend_root, assays = assay)
 }
@@ -739,6 +776,74 @@ get_backend_metadata <- function(object, cols = NULL) {
 }
 
 #' @noRd
+has_normalized_layer <- function(object, assay = NULL) {
+  assay <- assay %||% DefaultAssay(object)
+  data_layer <- tryCatch(SeuratObject::LayerData(object, assay = assay, layer = "data"), error = function(...) NULL)
+  !is.null(data_layer) && all(dim(data_layer) > 0)
+}
+
+#' @noRd
+has_counts_layer <- function(object, assay = NULL) {
+  assay <- assay %||% DefaultAssay(object)
+  counts_layer <- tryCatch(SeuratObject::LayerData(object, assay = assay, layer = "counts"), error = function(...) NULL)
+  !is.null(counts_layer) && all(dim(counts_layer) > 0)
+}
+
+#' @noRd
+has_cell_metadata <- function(object) {
+  meta <- object[[]]
+  is.data.frame(meta) && nrow(meta) == ncol(object) && ncol(meta) > 0
+}
+
+#' @noRd
+has_reduction_data <- function(object) {
+  length(SeuratObject::Reductions(object)) > 0
+}
+
+#' @noRd
+ensure_normalized_layer <- function(object, assay = NULL, backend_root = NULL, input_label = "Input object") {
+  assay <- assay %||% DefaultAssay(object)
+
+  if (has_normalized_layer(object, assay = assay)) {
+    return(object)
+  }
+
+  if (!has_counts_layer(object, assay = assay)) {
+    stop(input_label, " must include normalized expression in the assay 'data' layer, or provide a raw 'counts' layer so scSpotlight can create it.")
+  }
+
+  object <- Seurat::NormalizeData(object, assay = assay, verbose = FALSE)
+
+  if (isTruthy(backend_root)) {
+    object <- ensure_bpcells_backing(
+      object,
+      root_dir = backend_root,
+      assays = assay,
+      layers = NULL
+    )
+  }
+
+  object
+}
+
+#' @noRd
+assert_processed_input_requirements <- function(object, assay = NULL, input_label = "Input object") {
+  assay <- assay %||% DefaultAssay(object)
+
+  if (!has_cell_metadata(object)) {
+    stop(input_label, " must include cell metadata columns in object[[]].")
+  }
+  if (!has_normalized_layer(object, assay = assay)) {
+    stop(input_label, " must include normalized expression in the assay 'data' layer.")
+  }
+  if (!has_reduction_data(object)) {
+    stop(input_label, " must include at least one dimensional reduction for plotting.")
+  }
+
+  invisible(TRUE)
+}
+
+#' @noRd
 get_backend_reduction_names <- function(object) {
   SeuratObject::Reductions(object)
 }
@@ -766,6 +871,59 @@ get_backend_expr <- function(object, assay = NULL, features, layer = NULL) {
   })
   names(out) <- features
   out
+}
+
+#' @noRd
+get_bpcells_layer_ref <- function(object, assay = NULL, layer = NULL, backend_root = NULL) {
+  assay <- assay %||% DefaultAssay(object)
+  layer <- layer %||% preferred_expr_layer(object, assay)
+  mat <- SeuratObject::LayerData(object, assay = assay, layer = layer)
+
+  if (!is_bpcells_matrix(mat)) {
+    stop("Selected assay layer is not BPCells-backed: ", assay, "/", layer)
+  }
+
+  matrix_dir <- tryCatch(SeuratObject:::.FilePath(mat), error = function(...) character(0))
+  matrix_dir <- Filter(nzchar, matrix_dir)
+  if (length(matrix_dir) == 1L && dir.exists(matrix_dir[[1]])) {
+    return(list(
+      assay = assay,
+      layer = layer,
+      matrix_dir = matrix_dir[[1]]
+    ))
+  }
+
+  if (!isTruthy(backend_root)) {
+    stop("Unable to resolve BPCells matrix directory for ", assay, "/", layer)
+  }
+
+  materialized_dir <- file.path(backend_root, "expr_layers", assay, layer)
+  dir.create(dirname(materialized_dir), recursive = TRUE, showWarnings = FALSE)
+  BPCells::write_matrix_dir(mat = mat, dir = materialized_dir, overwrite = TRUE)
+
+  list(
+    assay = assay,
+    layer = layer,
+    matrix_dir = materialized_dir
+  )
+}
+
+#' @noRd
+extract_bpcells_expr_to_ipc <- function(matrix_dir, feature, output_file) {
+  assert_bpcells_available()
+  mat <- BPCells::open_matrix_dir(matrix_dir)
+  expr <- extract_expr_vector(mat, feature)
+
+  if (file.exists(output_file)) {
+    file.remove(output_file)
+  }
+
+  write_ipc_stream(
+    arrow_table(expr = Array$create(expr, type = float32())),
+    output_file
+  )
+
+  invisible(output_file)
 }
 
 #' @noRd
@@ -1245,7 +1403,7 @@ write_h5ad_scanpy <- function(object,
       object,
       root_dir = export_backend_root,
       assays = assay,
-      layers = setdiff(layers, "scale.data")
+      layers = layers
     )
   }
 
@@ -1280,7 +1438,7 @@ write_h5ad_scanpy <- function(object,
   )
 
   h5ad_create_group(output_file, "layers", encoding_type = "dict", encoding_version = "0.1.0")
-  same_space_layers <- setdiff(layers, c(x_layer, "scale.data"))
+  same_space_layers <- setdiff(layers, x_layer)
   same_space_layers <- same_space_layers[vapply(same_space_layers, function(layer) {
     h5ad_layer_matches_x(object, assay = assay, layer = layer, x_features = x_features, x_cells = x_cells)
   }, logical(1))]
@@ -1416,6 +1574,19 @@ convert_to_scanpy_h5ad <- function(input_file,
     stop("input_file did not produce a Seurat object")
   }
 
+  object <- ensure_normalized_layer(
+    object,
+    assay = assay,
+    backend_root = file.path(work_root, "backend_layers"),
+    input_label = "Conversion source"
+  )
+
+  assert_processed_input_requirements(
+    object,
+    assay = assay,
+    input_label = "Conversion source"
+  )
+
   write_h5ad_scanpy(
     object = object,
     output_file = output_file,
@@ -1506,11 +1677,6 @@ prepare_bundle_object <- function(object, bundle_dir) {
     layers <- SeuratObject::Layers(object_copy[[assay]])
     if (!length(layers)) {
       next
-    }
-
-    if ("scale.data" %in% layers) {
-      SeuratObject::LayerData(object_copy, assay = assay, layer = "scale.data") <- NULL
-      layers <- setdiff(layers, "scale.data")
     }
 
     for (layer in layers) {
@@ -1637,8 +1803,6 @@ write_scspotlight_bundle <- function(object, bundle_dir, file_name = "object.Rds
 #'
 #' Existing BPCells-backed layers are preserved. Non-BPCells assay layers are
 #' rewritten into BPCells-backed on-disk storage before the bundle is created.
-#' The bundle writer also drops `scale.data` layers to avoid packaging dense,
-#' derived matrices unnecessarily.
 #'
 #' @param input_file Path to an input Seurat `.Rds` or `.h5ad` file.
 #' @param output_file Path to the output `.tar.gz` bundle file. If `NULL`, the
@@ -1685,6 +1849,17 @@ convert_to_bpcells_bundle <- function(input_file, output_file = NULL) {
   if (!inherits(object, "Seurat")) {
     stop("input_file did not produce a Seurat object")
   }
+
+  object <- ensure_normalized_layer(
+    object,
+    backend_root = backend_root,
+    input_label = "Conversion source"
+  )
+
+  assert_processed_input_requirements(
+    object,
+    input_label = "Conversion source"
+  )
 
   if (is.null(output_file)) {
     output_file <- sub("\\.[^.]+$", ".tar.gz", input_file)

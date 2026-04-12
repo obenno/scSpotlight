@@ -21,13 +21,13 @@ mod_DataConversion_ui <- function(id){
       width = "100%",
       accept = c(".rds", ".h5ad")
     ),
-    selectInput(
+    selectizeInput(
       inputId = ns("conversionFormat"),
       label = "Output Format",
       choices = c("BPCells" = "bpcells", "h5ad" = "h5ad"),
       selected = "bpcells",
       multiple = FALSE,
-      selectize = TRUE,
+      options = list(dropdownParent = "body"),
       width = NULL
     ),
     actionButton(

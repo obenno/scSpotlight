@@ -112,7 +112,7 @@ const ipcCache = {
   exprVersion: null,
 };
 
-const REDUCTION_CACHE_LIMIT = 4;
+const REDUCTION_CACHE_LIMIT = 5;
 const EXPR_CACHE_LIMIT = 100;
 const CACHE_KEY_DELIMITER = "::";
 
@@ -187,6 +187,24 @@ const makeReductionCacheKey = (version, reductionName) =>
 
 const makeExprCacheKey = (version, assay, geneName) =>
   `${version}${CACHE_KEY_DELIMITER}${assay}${CACHE_KEY_DELIMITER}${geneName}`;
+
+const getCurrentReductionName = () => {
+  const el = document.getElementById("updateReduction-reduction");
+  return el?.value && el.value !== "None" ? el.value : null;
+};
+
+const decodeReductionBuffer = (buffer) => {
+  const table = decodeArrowIPC(buffer);
+  return {
+    X: getFloat32Column(table, "X"),
+    Y: getFloat32Column(table, "Y"),
+  };
+};
+
+const plotReductionBuffer = (buffer) => {
+  reglElementData.updateReductionData(decodeReductionBuffer(buffer));
+  Shiny.setInputValue("reductionProcessed", true, { priority: "event" });
+};
 
 // init normal shelter for webR to gain better control of the r objects
 //const shelterInstance = await initShelter(plotWebR);
@@ -483,19 +501,72 @@ Shiny.addCustomMessageHandler("reduction_ready", (msg) => {
       );
       updateReductionCacheKeys();
 
-      const table = decodeArrowIPC(buffer);
-      const df = {
-        X: getFloat32Column(table, "X"),
-        Y: getFloat32Column(table, "Y"),
-      };
-      reglElementData.updateReductionData(df);
-      Shiny.setInputValue("reductionProcessed", true, { priority: "event" });
-      console.log("reduction", df);
+      plotReductionBuffer(buffer);
+      console.log("reduction", msg.reductionName);
 
       // do not hide the spinner, since it will trigger the reglScatter_plot immediately
     })().catch((error) => {
       console.error("There was a problem:", error);
       mainPlotSpinner.style.display = "none";
+    });
+  } catch (error) {
+    console.error("There was a problem:", error);
+    mainPlotSpinner.style.display = "none";
+  }
+});
+
+Shiny.addCustomMessageHandler("reductions_ready", (msg) => {
+  try {
+    (async () => {
+      if (!ensureReductionCacheVersion(msg.reductionVersion)) {
+        return;
+      }
+
+      if (mainPlotSpinner.style.display === "none") {
+        mainPlotSpinner.style.display = "flex";
+      }
+
+      const reductions = Array.isArray(msg.reductions) ? msg.reductions : [];
+      const currentReduction = getCurrentReductionName() || msg.activeReduction;
+      const activeReduction = reductions.find(
+        (reduction) => reduction.reductionName === currentReduction,
+      );
+      const inactiveReductions = reductions.filter(
+        (reduction) => reduction.reductionName !== currentReduction,
+      );
+
+      if (activeReduction) {
+        const activeURL =
+          window.location.origin + "/data/reduction/" + activeReduction.reductionFile;
+        const activeBuffer = await fetchArrowIPCBuffer(activeURL);
+        setCacheEntry(
+          ipcCache.reductions,
+          makeReductionCacheKey(msg.reductionVersion, activeReduction.reductionName),
+          activeBuffer,
+          REDUCTION_CACHE_LIMIT,
+        );
+        updateReductionCacheKeys();
+        plotReductionBuffer(activeBuffer);
+      }
+
+      await Promise.all(
+        inactiveReductions.map(async (reduction) => {
+          const reductionURL =
+            window.location.origin + "/data/reduction/" + reduction.reductionFile;
+          const buffer = await fetchArrowIPCBuffer(reductionURL);
+          setCacheEntry(
+            ipcCache.reductions,
+            makeReductionCacheKey(msg.reductionVersion, reduction.reductionName),
+            buffer,
+            REDUCTION_CACHE_LIMIT,
+          );
+        }),
+      );
+      updateReductionCacheKeys();
+    })().catch((error) => {
+      console.error("There was a problem:", error);
+      mainPlotSpinner.style.display = "none";
+      Shiny.setInputValue("reductionProcessed", false, { priority: "event" });
     });
   } catch (error) {
     console.error("There was a problem:", error);
@@ -528,13 +599,7 @@ Shiny.addCustomMessageHandler("reduction_cached", (msg) => {
         return;
       }
 
-      const table = decodeArrowIPC(buffer);
-      const df = {
-        X: getFloat32Column(table, "X"),
-        Y: getFloat32Column(table, "Y"),
-      };
-      reglElementData.updateReductionData(df);
-      Shiny.setInputValue("reductionProcessed", true, { priority: "event" });
+      plotReductionBuffer(buffer);
     })().catch((error) => {
       console.error("There was a problem:", error);
       mainPlotSpinner.style.display = "none";

@@ -11,13 +11,13 @@
 mod_ClusterSetting_ui <- function(id){
   ns <- NS(id)
   tagList(
-      selectInput(
+      selectizeInput(
           inputId = ns("hvgSelectMethod"),
           label = "HVG Selection Method",
           choices = c("vst", "mean.var.plot", "dispersion"),
           selected = "vst",
           multiple = FALSE,
-          selectize = TRUE,
+          options = list(dropdownParent = "body"),
           width = NULL
       ),
       shinyWidgets::sliderTextInput(

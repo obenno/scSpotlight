@@ -9,7 +9,17 @@
 #'
 #' @noRd
 app_sys <- function(...) {
-  system.file(..., package = "scSpotlight")
+  installed_path <- system.file(..., package = "scSpotlight")
+  if (nzchar(installed_path)) {
+    return(installed_path)
+  }
+
+  source_path <- file.path("inst", ...)
+  if (file.exists(source_path) || dir.exists(source_path) || length(list(...)) == 0L) {
+    return(source_path)
+  }
+
+  installed_path
 }
 
 

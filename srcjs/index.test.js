@@ -121,6 +121,10 @@ vi.mock("./modules/deckScatter.js", () => {
 
     updateCellCount() {}
 
+    updateReductionData(reductionData) {
+      this.origData.reductionData = reductionData;
+    }
+
     clearHighlight() {}
 
     setSelectedCells(selectedCells = [], { source = null } = {}) {
@@ -166,6 +170,7 @@ const buildDom = () => {
     <select id="renameCluster-chosenSplit" multiple></select>
     <div id="renameCluster-selectedCellsText"></div>
     <button id="renameCluster-assign"></button>
+    <select id="updateReduction-reduction"><option value="umap" selected>umap</option></select>
     <div id="floatingVlnPlot"></div>
     <div id="floatingFeaturePlot"></div>
     <div id="floatingDotPlot"></div>
@@ -300,6 +305,39 @@ describe("rename cluster client selection", () => {
     expect(testState.reglInstance.origData.cellMetaData.renamed.value).toEqual({
       selected: [0, 1],
       unknown: [2],
+    });
+  });
+
+  it("prefetches reduction buffers and plots only the selected reduction", async () => {
+    const arrowReader = await import("./modules/arrowReader.js");
+    arrowReader.fetchArrowIPCBuffer.mockImplementation((url) =>
+      Promise.resolve(new TextEncoder().encode(url).buffer),
+    );
+    arrowReader.decodeArrowIPC.mockImplementation((buffer) => ({ buffer }));
+    arrowReader.getFloat32Column.mockImplementation((table, colName) => {
+      const url = new TextDecoder().decode(table.buffer);
+      const value = url.includes("umap") ? 1 : 2;
+      return new Float32Array([colName === "X" ? value : value + 10]);
+    });
+
+    await testState.handlers.reductions_ready({
+      reductionVersion: 1,
+      activeReduction: "umap",
+      reductions: [
+        { reductionName: "umap", reductionFile: "umap-ipc" },
+        { reductionName: "pca", reductionFile: "pca-ipc" },
+      ],
+    });
+
+    await vi.waitFor(() => {
+      expect(testState.reglInstance.origData.reductionData.X).toEqual(
+        new Float32Array([1]),
+      );
+      expect(testState.inputs).toContainEqual([
+        "updateReduction-cachedReductionKeys",
+        ["1::umap", "1::pca"],
+        { priority: "event" },
+      ]);
     });
   });
 });

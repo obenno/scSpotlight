@@ -10,22 +10,22 @@
 mod_UpdateCategory_ui <- function(id){
   ns <- NS(id)
   tagList(
-      selectInput(
+      selectizeInput(
           ns("group.by"),
           "Choose group.by",
           choices = "None",
           selected = "None",
           multiple = FALSE,
-          selectize = TRUE,
+          options = list(dropdownParent = "body"),
           width = NULL
       ),
-      selectInput(
+      selectizeInput(
           ns("split.by"),
           "Choose split.by",
           choices = "None",
           selected = "None",
           multiple = FALSE,
-          selectize = TRUE,
+          options = list(dropdownParent = "body"),
           width = NULL
       )
   )
@@ -63,14 +63,14 @@ mod_UpdateCategory_server <- function(id,
               current_split <- "None"
           }
 
-          updateSelectInput(
+          updateSelectizeInput(
               session = session,
               inputId = "group.by",
               label = "Choose group.by",
               choices = choices,
               selected = current_group
           )
-          updateSelectInput(
+          updateSelectizeInput(
               session = session,
               inputId = "split.by",
               label = "Choose split.by",

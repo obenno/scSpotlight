@@ -112,11 +112,10 @@ pixi run run-app-processing
 
 - `pixi install` - prefetch/materialize the lockfile environment
   without running a task
-- `pixi run bootstrap-r` - install missing required R packages with
-  `pak` fallbacks only
-- `pixi run install-js` - run `npm install`
-- `pixi run install-local` - install the local package into the Pixi
-  R library
+- `pixi run setup` - run the full app bootstrap: use Pixi-native
+  dependencies where available, fall back to `pak::pkg_install()` for
+  missing R packages, install JavaScript dependencies, and install the
+  local package
 - `pixi run dev` - start the Vite development server
 - `pixi run build-js` - build the frontend bundle
 - `pixi run test-js` - run frontend tests once
