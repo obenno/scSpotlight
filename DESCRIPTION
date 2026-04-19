@@ -40,7 +40,8 @@ Imports:
     shinyWidgets,
     stringr,
     tibble,
-    waiter
+    waiter,
+    zip
 Suggests: 
     presto,
     testthat (>= 3.0.0)

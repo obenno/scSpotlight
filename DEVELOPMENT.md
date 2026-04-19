@@ -395,12 +395,12 @@ Implementation notes:
 
 Decision:
 
-- The BPCells download format is a self-identifying tarball bundle, not just a generic compressed folder.
+- The BPCells download format is a self-identifying zip bundle, not just a generic compressed folder.
 - The download menu also keeps a standard `.Rds` export for compatibility with tooling that expects a plain serialized Seurat object.
 
 Why:
 
-- A plain `.tar.gz` does not indicate whether it contains a valid scSpotlight BPCells-backed Seurat bundle.
+- A plain `.zip` does not indicate whether it contains a valid scSpotlight BPCells-backed Seurat bundle.
 - Portable reuse requires a stable contract for locating the entrypoint RDS and the supporting BPCells layer directories.
 - Some downstream workflows still expect a conventional `.Rds`, even though that path may need to materialize BPCells-backed layers first.
 
@@ -421,7 +421,7 @@ Implementation notes:
 
 Decision:
 
-- Reusable BPCells tarballs should be loaded through the app import path or the bundle loader helper, not by calling `LoadSeuratRds()` on the RDS from an arbitrary working directory.
+- Reusable BPCells zip bundles should be loaded through the app import path or the bundle loader helper, not by calling `LoadSeuratRds()` on the RDS from an arbitrary working directory.
 
 Why:
 

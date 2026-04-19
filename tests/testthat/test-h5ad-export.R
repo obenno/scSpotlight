@@ -52,3 +52,73 @@ test_that("write_h5ad_scanpy writes AnnData-compatible structure", {
   expect_identical(as.vector(rhdf5::h5readAttributes(out, "varm")[["encoding-type"]]), "dict")
   expect_identical(as.vector(rhdf5::h5readAttributes(out, "uns")[["encoding-type"]]), "dict")
 })
+
+test_that("write_h5ad_scanpy excludes counts from layers when written to raw", {
+  skip_if_not_installed("BPCells")
+  skip_if_not_installed("rhdf5")
+
+  write_h5ad_scanpy <- getFromNamespace("write_h5ad_scanpy", "scSpotlight")
+
+  counts <- Matrix::rsparsematrix(6, 4, density = 0.4)
+  counts <- abs(counts)
+  rownames(counts) <- paste0("gene", seq_len(nrow(counts)))
+  colnames(counts) <- paste0("cell", seq_len(ncol(counts)))
+
+  obj <- Seurat::CreateSeuratObject(counts = counts)
+  obj <- Seurat::NormalizeData(obj, verbose = FALSE)
+
+  out <- tempfile(fileext = ".h5ad")
+  write_h5ad_scanpy(obj, out, x_layer = "data")
+
+  # When x_layer = "data", counts should be in raw/X but NOT in layers/counts
+  listing <- rhdf5::h5ls(out, recursive = TRUE)
+  full_paths <- ifelse(listing$group == "/", paste0("/", listing$name), paste0(listing$group, "/", listing$name))
+
+  expect_true("/raw/X" %in% full_paths)
+  expect_false("/layers/counts" %in% full_paths)
+})
+
+test_that("write_h5ad_scanpy includes raw/obs when raw is written", {
+  skip_if_not_installed("BPCells")
+  skip_if_not_installed("rhdf5")
+
+  write_h5ad_scanpy <- getFromNamespace("write_h5ad_scanpy", "scSpotlight")
+
+  counts <- Matrix::rsparsematrix(6, 4, density = 0.4)
+  counts <- abs(counts)
+  rownames(counts) <- paste0("gene", seq_len(nrow(counts)))
+  colnames(counts) <- paste0("cell", seq_len(ncol(counts)))
+
+  obj <- Seurat::CreateSeuratObject(counts = counts)
+  obj <- Seurat::NormalizeData(obj, verbose = FALSE)
+
+  out <- tempfile(fileext = ".h5ad")
+  write_h5ad_scanpy(obj, out, x_layer = "data")
+
+  # raw/obs should exist when raw is written
+  listing <- rhdf5::h5ls(out, recursive = TRUE)
+  full_paths <- ifelse(listing$group == "/", paste0("/", listing$name), paste0(listing$group, "/", listing$name))
+
+  expect_true("/raw/obs" %in% full_paths)
+})
+
+test_that("import_h5ad_as_seurat_bpcells validates AnnData encoding", {
+  skip_if_not_installed("BPCells")
+  skip_if_not_installed("rhdf5")
+
+  import_h5ad_as_seurat_bpcells <- getFromNamespace("import_h5ad_as_seurat_bpcells", "scSpotlight")
+
+  # Create a non-AnnData HDF5 file with wrong encoding-type
+  tmp <- tempfile(fileext = ".h5ad")
+  rhdf5::h5createFile(tmp)
+  rhdf5::h5write(1:10, tmp, "data")
+  # Write a non-anndata encoding-type attribute and close handle
+  fid <- rhdf5::H5Fopen(tmp)
+  rhdf5::h5writeAttribute("not_anndata", fid, name = "encoding-type")
+  rhdf5::H5Fclose(fid)
+
+  expect_error(
+    import_h5ad_as_seurat_bpcells(tmp, backend_root = tempdir()),
+    "does not appear to be a valid AnnData file"
+  )
+})

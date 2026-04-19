@@ -81,7 +81,7 @@ mod_DataConversion_server <- function(id){
           return(paste0(base_name, ".h5ad"))
         }
 
-        paste0(base_name, ".tar.gz")
+        paste0(base_name, ".zip")
       },
       content = function(file) {
         req(isTruthy(source_file_path()), isTruthy(input$conversionFormat))

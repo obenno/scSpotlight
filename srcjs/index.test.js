@@ -119,6 +119,22 @@ vi.mock("./modules/deckScatter.js", () => {
 
     mountDeck() {}
 
+    createRenderReplacement() {
+      const replacement = new MockReglScatterCanvas();
+      replacement.plotMetaData = {
+        ...this.plotMetaData,
+        selectedFeatures: [...(this.plotMetaData.selectedFeatures || [])],
+      };
+      replacement.plotData = {
+        ...this.plotData,
+        selectedCells: [...(this.plotData.selectedCells || [])],
+      };
+      replacement.origData = this.origData;
+      return replacement;
+    }
+
+    destroy() {}
+
     updateCellCount() {}
 
     updateReductionData(reductionData) {
@@ -339,5 +355,85 @@ describe("rename cluster client selection", () => {
         { priority: "event" },
       ]);
     });
+  });
+
+  it("settles initial plot readiness when reduction loading fails", async () => {
+    const arrowReader = await import("./modules/arrowReader.js");
+    arrowReader.fetchArrowIPCBuffer.mockRejectedValueOnce(new Error("network failed"));
+
+    testState.handlers.await_initial_plot_ready({});
+    testState.handlers.reduction_ready({
+      reductionFile: "broken-ipc",
+      reductionVersion: 1,
+      reductionName: "umap",
+    });
+
+    await vi.waitFor(() => {
+      expect(testState.inputs).toContainEqual([
+        "initialPlotReady",
+        expect.any(Number),
+        { priority: "event" },
+      ]);
+    });
+  });
+
+  it("ignores stale initial plot failures after a newer render wait starts", async () => {
+    const arrowReader = await import("./modules/arrowReader.js");
+    arrowReader.fetchArrowIPCBuffer.mockRejectedValueOnce(new Error("stale failure"));
+
+    testState.handlers.await_initial_plot_ready({});
+    testState.handlers.reduction_ready({
+      reductionFile: "broken-ipc",
+      reductionVersion: 1,
+      reductionName: "umap",
+    });
+    testState.handlers.await_initial_plot_ready({});
+
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(
+      testState.inputs.filter(([name]) => name === "initialPlotReady"),
+    ).toHaveLength(0);
+
+    testState.handlers.reglScatter_plot({
+      group_by: "clusterA",
+      split_by: "None",
+      moduleScore: null,
+    });
+
+    expect(
+      testState.inputs.filter(([name]) => name === "initialPlotReady"),
+    ).toHaveLength(1);
+  });
+
+  it("restores previous plot DOM when plot generation fails", () => {
+    const mainPlot = document.getElementById("mainClusterPlot-clusterPlot");
+    const legendBody = document.querySelector(
+      '.accordion-item[data-value="analysis_category"] .accordion-body',
+    );
+    const currentInstance = testState.reglInstance;
+    const previousPlotEl = testState.reglInstance.plotEl;
+    const previousCatLegendEl = testState.reglInstance.catLegendEl;
+    const previousExpLegendEl = testState.reglInstance.expLegendEl;
+
+    mainPlot.appendChild(previousPlotEl);
+    legendBody.appendChild(previousCatLegendEl);
+    legendBody.appendChild(previousExpLegendEl);
+    const replacement = currentInstance.createRenderReplacement();
+    replacement.generatePlotEl = vi.fn(() => {
+      throw new Error("render failed");
+    });
+    currentInstance.createRenderReplacement = vi.fn(() => replacement);
+
+    testState.handlers.await_initial_plot_ready({});
+    testState.handlers.reglScatter_plot({
+      group_by: "clusterA",
+      split_by: "None",
+      moduleScore: null,
+    });
+
+    expect(mainPlot.contains(previousPlotEl)).toBe(true);
+    expect(legendBody.contains(previousCatLegendEl)).toBe(true);
+    expect(legendBody.contains(previousExpLegendEl)).toBe(true);
   });
 });

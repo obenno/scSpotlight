@@ -126,3 +126,111 @@ describe("reglScatterCanvas lasso selection", () => {
     expect(canvas.highlightByPanel).toEqual([[0, 2], [0, 2]]);
   });
 });
+
+describe("reglScatterCanvas category labels", () => {
+  it("clears stale label canvases for non-category panels", () => {
+    const canvas = Object.create(reglScatterCanvas.prototype);
+    const panel0Canvas = document.createElement("canvas");
+    panel0Canvas.width = 200;
+    panel0Canvas.height = 100;
+    const panel1Canvas = document.createElement("canvas");
+    panel1Canvas.width = 200;
+    panel1Canvas.height = 100;
+
+    const panel0Ctx = { clearRect: vi.fn(), fillText: vi.fn() };
+    const panel1Ctx = { clearRect: vi.fn(), fillText: vi.fn() };
+    panel0Canvas.getContext = vi.fn(() => panel0Ctx);
+    panel1Canvas.getContext = vi.fn(() => panel1Ctx);
+
+    const plotEl = document.createElement("div");
+    panel0Canvas.classList.add("label-canvas");
+    panel0Canvas.dataset.viewId = "panel_0";
+    panel1Canvas.classList.add("label-canvas");
+    panel1Canvas.dataset.viewId = "panel_1";
+    plotEl.appendChild(panel0Canvas);
+    plotEl.appendChild(panel1Canvas);
+
+    canvas.plotEl = plotEl;
+    canvas.plotData = {
+      catLabelCoordinates: [[{ x: 1, y: 2, label: "A" }]],
+    };
+    canvas.plotMetaData = { labelSize: 14 };
+    canvas.deck = {
+      getViewports: () => [
+        { id: "panel_0", x: 0, y: 0, width: 200, height: 100, project: () => [10, 20] },
+        { id: "panel_1", x: 200, y: 0, width: 200, height: 100, project: () => [30, 40] },
+      ],
+    };
+
+    const originalDpr = window.devicePixelRatio;
+    Object.defineProperty(window, "devicePixelRatio", {
+      value: 1,
+      configurable: true,
+    });
+
+    canvas.showCatLabel();
+
+    expect(panel0Ctx.clearRect).toHaveBeenCalledTimes(2);
+    expect(panel0Ctx.fillText).toHaveBeenCalledWith("A", 10, 20);
+    expect(panel1Ctx.clearRect).toHaveBeenCalledTimes(1);
+    expect(panel1Ctx.fillText).not.toHaveBeenCalled();
+
+    Object.defineProperty(window, "devicePixelRatio", {
+      value: originalDpr,
+      configurable: true,
+    });
+  });
+
+  it("only clears requested panel labels during partial redraw", () => {
+    const canvas = Object.create(reglScatterCanvas.prototype);
+    const panel0Canvas = document.createElement("canvas");
+    panel0Canvas.width = 200;
+    panel0Canvas.height = 100;
+    const panel1Canvas = document.createElement("canvas");
+    panel1Canvas.width = 200;
+    panel1Canvas.height = 100;
+
+    const panel0Ctx = { clearRect: vi.fn(), fillText: vi.fn() };
+    const panel1Ctx = { clearRect: vi.fn(), fillText: vi.fn() };
+    panel0Canvas.getContext = vi.fn(() => panel0Ctx);
+    panel1Canvas.getContext = vi.fn(() => panel1Ctx);
+
+    const plotEl = document.createElement("div");
+    panel0Canvas.classList.add("label-canvas");
+    panel0Canvas.dataset.viewId = "panel_0";
+    panel1Canvas.classList.add("label-canvas");
+    panel1Canvas.dataset.viewId = "panel_1";
+    plotEl.appendChild(panel0Canvas);
+    plotEl.appendChild(panel1Canvas);
+
+    canvas.plotEl = plotEl;
+    canvas.plotData = {
+      catLabelCoordinates: [[{ x: 1, y: 2, label: "A" }], [{ x: 3, y: 4, label: "B" }]],
+    };
+    canvas.plotMetaData = { labelSize: 14 };
+    canvas.deck = {
+      getViewports: () => [
+        { id: "panel_0", x: 0, y: 0, width: 200, height: 100, project: () => [10, 20] },
+        { id: "panel_1", x: 200, y: 0, width: 200, height: 100, project: () => [30, 40] },
+      ],
+    };
+
+    const originalDpr = window.devicePixelRatio;
+    Object.defineProperty(window, "devicePixelRatio", {
+      value: 1,
+      configurable: true,
+    });
+
+    canvas.showCatLabel(["panel_0"]);
+
+    expect(panel0Ctx.clearRect).toHaveBeenCalledTimes(2);
+    expect(panel0Ctx.fillText).toHaveBeenCalledWith("A", 10, 20);
+    expect(panel1Ctx.clearRect).not.toHaveBeenCalled();
+    expect(panel1Ctx.fillText).not.toHaveBeenCalled();
+
+    Object.defineProperty(window, "devicePixelRatio", {
+      value: originalDpr,
+      configurable: true,
+    });
+  });
+});

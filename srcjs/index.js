@@ -104,6 +104,36 @@ let vlnPlotSpinner;
 let dotPlotSpinner;
 let featurePlotSpinner;
 let mainPlotSpinner;
+let initialPlotRequestSeq = 0;
+let pendingInitialPlotRequestId = 0;
+let renderedInitialPlotRequestId = 0;
+
+const notifyInitialPlotReady = (requestId) => {
+  if (
+    requestId !== pendingInitialPlotRequestId ||
+    requestId !== renderedInitialPlotRequestId
+  ) {
+    return;
+  }
+  pendingInitialPlotRequestId = 0;
+  Shiny.setInputValue("initialPlotReady", Date.now(), { priority: "event" });
+};
+
+const notifyInitialPlotSettled = (requestId) => {
+  if (requestId !== pendingInitialPlotRequestId) {
+    return;
+  }
+  pendingInitialPlotRequestId = 0;
+  Shiny.setInputValue("initialPlotReady", Date.now(), { priority: "event" });
+};
+
+const safelyRunStartupSync = (label, fn) => {
+  try {
+    fn();
+  } catch (error) {
+    console.error(`Startup sync failed: ${label}`, error);
+  }
+};
 
 const ipcCache = {
   reductions: new Map(),
@@ -270,10 +300,10 @@ document.addEventListener(
       debounce,
     });
 
-    syncVlnPlotPanelState();
-    syncDotPlotPanelState();
-    syncFeaturePlotPanelState();
-    syncElbowPlotPanelState();
+    safelyRunStartupSync("vln", syncVlnPlotPanelState);
+    safelyRunStartupSync("dot", syncDotPlotPanelState);
+    safelyRunStartupSync("feature", syncFeaturePlotPanelState);
+    safelyRunStartupSync("elbow", syncElbowPlotPanelState);
 
     const dotPlotActionButton = document.getElementById(dotPlotActionId);
     if (dotPlotActionButton) {
@@ -475,7 +505,15 @@ Shiny.addCustomMessageHandler("createSparkLine", (feature) => {
   Shiny.setInputValue("inputFeatures-storedFeatures", storedFeatures);
 });
 
+Shiny.addCustomMessageHandler("await_initial_plot_ready", (_msg) => {
+  initialPlotRequestSeq += 1;
+  pendingInitialPlotRequestId = initialPlotRequestSeq;
+  renderedInitialPlotRequestId = 0;
+  notifyInitialPlotReady(pendingInitialPlotRequestId);
+});
+
 Shiny.addCustomMessageHandler("reduction_ready", (msg) => {
+  const requestId = pendingInitialPlotRequestId;
   try {
     const reductionURL =
       window.location.origin + "/data/reduction/" + msg.reductionFile;
@@ -508,14 +546,17 @@ Shiny.addCustomMessageHandler("reduction_ready", (msg) => {
     })().catch((error) => {
       console.error("There was a problem:", error);
       mainPlotSpinner.style.display = "none";
+      notifyInitialPlotSettled(requestId);
     });
   } catch (error) {
     console.error("There was a problem:", error);
     mainPlotSpinner.style.display = "none";
+    notifyInitialPlotSettled(requestId);
   }
 });
 
 Shiny.addCustomMessageHandler("reductions_ready", (msg) => {
+  const requestId = pendingInitialPlotRequestId;
   try {
     (async () => {
       if (!ensureReductionCacheVersion(msg.reductionVersion)) {
@@ -567,10 +608,12 @@ Shiny.addCustomMessageHandler("reductions_ready", (msg) => {
       console.error("There was a problem:", error);
       mainPlotSpinner.style.display = "none";
       Shiny.setInputValue("reductionProcessed", false, { priority: "event" });
+      notifyInitialPlotSettled(requestId);
     });
   } catch (error) {
     console.error("There was a problem:", error);
     mainPlotSpinner.style.display = "none";
+    notifyInitialPlotSettled(requestId);
   }
 });
 
@@ -949,6 +992,7 @@ const syncMetaUiAfterUpdate = ({
 };
 
 Shiny.addCustomMessageHandler("meta_ready", (msg) => {
+  const requestId = pendingInitialPlotRequestId;
   try {
     const metaURL = window.location.origin + "/data/meta/" + msg.metaFile;
     (async () => {
@@ -966,10 +1010,12 @@ Shiny.addCustomMessageHandler("meta_ready", (msg) => {
     })().catch((error) => {
       console.error("There was a problem:", error);
       mainPlotSpinner.style.display = "none";
+      notifyInitialPlotSettled(requestId);
     });
   } catch (error) {
     console.error("There was a problem:", error);
     mainPlotSpinner.style.display = "none";
+    notifyInitialPlotSettled(requestId);
   }
 });
 
@@ -1206,87 +1252,142 @@ Shiny.addCustomMessageHandler("addNewMeta", (msg) => {
 });
 
 Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
-  // first remove spinner if exists
-  if (mainPlotSpinner.style.display === "none") {
-    // show spinners for the plot
-    console.log("mainPlotSpinner: ", mainPlotSpinner.style.display);
-    mainPlotSpinner.style.display = "flex";
-    console.log("mainPlotSpinner: ", mainPlotSpinner.style.display);
-  }
+  const requestId = pendingInitialPlotRequestId;
+  const previousReglElementData = reglElementData;
+  const previousPlotEl = previousReglElementData.plotEl;
+  const previousCatLegendEl = previousReglElementData.catLegendEl;
+  const previousExpLegendEl = previousReglElementData.expLegendEl;
+  const previousPlotMetaData = { ...previousReglElementData.plotMetaData };
+  const nextReglElementData = previousReglElementData.createRenderReplacement();
   const parentDiv = document.getElementById(mainPlotElId);
-  reglElementData.plotEl.style.display = "none";
-
-  // clear reglScatterCanvas data including plotMetaData
-  console.log("msg: ", msg);
-  const group_by = msg.group_by;
-  const split_by = msg.split_by;
-  const moduleScore = msg.moduleScore;
-
-  reglElementData.clear();
-  // update plotMetaData with previous one
-  reglElementData.updatePlotMetaData(group_by, split_by, moduleScore);
-  pushSidebarMetaState();
-  // then update with new msg, in case msg is empty
-  //reglElementData.updatePlotMetaData(msg);
-  console.log("reglElementData.plotMetaData: ", reglElementData.plotMetaData);
-
-  console.log("Generating plotEl");
-  // regenerate plot elements
-  console.profile("Generating plotEl");
-  reglElementData.generatePlotEl();
-  console.profileEnd("Generating plotEl");
-  console.log("reglElementData :", reglElementData);
-  // update legend elements
-  parentDiv.appendChild(reglElementData.plotEl);
-  // create deck instance after plot element is mounted in DOM
-  reglElementData.mountDeck();
-  const accordions = document.querySelectorAll(".accordion-item");
-  const category_accordion = [...accordions].filter((e) => {
-    if (e.dataset.value == "analysis_category") {
-      return e;
+  const categoryAccordionBody = document.querySelector(
+    '.accordion-item[data-value="analysis_category"] .accordion-body',
+  );
+  try {
+    // first remove spinner if exists
+    if (mainPlotSpinner.style.display === "none") {
+      // show spinners for the plot
+      console.log("mainPlotSpinner: ", mainPlotSpinner.style.display);
+      mainPlotSpinner.style.display = "flex";
+      console.log("mainPlotSpinner: ", mainPlotSpinner.style.display);
     }
-  });
-  const category_accordion_body =
-    category_accordion[0].querySelector(".accordion-body");
-  category_accordion_body.appendChild(reglElementData.catLegendEl);
-  category_accordion_body.appendChild(reglElementData.expLegendEl);
 
-  // return selected points to server side
-  reglElementData.setSelectionHandlers({
-    onSelect: ({ selectedCells }) => {
-      console.log("selectedCells: ", selectedCells);
-      updateRenameSelectedCellsText(selectedCells.length);
-      syncRenameClusterSelectionUi();
-      Shiny.setInputValue("selectedPoints", selectedCells, {
-        priority: "event",
-      });
-    },
-    onDeselect: () => {
-      clearRenameCategorySelectionUi();
-      syncRenameClusterSelectionUi();
-      Shiny.setInputValue("selectedPoints", null);
-    },
-  });
+    // clear reglScatterCanvas data including plotMetaData
+    console.log("msg: ", msg);
+    const group_by = msg.group_by;
+    const split_by = msg.split_by;
+    const moduleScore = msg.moduleScore;
 
-  initRenameClusterClientSelection();
+    nextReglElementData.updatePlotMetaData(group_by, split_by, moduleScore);
+    console.log("reglElementData.plotMetaData: ", nextReglElementData.plotMetaData);
 
-  reglElementData.plotEl.style.display = "flex";
+    console.log("Generating plotEl");
+    // regenerate plot elements
+    console.profile("Generating plotEl");
+    nextReglElementData.generatePlotEl();
+    console.profileEnd("Generating plotEl");
+    console.log("reglElementData :", nextReglElementData);
+    const nextPlotEl = nextReglElementData.plotEl;
+    const nextCatLegendEl = nextReglElementData.catLegendEl;
+    const nextExpLegendEl = nextReglElementData.expLegendEl;
 
-  // hide spinner
-  if (mainPlotSpinner.style.display !== "none") {
-    console.log("mainPlotSpinner: ", mainPlotSpinner.style.display);
+    if (!parentDiv || !categoryAccordionBody) {
+      throw new Error("Plot containers are not available");
+    }
+
+    // update legend elements
+    if (previousPlotEl?.parentNode === parentDiv) {
+      parentDiv.removeChild(previousPlotEl);
+    }
+    parentDiv.appendChild(nextPlotEl);
+    // create deck instance after plot element is mounted in DOM
+    nextReglElementData.mountDeck();
+    if (previousCatLegendEl?.parentNode === categoryAccordionBody) {
+      categoryAccordionBody.removeChild(previousCatLegendEl);
+    }
+    if (previousExpLegendEl?.parentNode === categoryAccordionBody) {
+      categoryAccordionBody.removeChild(previousExpLegendEl);
+    }
+    categoryAccordionBody.appendChild(nextCatLegendEl);
+    categoryAccordionBody.appendChild(nextExpLegendEl);
+
+    previousReglElementData.destroy();
+    reglElementData = nextReglElementData;
+    pushSidebarMetaState();
+
+    // return selected points to server side
+    reglElementData.setSelectionHandlers({
+      onSelect: ({ selectedCells }) => {
+        console.log("selectedCells: ", selectedCells);
+        updateRenameSelectedCellsText(selectedCells.length);
+        syncRenameClusterSelectionUi();
+        Shiny.setInputValue("selectedPoints", selectedCells, {
+          priority: "event",
+        });
+      },
+      onDeselect: () => {
+        clearRenameCategorySelectionUi();
+        syncRenameClusterSelectionUi();
+        Shiny.setInputValue("selectedPoints", null);
+      },
+    });
+
+    initRenameClusterClientSelection();
+
+    nextPlotEl.style.display = "flex";
+
+    // hide spinner
+    if (mainPlotSpinner.style.display !== "none") {
+      console.log("mainPlotSpinner: ", mainPlotSpinner.style.display);
+      mainPlotSpinner.style.display = "none";
+      console.log("mainPlotSpinner: ", mainPlotSpinner.style.display);
+    }
+    renderedInitialPlotRequestId = requestId;
+    notifyInitialPlotReady(requestId);
+    //featurePlot().then({});
+    markVlnPlotDirty();
+    markDotPlotDirty();
+    markFeaturePlotDirty();
+    requestFloatingPlotRefresh([
+      "floatingVlnPlot",
+      "floatingDotPlot",
+      "floatingFeaturePlot",
+    ]);
+  } catch (error) {
+    console.error("There was a problem:", error);
+    if (
+      nextReglElementData.plotEl?.parentNode === parentDiv &&
+      nextReglElementData.plotEl !== previousPlotEl
+    ) {
+      parentDiv.removeChild(nextReglElementData.plotEl);
+    }
+    if (previousPlotEl && previousPlotEl.parentNode !== parentDiv) {
+      parentDiv?.appendChild(previousPlotEl);
+    }
+    if (
+      nextReglElementData.catLegendEl?.parentNode === categoryAccordionBody &&
+      nextReglElementData.catLegendEl !== previousCatLegendEl
+    ) {
+      categoryAccordionBody.removeChild(nextReglElementData.catLegendEl);
+    }
+    if (
+      nextReglElementData.expLegendEl?.parentNode === categoryAccordionBody &&
+      nextReglElementData.expLegendEl !== previousExpLegendEl
+    ) {
+      categoryAccordionBody.removeChild(nextReglElementData.expLegendEl);
+    }
+    if (previousCatLegendEl && previousCatLegendEl.parentNode !== categoryAccordionBody) {
+      categoryAccordionBody?.appendChild(previousCatLegendEl);
+    }
+    if (previousExpLegendEl && previousExpLegendEl.parentNode !== categoryAccordionBody) {
+      categoryAccordionBody?.appendChild(previousExpLegendEl);
+    }
+    nextReglElementData.destroy();
+    reglElementData = previousReglElementData;
+    reglElementData.plotMetaData = previousPlotMetaData;
     mainPlotSpinner.style.display = "none";
-    console.log("mainPlotSpinner: ", mainPlotSpinner.style.display);
+    notifyInitialPlotSettled(requestId);
   }
-  //featurePlot().then({});
-  markVlnPlotDirty();
-  markDotPlotDirty();
-  markFeaturePlotDirty();
-  requestFloatingPlotRefresh([
-    "floatingVlnPlot",
-    "floatingDotPlot",
-    "floatingFeaturePlot",
-  ]);
 });
 
 Shiny.addCustomMessageHandler("selected_cells_count", (msg) => {

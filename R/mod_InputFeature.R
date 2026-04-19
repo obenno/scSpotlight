@@ -340,6 +340,7 @@ mod_InputFeature_server <- function(id,
               invoke_expression_transfer(feature, create_sparkline = TRUE)
               message("invoked extendedTask")
           }
+          return(NULL)
       }, priority = -10, ignoreNULL = FALSE)
 
       observeEvent(input$clearFeature, {
@@ -402,11 +403,14 @@ mod_InputFeature_server <- function(id,
               invoke_expression_transfer(input$features[1], create_sparkline = TRUE)
           }
 
+          return(NULL)
+
       }, priority = -10, ignoreNULL = FALSE) # lower priority than plottingMode()
 
       observeEvent(input$cacheMissFeature, {
           req(isTruthy(seuratObj()), assay(), isTruthy(input$cacheMissFeature))
           invoke_expression_transfer(input$cacheMissFeature, create_sparkline = FALSE)
+          return(NULL)
       }, priority = -10, ignoreNULL = TRUE)
 
       observeEvent(input$plotFeature, {

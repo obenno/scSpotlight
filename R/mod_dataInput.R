@@ -304,7 +304,7 @@ mod_dataInput_server <- function(id,
             metaUpdateIndicator(metaUpdateIndicator()+1)
             reductionUpdateIndicator(reductionUpdateIndicator()+1)
             geneUpdateIndicator(geneUpdateIndicator()+1)
-            waiter_hide()
+            session$sendCustomMessage(type = "await_initial_plot_ready", message = list())
         }, priority = 10)
 
         observeEvent(input$selectAssay,{

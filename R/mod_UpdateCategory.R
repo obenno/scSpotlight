@@ -77,6 +77,18 @@ mod_UpdateCategory_server <- function(id,
               choices = split_choices,
               selected = current_split
           )
+
+          current_selection <- list(
+              group.by = current_group %||% "None",
+              split.by = current_split %||% "None"
+          )
+          previous_selection <- last_category_selection()
+
+          if (!identical(current_selection, previous_selection)) {
+              last_category_selection(current_selection)
+              message("category selection initialized from sidebar state, increasing scatterUpdateIndicator()")
+              scatterUpdateIndicator(scatterUpdateIndicator() + 1)
+          }
       }, priority = -10)
 
       observeEvent(list(input$group.by, input$split.by), {
@@ -96,11 +108,11 @@ mod_UpdateCategory_server <- function(id,
       }, ignoreInit = TRUE)
 
       selected_group.by <- reactive({
-          input$group.by
+          input$group.by %||% last_category_selection()$group.by
       })
 
       selected_split.by <- reactive({
-          input$split.by
+          input$split.by %||% last_category_selection()$split.by
       })
 
       list(

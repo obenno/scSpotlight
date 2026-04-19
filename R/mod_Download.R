@@ -115,7 +115,7 @@ mod_Download_server <- function(id,
                 prefix <- "scSpotlight."
                 outFile <- case_when(
                     input$downloadFormat == "metaData" ~ paste0(prefix, "metaData.", Sys.Date(), ".tsv.gz"),
-                    input$downloadFormat == "BPCells" ~ paste0(prefix, Sys.Date(), ".tar.gz"),
+                    input$downloadFormat == "BPCells" ~ paste0(prefix, Sys.Date(), ".zip"),
                     input$downloadFormat == "h5ad" ~ paste0(prefix, Sys.Date(), ".h5ad"),
                     TRUE ~ paste0(prefix, Sys.Date(), ".Rds")
                 )
@@ -161,7 +161,10 @@ mod_Download_server <- function(id,
                             old_wd <- getwd()
                             on.exit(setwd(old_wd), add = TRUE)
                             setwd(dirname(bundleDir))
-                            tar(tarfile = file, files = basename(bundleDir), compression = "gzip")
+                            create_bundle_archive(
+                                tarfile = file,
+                                files = basename(bundleDir)
+                            )
                         },
                         message = "Saving BPCells bundle...",
                         detail = "Preparing bundle"

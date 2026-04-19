@@ -120,6 +120,10 @@ app_server <- function(input, output, session) {
         }
     })
 
+    observeEvent(input$initialPlotReady, {
+        waiter::waiter_hide()
+    }, ignoreNULL = TRUE)
+
     observeEvent(input$metaPatchProcessed, {
         patch_info <- input$metaPatchProcessed
         patch_cols <- patch_info$cols %||% character()
