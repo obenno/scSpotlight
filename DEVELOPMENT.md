@@ -9,6 +9,8 @@ The recent work touched these areas:
 - floating plot UI in `R/app_ui.R`
 - DEG analysis UI in `R/mod_DEG_Window.R`, `R/mod_FindMarkers.R`, and `R/mod_DEG_Table.R`
 - reduction transfer in `R/mod_UpdateReduction.R`
+- processed input validation in `R/mod_dataInput.R`
+- h5ad conversion/export helpers in `R/fct_bpcells_backend.R`
 - floating plot state and rendering flow in `srcjs/index.js`
 - sparkline gene selection behavior in `srcjs/modules/featureSparkLine.js`
 - main scatter plot mode selection in `srcjs/modules/scatter/scatterModel.js`
@@ -395,12 +397,12 @@ Implementation notes:
 
 Decision:
 
-- The BPCells download format is a self-identifying tarball bundle, not just a generic compressed folder.
+- The BPCells download format is a self-identifying zip bundle, not just a generic compressed folder.
 - The download menu also keeps a standard `.Rds` export for compatibility with tooling that expects a plain serialized Seurat object.
 
 Why:
 
-- A plain `.tar.gz` does not indicate whether it contains a valid scSpotlight BPCells-backed Seurat bundle.
+- A plain `.zip` does not indicate whether it contains a valid scSpotlight BPCells-backed Seurat bundle.
 - Portable reuse requires a stable contract for locating the entrypoint RDS and the supporting BPCells layer directories.
 - Some downstream workflows still expect a conventional `.Rds`, even though that path may need to materialize BPCells-backed layers first.
 
@@ -421,7 +423,7 @@ Implementation notes:
 
 Decision:
 
-- Reusable BPCells tarballs should be loaded through the app import path or the bundle loader helper, not by calling `LoadSeuratRds()` on the RDS from an arbitrary working directory.
+- Reusable BPCells zip bundles should be loaded through the app import path or the bundle loader helper, not by calling `LoadSeuratRds()` on the RDS from an arbitrary working directory.
 
 Why:
 
@@ -447,8 +449,9 @@ Why:
 
 Implementation notes:
 
-- `R/fct_bpcells_backend.R` now prefers native BPCells `.h5ad` import and falls back to reconstructing CSR matrices via `rhdf5` when BPCells cannot open the AnnData matrix layout directly.
-- Direct `.h5ad` support in `R/mod_dataInput.R` is intentionally disabled for now because real-world AnnData layouts still vary enough to need more validation before interactive load should rely on them.
+- `R/fct_bpcells_backend.R` now prefers native BPCells `.h5ad` import and falls back to reconstructing CSR/CSC matrices plus AnnData dataframe encodings via `rhdf5` when BPCells cannot open the matrix layout directly.
+- `R/mod_dataInput.R` now accepts direct `.h5ad` uploads and routes them through the same BPCells-backed import path used by bundle conversion.
+- `R/fct_bpcells_backend.R` also provides Scanpy-compatible `.h5ad` export. It writes `X` and sparse matrix layers with BPCells, then fills the AnnData structure (`obs`, `var`, `raw`, `obsm`, `varm`, `uns`) with `rhdf5`.
 
 ## Scatter Interaction Notes
 
@@ -566,6 +569,112 @@ Implementation notes:
 - `srcjs/index.js` now tracks the last active `group.by` / `split.by` pair and only preserves rename selector values when that pair has not changed.
 - `srcjs/index.js` now clears rename selector UI state after assign-time deselect and manual lasso deselect before resyncing category selection.
 - `srcjs/index.test.js` covers both regressions: grouping changes clear stale rename selections, and assign leaves the rename selectors cleared.
+
+### 26. Initial plot readiness depends on a real active reduction render
+
+Decision:
+
+- Batched reduction prefetch must render exactly one active reduction before reporting reduction transfer completion.
+- The server-provided `activeReduction` takes precedence over any stale DOM select value from the previous dataset.
+- If neither the server-provided active reduction nor the DOM value exists in the incoming payload, the client renders the first prefetched reduction rather than leaving the plot uninitialized.
+
+Why:
+
+- Dataset changes can temporarily leave the reduction select DOM with a value from the previous object.
+- If the client prefetches reductions but renders none, `reductionProcessed` never reaches Shiny and the initial waiter can remain visible.
+- Rendering a deterministic fallback is safer than waiting for another reduction change event that may never arrive.
+
+Implementation notes:
+
+- `srcjs/index.js` resolves active reductions through `resolveActiveReduction()`.
+- `reductions_ready` fetches and plots the resolved active reduction before warming the cache with inactive reductions.
+- `srcjs/index.test.js` covers stale DOM reduction values and missing active-reduction fallback behavior.
+
+### 27. Scatter render replacement must be atomic
+
+Decision:
+
+- The previous deck/gl scatter instance must not be destroyed until the replacement plot has completed setup.
+- If replacement setup fails, the previous DOM nodes and plot instance are restored.
+
+Why:
+
+- Rendering now swaps plot DOM atomically to avoid partial redraw artifacts.
+- Destroying the old instance too early makes rollback unsafe if late setup steps, such as selection handlers, throw.
+
+Implementation notes:
+
+- `srcjs/index.js` defers `previousReglElementData.destroy()` until after replacement setup succeeds.
+- The catch path removes replacement nodes, restores previous plot/legend nodes, destroys only the replacement instance, and settles initial readiness if needed.
+- `srcjs/index.test.js` covers both early render-generation failures and late setup failures.
+
+### 28. Plot data transfer failures must be visible to users
+
+Decision:
+
+- Reduction and metadata transfer failures should show a visible in-plot error message, not only `console.error()`.
+- Initial plot waiters should still settle on transfer failures so users are not trapped behind a loading overlay.
+
+Why:
+
+- Silent async failures make the plot area appear blank or indefinitely loading.
+- A visible error gives users a recoverable next action, such as switching reductions or reloading the dataset.
+
+Implementation notes:
+
+- `srcjs/index.js` uses `handlePlotTransferError()` for `reduction_ready`, `reductions_ready`, `reduction_cached`, and `meta_ready` failures.
+- Successful reduction or metadata transfer clears the visible transfer error.
+
+### 29. Processing mode can derive missing processed state
+
+Decision:
+
+- Viewer mode should continue requiring processed inputs with metadata, normalized data, and reductions.
+- Processing mode may accept an object missing reductions and compute the missing HVG/PCA/neighbors/clusters/UMAP state.
+
+Why:
+
+- Processing mode is intended to complete analysis workflows from partially processed inputs.
+- Requiring reductions in all modes regresses the existing RDS import path for processable datasets.
+
+Implementation notes:
+
+- `R/mod_dataInput.R` keeps `ensure_normalized_layer()` before validation.
+- In processing mode, `validate_seuratRDS()` computes missing HVGs and reductions before calling `assert_processed_input_requirements()`.
+- When `backend_root` is available, the processed object is re-backed through BPCells after derived state is created.
+
+### 30. h5ad export must not close unrelated HDF5 handles or overwrite source files
+
+Decision:
+
+- `write_h5ad_scanpy()` must not call `rhdf5::h5closeAll()`.
+- h5ad-to-h5ad conversion with no explicit output path writes `<input>-scanpy.h5ad`.
+- Explicit `output_file` paths that resolve to the input file are rejected.
+
+Why:
+
+- Shiny sessions share one R process, so global HDF5 handle closure can disrupt unrelated HDF5-backed workflows.
+- In-place h5ad conversion risks destroying the source before conversion succeeds.
+
+Implementation notes:
+
+- `R/fct_bpcells_backend.R` now relies on local HDF5 handle close calls in helper functions.
+- `convert_to_scanpy_h5ad()` normalizes input/output paths and rejects same-path conversion.
+
+### 31. BPCells matrix coercion should fail clearly
+
+Decision:
+
+- Unsupported matrix-like inputs should fail before `BPCells::convert_matrix_type()` is called.
+
+Why:
+
+- Returning unsupported objects unchanged pushes failures downstream and produces less actionable BPCells errors.
+
+Implementation notes:
+
+- `R/fct_bpcells_backend.R` now reports the unsupported class from `coerce_bpcells_source_matrix()`.
+- `tests/testthat/test-bpcells-matrix-coercion.R` covers the unsupported-input error.
 
 ## Files to Check for Future Changes
 

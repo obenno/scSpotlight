@@ -9,9 +9,9 @@ convert_to_bpcells_bundle(input_file, output_file = NULL)
 \arguments{
 \item{input_file}{Path to an input Seurat \code{.Rds} or \code{.h5ad} file.}
 
-\item{output_file}{Path to the output \code{.tar.gz} bundle file. If \code{NULL}, the
+\item{output_file}{Path to the output \code{.zip} bundle file. If \code{NULL}, the
 archive is created next to \code{input_file} with the same base name and a
-\code{.tar.gz} suffix.}
+\code{.zip} suffix.}
 }
 \value{
 The normalized output archive path.
@@ -19,7 +19,7 @@ The normalized output archive path.
 \description{
 Reads a standard Seurat \code{.Rds} or \code{.h5ad} file, converts assay layers to
 BPCells-backed storage, writes a portable scSpotlight bundle, and packages it
-as a \code{.tar.gz} archive.
+as a \code{.zip} archive.
 }
 \details{
 The resulting archive contains:
@@ -47,6 +47,6 @@ derived matrices unnecessarily.
 \examples{
 \dontrun{
 convert_to_bpcells_bundle("pbmc3k.Rds")
-convert_to_bpcells_bundle("pbmc3k.h5ad", "pbmc3k-bundle.tar.gz")
+convert_to_bpcells_bundle("pbmc3k.h5ad", "pbmc3k-bundle.zip")
 }
 }

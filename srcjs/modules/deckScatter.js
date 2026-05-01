@@ -294,6 +294,22 @@ export class reglScatterCanvas {
     return this;
   }
 
+  createRenderReplacement() {
+    const replacement = new this.constructor(this.plotEl.id);
+    replacement.setData({
+      reductionData: this.origData.reductionData,
+      cellMetaData: this.origData.cellMetaData,
+      expressionData: this.origData.expressionData,
+      pcaStdev: this.origData.pcaStdev,
+    });
+    replacement.setConfig({
+      ...this.plotMetaData,
+      selectedFeatures: [...(this.plotMetaData.selectedFeatures || [])],
+      catColors: [...(this.plotMetaData.catColors || [])],
+    });
+    return replacement;
+  }
+
   update({ data = null, config = null } = {}) {
     if (data) {
       this.setData(data);
@@ -498,6 +514,13 @@ export class reglScatterCanvas {
     this.initialLayoutPending = this.plotMetaData.nPanels > 1;
     this.plotEl.style.opacity = this.initialLayoutPending ? "0" : "1";
     this.lifecycle.setMounting();
+
+    // Remove any existing canvas wrapper to prevent stale label canvases from
+    // accumulating in the DOM when panel count changes (e.g. split.by toggle).
+    const existingWrapper = this.plotEl.querySelector("#canvas-wrapper");
+    if (existingWrapper) {
+      existingWrapper.remove();
+    }
 
     // append canvas elements, wrapped by an outter element with id "canvas-wrapper"
     this.createCanvas("canvas-wrapper");
@@ -727,7 +750,19 @@ export class reglScatterCanvas {
       return;
     }
     const filterIds = viewIds ? new Set(viewIds) : null;
-    const canvases = Array.from(this.plotEl.querySelectorAll(".label-canvas"));
+    const canvasByViewId = new Map();
+    this.plotEl.querySelectorAll(".label-canvas").forEach((canvas) => {
+      const vid = canvas.dataset.viewId;
+      if (vid) canvasByViewId.set(vid, canvas);
+    });
+    // Clear all canvases before drawing to prevent stale labels from persisting
+    // when viewports change (e.g. after panning).
+    canvasByViewId.forEach((canvas, vid) => {
+      if (filterIds && !filterIds.has(vid)) {
+        return;
+      }
+      this.constructor.clearLabelCanvas(canvas);
+    });
     viewports.forEach((viewport) => {
       if (filterIds && !filterIds.has(viewport.id)) {
         return;
@@ -736,7 +771,8 @@ export class reglScatterCanvas {
       if (!Number.isFinite(idx)) {
         return;
       }
-      if (!canvases[idx] || typeof viewport.project !== "function") {
+      const canvas = canvasByViewId.get(viewport.id);
+      if (!canvas || typeof viewport.project !== "function") {
         return;
       }
       const xScale = (x) => projectWorldToPanel(viewport, x, 0)[0];
@@ -744,7 +780,7 @@ export class reglScatterCanvas {
       if (typeof this.plotData.catLabelCoordinates[idx] !== "undefined") {
         this.constructor.fillLabelCanvas(
           this.plotData.catLabelCoordinates[idx],
-          canvases[idx],
+          canvas,
           baseFontSize,
           xScale,
           yScale,
@@ -865,6 +901,11 @@ export class reglScatterCanvas {
         //yScale(y) * dpr - baseFontSize * 1.2 * dpr
       );
     }
+  }
+
+  static clearLabelCanvas(textCanvas) {
+    const ctx = textCanvas.getContext("2d");
+    ctx.clearRect(0, 0, textCanvas.width, textCanvas.height);
   }
 
   computeViewRectsForPanels(panelEls, containerWidth, containerHeight, referenceEl = null) {

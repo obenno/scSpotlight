@@ -11,22 +11,22 @@
 mod_InputFeature_ui <- function(id){
     ns <- NS(id)
     tagList(
-        selectInput(
+        selectizeInput(
             ns("featureInputMode"),
             "Choose Input Mode",
             choices = c("Manual Select", "Upload Feature List"),
             selected = "Manual Select",
             multiple = FALSE,
-            selectize = TRUE,
+            options = list(dropdownParent = "body"),
             width = NULL
         ),
-        selectInput(
+        selectizeInput(
             ns("features"),
             "Input Gene Names",
             selected = NULL,
             choices = "",
             multiple = FALSE,
-            selectize = TRUE,
+            options = list(dropdownParent = "body"),
             width = NULL
         ),
         shinyjs::hidden(
@@ -39,13 +39,13 @@ mod_InputFeature_ui <- function(id){
               accept = c(".xlsx", ".csv", ".tsv", ".txt")
             ),
             tagAppendAttributes(
-              selectInput(
+              selectizeInput(
                   ns("geneSet"),
                   "Choose Gene Set",
                   choices = "",
                   selected = NULL,
                   multiple = FALSE,
-                  selectize = TRUE,
+                  options = list(dropdownParent = "body"),
                   width = NULL
               ),
               class = c("mb-1")
@@ -97,6 +97,7 @@ mod_InputFeature_ui <- function(id){
 #' @importFrom promises future_promise %...>% %...!% finally
 #' @importFrom cli hash_md5
 #' @importFrom arrow arrow_table write_ipc_stream float32 Array
+#' @importFrom future plan availableCores multisession nbrOfWorkers
 #' @noRd
 mod_InputFeature_server <- function(id,
                                     seuratObj,
@@ -105,6 +106,23 @@ mod_InputFeature_server <- function(id,
                                     scatterUpdateIndicator){
   moduleServer( id, function(input, output, session){
       ns <- session$ns
+
+      ensure_async_workers <- function() {
+          current_plan <- future::plan()
+          if (!inherits(current_plan, "sequential")) {
+              return(invisible(NULL))
+          }
+
+          configured_workers <- suppressWarnings(as.integer(session$userData$nCores %||% 2L))
+          if (is.na(configured_workers) || configured_workers < 1L) {
+              configured_workers <- 2L
+          }
+
+          future::plan(
+              future::multisession,
+              workers = min(configured_workers, future::availableCores())
+          )
+      }
 
       ## Two input mode: upload feature list or manually input
       observeEvent(input$featureInputMode, {
@@ -190,6 +208,7 @@ mod_InputFeature_server <- function(id,
 
       invoke_expression_transfer <- function(feature, create_sparkline = TRUE){
           req(isTruthy(seuratObj()), assay(), isTruthy(feature))
+          ensure_async_workers()
 
           if (create_sparkline) {
               start_extract_expr(feature, session)
@@ -197,14 +216,12 @@ mod_InputFeature_server <- function(id,
 
           exprVersion <- geneUpdateIndicator()
           promise_assay <- assay()
-          promise_filePath <- file.path(
-              session$userData$tempDir,
-              "expr",
-              hash_md5(paste0("expr_", promise_assay, "_", feature, "_", exprVersion))
-          )
-          # BPCells-backed layer access stays on the main thread; the worker only writes IPC.
-          expr <- tryCatch(
-              get_backend_expr(seuratObj(), assay = promise_assay, features = feature),
+          layer_ref <- tryCatch(
+              get_bpcells_layer_ref(
+                  seuratObj(),
+                  assay = promise_assay,
+                  backend_root = session$userData$backendDir
+              ),
               error = function(error) {
                   showNotification(
                       ui = paste("Expression extraction failed:", conditionMessage(error)),
@@ -218,21 +235,24 @@ mod_InputFeature_server <- function(id,
                   NULL
               }
           )
-          if (is.null(expr)) {
+          if (is.null(layer_ref)) {
               return(invisible(NULL))
           }
+          promise_filePath <- file.path(
+              session$userData$tempDir,
+              "expr",
+               hash_md5(paste0("expr_", layer_ref$assay, "_", layer_ref$layer, "_", feature, "_", exprVersion))
+           )
 
           expr_promise <- future_promise({
-              if(file.exists(promise_filePath)){
-                  file.remove(promise_filePath)
-              }
-              write_ipc_stream(
-                  arrow_table(expr = Array$create(expr[[feature]], type = float32())),
-                  promise_filePath
+              extract_bpcells_expr_to_ipc(
+                  matrix_dir = layer_ref$matrix_dir,
+                  feature = feature,
+                  output_file = promise_filePath
               )
               list(
                   geneName = feature,
-                  assay = promise_assay,
+                  assay = layer_ref$assay,
                   exprVersion = exprVersion,
                   exprFile = basename(promise_filePath)
               )
@@ -320,6 +340,7 @@ mod_InputFeature_server <- function(id,
               invoke_expression_transfer(feature, create_sparkline = TRUE)
               message("invoked extendedTask")
           }
+          return(NULL)
       }, priority = -10, ignoreNULL = FALSE)
 
       observeEvent(input$clearFeature, {
@@ -382,11 +403,14 @@ mod_InputFeature_server <- function(id,
               invoke_expression_transfer(input$features[1], create_sparkline = TRUE)
           }
 
+          return(NULL)
+
       }, priority = -10, ignoreNULL = FALSE) # lower priority than plottingMode()
 
       observeEvent(input$cacheMissFeature, {
           req(isTruthy(seuratObj()), assay(), isTruthy(input$cacheMissFeature))
           invoke_expression_transfer(input$cacheMissFeature, create_sparkline = FALSE)
+          return(NULL)
       }, priority = -10, ignoreNULL = TRUE)
 
       observeEvent(input$plotFeature, {

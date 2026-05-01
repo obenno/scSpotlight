@@ -28,11 +28,11 @@ Imports:
     golem (>= 0.4.1),
     htmltools,
     magrittr,
-    plotly,
     promises,
     progressr,
     readr,
     readxl,
+    rhdf5,
     RhpcBLASctl,
     rlang,
     scales,
@@ -40,11 +40,10 @@ Imports:
     shinyWidgets,
     stringr,
     tibble,
-    waiter
+    waiter,
+    zip
 Suggests: 
-    anndataR,
     presto,
-    rhdf5,
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
 Encoding: UTF-8

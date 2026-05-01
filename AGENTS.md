@@ -11,7 +11,7 @@ For recent frontend interaction decisions and UI behavior notes, see `DEVELOPMEN
 All code contributions must consider performance implications for large datasets (1M+ cells).
 
 ### Tech Stack
-- **Backend**: R, Shiny, Seurat (v5), DuckDB (on-disk queries), Arrow IPC (versioned binary transfer)
+- **Backend**: R, Shiny, Seurat (v5), BPCells (on-disk assay storage), Arrow IPC (versioned binary transfer)
 - **Frontend**: JavaScript (ES6), deck.gl (WebGL), D3.js, webR
 - **Build**: [Vite](https://vitejs.dev/) for JavaScript bundling (native ES modules, fast HMR)
 
@@ -30,7 +30,7 @@ pixi run run-app-processing     # Start app in processing mode
 Notes:
 - Pixi is the only project environment manager; the repo does not use `renv`.
 - `pixi run setup` is written to work in native Windows shells as well as Unix shells.
-- `r-duckdb` currently resolves directly from conda-forge on Linux and macOS Intel; macOS Apple Silicon and Windows use the `pak` fallback path for `duckdb`.
+- `pixi run setup` currently uses Pixi-managed R packages where available and falls back to `pak` for packages that are not available on every supported platform.
 
 ### R Package Commands
 ```r
@@ -163,7 +163,7 @@ Adjust rendering parameters based on cell count (see `srcjs/modules/deckScatter.
 - Avoid DOM manipulation in tight loops
 
 **R:**
-- Use **DuckDB** for on-disk expression matrix queries (avoid loading full matrix)
+- Use **BPCells** for on-disk assay storage and direct Seurat layer access (avoid loading full matrices into memory)
 - Use **Arrow IPC** for versioned binary transfer between R and the browser
 - Use **ExtendedTask** + `future_promise` for non-blocking async operations
 - Use `scattermore::geom_scattermost()` for R-generated plots when cells > 30K
@@ -204,7 +204,7 @@ mod_ModuleName_server <- function(id, reactive_args) {
 ### Documentation
 - Use roxygen2 with `@noRd` for internal functions
 - Use `@importFrom` for specific imports, `@import` sparingly
-- Document exported functions in `fct_duckdb.R` as reference
+- Document exported functions in the current backend helpers as reference
 
 ### Naming Conventions
 - Functions: `snake_case` (e.g., `query_duck_expr`)
@@ -301,12 +301,11 @@ metaUpdateIndicator <- reactiveVal(0)
 metaUpdateIndicator(metaUpdateIndicator() + 1)
 ```
 
-### DuckDB Table Naming
-- Expression matrices: `{assay}__{layer}` (e.g., `RNA__counts`, `RNA__data`)
-- Feature table: `{assay}__featureTbl`
-- Cell table: `{assay}__cellTbl`
-- Reductions: `Reductions__{name}` (e.g., `Reductions__umap`)
-- Metadata: `metaData`
+### Backend Data Access
+- Assay layers are read directly from the Seurat object, preferably through BPCells-backed on-disk matrices.
+- Metadata is read from `object[[]]`.
+- Reductions are read from `Embeddings(object[[reduction]])`.
+- Expression payloads should use the selected Seurat assay layer instead of a mirrored query store.
 
 ---
 

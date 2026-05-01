@@ -31,6 +31,9 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/binutils-2.45.1-default_h4852527_101.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/binutils_impl_linux-64-2.45.1-default_hfdba357_101.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/binutils_linux-64-2.45.1-default_h4852527_101.conda
+      - conda: https://conda.anaconda.org/bioconda/linux-64/bioconductor-rhdf5-2.54.1-r45h882589e_0.conda
+      - conda: https://conda.anaconda.org/bioconda/linux-64/bioconductor-rhdf5filters-1.22.0-r45ha27e39d_0.conda
+      - conda: https://conda.anaconda.org/bioconda/linux-64/bioconductor-rhdf5lib-1.32.0-r45h01b2380_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/bwidget-1.10.1-ha770c72_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/bzip2-1.0.8-hda65f42_9.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/c-ares-1.34.6-hb03c661_0.conda
@@ -159,7 +162,6 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/r-bit-4.6.0-r45h54b55ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/r-bit64-4.6.0_1-r45h54b55ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/r-bitops-1.0_9-r45h54b55ab_1.conda
-      - conda: https://conda.anaconda.org/conda-forge/noarch/r-blob-1.3.0-r45hc72bb7e_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/r-brew-1.0_10-r45hc72bb7e_2.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/r-brio-1.1.5-r45h54b55ab_2.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/r-bslib-0.10.0-r45hc72bb7e_0.conda
@@ -182,8 +184,6 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/r-crosstalk-1.2.2-r45hc72bb7e_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/r-curl-7.0.0-r45h10955f1_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/r-data.table-1.17.8-r45h1c8cec4_1.conda
-      - conda: https://conda.anaconda.org/conda-forge/noarch/r-dbi-1.3.0-r45hc72bb7e_0.conda
-      - conda: https://conda.anaconda.org/conda-forge/noarch/r-dbplyr-2.5.2-r45hc72bb7e_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/r-deldir-2.0_4-r45heaba542_2.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/r-desc-1.4.3-r45hc72bb7e_2.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/r-devtools-2.4.6-r45hc72bb7e_0.conda
@@ -411,6 +411,9 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-64/azure-storage-blobs-cpp-12.16.0-h9b4319f_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/azure-storage-common-cpp-12.12.0-h7373072_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/azure-storage-files-datalake-cpp-12.14.0-he1781d6_1.conda
+      - conda: https://conda.anaconda.org/bioconda/osx-64/bioconductor-rhdf5-2.54.1-r45h9ab73f2_0.conda
+      - conda: https://conda.anaconda.org/bioconda/osx-64/bioconductor-rhdf5filters-1.22.0-r45hfbc58e1_0.conda
+      - conda: https://conda.anaconda.org/bioconda/osx-64/bioconductor-rhdf5lib-1.32.0-r45h010771c_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/bwidget-1.10.1-h694c41f_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/bzip2-1.0.8-h500dc9f_9.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/c-ares-1.34.6-hb5e19a0_0.conda
@@ -548,7 +551,6 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-64/r-bit-4.6.0-r45h735ac91_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/r-bit64-4.6.0_1-r45h735ac91_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/r-bitops-1.0_9-r45h735ac91_1.conda
-      - conda: https://conda.anaconda.org/conda-forge/noarch/r-blob-1.3.0-r45hc72bb7e_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/r-brew-1.0_10-r45hc72bb7e_2.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/r-brio-1.1.5-r45h735ac91_2.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/r-bslib-0.10.0-r45hc72bb7e_0.conda
@@ -571,8 +573,6 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/r-crosstalk-1.2.2-r45hc72bb7e_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/r-curl-7.0.0-r45h23bc03f_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/r-data.table-1.17.8-r45h4055d09_1.conda
-      - conda: https://conda.anaconda.org/conda-forge/noarch/r-dbi-1.3.0-r45hc72bb7e_0.conda
-      - conda: https://conda.anaconda.org/conda-forge/noarch/r-dbplyr-2.5.2-r45hc72bb7e_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/r-deldir-2.0_4-r45h5573f66_2.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/r-desc-1.4.3-r45hc72bb7e_2.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/r-devtools-2.4.6-r45hc72bb7e_0.conda
@@ -792,6 +792,9 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/azure-storage-blobs-cpp-12.16.0-hc57151b_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/azure-storage-common-cpp-12.12.0-he467506_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/azure-storage-files-datalake-cpp-12.14.0-hf8a9d22_1.conda
+      - conda: https://conda.anaconda.org/bioconda/osx-arm64/bioconductor-rhdf5-2.54.1-r45h4778c6e_0.conda
+      - conda: https://conda.anaconda.org/bioconda/osx-arm64/bioconductor-rhdf5filters-1.22.0-r45h97584a2_0.conda
+      - conda: https://conda.anaconda.org/bioconda/osx-arm64/bioconductor-rhdf5lib-1.32.0-r45hcc2f086_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/bwidget-1.10.1-hce30654_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/bzip2-1.0.8-hd037594_9.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/c-ares-1.34.6-hc919400_0.conda
@@ -929,7 +932,6 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/r-bit-4.6.0-r45h6168396_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/r-bit64-4.6.0_1-r45h6168396_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/r-bitops-1.0_9-r45h6168396_1.conda
-      - conda: https://conda.anaconda.org/conda-forge/noarch/r-blob-1.3.0-r45hc72bb7e_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/r-brew-1.0_10-r45hc72bb7e_2.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/r-brio-1.1.5-r45h6168396_2.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/r-bslib-0.10.0-r45hc72bb7e_0.conda
@@ -952,8 +954,6 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/r-crosstalk-1.2.2-r45hc72bb7e_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/r-curl-7.0.0-r45hbc3244a_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/r-data.table-1.17.8-r45hbd14437_1.conda
-      - conda: https://conda.anaconda.org/conda-forge/noarch/r-dbi-1.3.0-r45hc72bb7e_0.conda
-      - conda: https://conda.anaconda.org/conda-forge/noarch/r-dbplyr-2.5.2-r45hc72bb7e_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/r-deldir-2.0_4-r45hd097873_2.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/r-desc-1.4.3-r45hc72bb7e_2.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/r-devtools-2.4.6-r45hc72bb7e_0.conda
@@ -1284,7 +1284,6 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/win-64/r-bit-4.6.0-r45heceb674_1.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/r-bit64-4.6.0_1-r45heceb674_1.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/r-bitops-1.0_9-r45heceb674_1.conda
-      - conda: https://conda.anaconda.org/conda-forge/noarch/r-blob-1.3.0-r45hc72bb7e_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/r-brew-1.0_10-r45hc72bb7e_2.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/r-brio-1.1.5-r45h2a2a84f_2.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/r-bslib-0.10.0-r45hc72bb7e_0.conda
@@ -1307,8 +1306,6 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/r-crosstalk-1.2.2-r45hc72bb7e_1.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/r-curl-7.0.0-r45h2d9cb95_1.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/r-data.table-1.17.8-r45hd74d807_1.conda
-      - conda: https://conda.anaconda.org/conda-forge/noarch/r-dbi-1.3.0-r45hc72bb7e_0.conda
-      - conda: https://conda.anaconda.org/conda-forge/noarch/r-dbplyr-2.5.2-r45hc72bb7e_0.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/r-deldir-2.0_4-r45h814e693_2.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/r-desc-1.4.3-r45hc72bb7e_2.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/r-devtools-2.4.6-r45hc72bb7e_0.conda
@@ -2542,6 +2539,141 @@ packages:
   license_family: GPL
   size: 36060
   timestamp: 1770267177798
+- conda: https://conda.anaconda.org/bioconda/linux-64/bioconductor-rhdf5-2.54.1-r45h882589e_0.conda
+  sha256: 4ba955646be4c7bf38f760beeb46179c3381706411aa38b54de8e99f78d6b54f
+  md5: 30c3d773c2f018af674637529e096537
+  depends:
+  - bioconductor-rhdf5filters >=1.22.0,<1.23.0
+  - bioconductor-rhdf5filters >=1.22.0,<1.23.0a0
+  - bioconductor-rhdf5lib >=1.32.0,<1.33.0
+  - bioconductor-rhdf5lib >=1.32.0,<1.33.0a0
+  - libblas >=3.9.0,<4.0a0
+  - libgcc >=14
+  - liblapack >=3.9.0,<4.0a0
+  - liblzma >=5.8.2,<6.0a0
+  - libstdcxx >=14
+  - libzlib >=1.3.1,<2.0a0
+  - r-base >=4.5,<4.6.0a0
+  license: Artistic-2.0
+  size: 2546016
+  timestamp: 1770586044189
+- conda: https://conda.anaconda.org/bioconda/osx-64/bioconductor-rhdf5-2.54.1-r45h9ab73f2_0.conda
+  sha256: 5bbf491a31a3c9d33339b37338ec9959b2a7d088825aa74e3f5a834acc3288b3
+  md5: 933c7e7d69a933bf3f7539f377085a57
+  depends:
+  - bioconductor-rhdf5filters >=1.22.0,<1.23.0
+  - bioconductor-rhdf5filters >=1.22.0,<1.23.0a0
+  - bioconductor-rhdf5lib >=1.32.0,<1.33.0
+  - bioconductor-rhdf5lib >=1.32.0,<1.33.0a0
+  - libblas >=3.9.0,<4.0a0
+  - libcxx >=19
+  - liblapack >=3.9.0,<4.0a0
+  - liblzma >=5.8.2,<6.0a0
+  - libzlib >=1.3.1,<2.0a0
+  - r-base >=4.5,<4.6.0a0
+  license: Artistic-2.0
+  size: 2351547
+  timestamp: 1770593153927
+- conda: https://conda.anaconda.org/bioconda/osx-arm64/bioconductor-rhdf5-2.54.1-r45h4778c6e_0.conda
+  sha256: ef85a24fd4e900c0e7ec4d24ffc4748e4582bfdf8fad0e71ed54eb7403a75fc4
+  md5: 9e079da5c0e92d6b0d226b67c95e1793
+  depends:
+  - bioconductor-rhdf5filters >=1.22.0,<1.23.0
+  - bioconductor-rhdf5filters >=1.22.0,<1.23.0a0
+  - bioconductor-rhdf5lib >=1.32.0,<1.33.0
+  - bioconductor-rhdf5lib >=1.32.0,<1.33.0a0
+  - libblas >=3.9.0,<4.0a0
+  - libcxx >=19
+  - liblapack >=3.9.0,<4.0a0
+  - liblzma >=5.8.2,<6.0a0
+  - libzlib >=1.3.1,<2.0a0
+  - r-base >=4.5,<4.6.0a0
+  license: Artistic-2.0
+  size: 2164374
+  timestamp: 1772581014058
+- conda: https://conda.anaconda.org/bioconda/linux-64/bioconductor-rhdf5filters-1.22.0-r45ha27e39d_0.conda
+  sha256: 8bcbed1f2e3a17cd11edeaec2a97582b5fe682e8655d8b72589c7186fd84615f
+  md5: bb1531739e103b2433b5e75e23bed547
+  depends:
+  - bioconductor-rhdf5lib >=1.32.0,<1.33.0
+  - bioconductor-rhdf5lib >=1.32.0,<1.33.0a0
+  - libblas >=3.9.0,<4.0a0
+  - libgcc >=14
+  - liblapack >=3.9.0,<4.0a0
+  - liblzma >=5.8.2,<6.0a0
+  - libstdcxx >=14
+  - libzlib >=1.3.1,<2.0a0
+  - r-base >=4.5,<4.6.0a0
+  license: BSD_2_clause + file LICENSE
+  size: 512442
+  timestamp: 1770508105626
+- conda: https://conda.anaconda.org/bioconda/osx-64/bioconductor-rhdf5filters-1.22.0-r45hfbc58e1_0.conda
+  sha256: 11e2d6676a2d10cc04033b293ff260513f012c76ce6f7b2f2d2c9170e89e0ef4
+  md5: e2008e00a0e6d347030cb852239f85b1
+  depends:
+  - bioconductor-rhdf5lib >=1.32.0,<1.33.0
+  - bioconductor-rhdf5lib >=1.32.0,<1.33.0a0
+  - libblas >=3.9.0,<4.0a0
+  - libcxx >=19
+  - liblapack >=3.9.0,<4.0a0
+  - liblzma >=5.8.2,<6.0a0
+  - libzlib >=1.3.1,<2.0a0
+  - r-base >=4.5,<4.6.0a0
+  license: BSD_2_clause + file LICENSE
+  size: 512904
+  timestamp: 1770583838951
+- conda: https://conda.anaconda.org/bioconda/osx-arm64/bioconductor-rhdf5filters-1.22.0-r45h97584a2_0.conda
+  sha256: d7c429ac3a2c58dcc5a1748fd38179f5155f7c6c02f7baff18515bc64bdfa53d
+  md5: 09c5dde3892f171a87190356263d5860
+  depends:
+  - bioconductor-rhdf5lib >=1.32.0,<1.33.0
+  - bioconductor-rhdf5lib >=1.32.0,<1.33.0a0
+  - libblas >=3.9.0,<4.0a0
+  - libcxx >=19
+  - liblapack >=3.9.0,<4.0a0
+  - liblzma >=5.8.2,<6.0a0
+  - libzlib >=1.3.1,<2.0a0
+  - r-base >=4.5,<4.6.0a0
+  license: BSD_2_clause + file LICENSE
+  size: 483895
+  timestamp: 1770582511149
+- conda: https://conda.anaconda.org/bioconda/linux-64/bioconductor-rhdf5lib-1.32.0-r45h01b2380_0.conda
+  sha256: f194eb74ee1ecd5ccd4f1217abd7a32ed25747d32fccbcca968722c2ec2ad078
+  md5: 28ab16fb16f8a46ace374e1fb429d7e0
+  depends:
+  - libblas >=3.9.0,<4.0a0
+  - libgcc >=14
+  - liblapack >=3.9.0,<4.0a0
+  - liblzma >=5.8.2,<6.0a0
+  - libzlib >=1.3.1,<2.0a0
+  - r-base >=4.5,<4.6.0a0
+  license: Artistic-2.0
+  size: 3172954
+  timestamp: 1770500780299
+- conda: https://conda.anaconda.org/bioconda/osx-64/bioconductor-rhdf5lib-1.32.0-r45h010771c_0.conda
+  sha256: d10db65dd848e705f2870dcb64fffdb22edd130f62045a4832874912dda58370
+  md5: 4c72363d094966897c6b9c364879a840
+  depends:
+  - libblas >=3.9.0,<4.0a0
+  - liblapack >=3.9.0,<4.0a0
+  - liblzma >=5.8.2,<6.0a0
+  - libzlib >=1.3.1,<2.0a0
+  - r-base >=4.5,<4.6.0a0
+  license: Artistic-2.0
+  size: 2736344
+  timestamp: 1770243657442
+- conda: https://conda.anaconda.org/bioconda/osx-arm64/bioconductor-rhdf5lib-1.32.0-r45hcc2f086_0.conda
+  sha256: ec6ab877af5b73821771dae116142f31cb447f28936f799af2d2b79baf0a5963
+  md5: 7421f113b02b64f99debb3ad0cd87801
+  depends:
+  - libblas >=3.9.0,<4.0a0
+  - liblapack >=3.9.0,<4.0a0
+  - liblzma >=5.8.2,<6.0a0
+  - libzlib >=1.3.1,<2.0a0
+  - r-base >=4.5,<4.6.0a0
+  license: Artistic-2.0
+  size: 2990202
+  timestamp: 1772579684179
 - conda: https://conda.anaconda.org/conda-forge/linux-64/bwidget-1.10.1-ha770c72_1.conda
   sha256: c88dd33c89b33409ebcd558d78fdc66a63c18f8b06e04d170668ffb6c8ecfabd
   md5: 983b92277d78c0d0ec498e460caa0e6d
@@ -8633,17 +8765,6 @@ packages:
   license_family: GPL3
   size: 49801
   timestamp: 1757448107061
-- conda: https://conda.anaconda.org/conda-forge/noarch/r-blob-1.3.0-r45hc72bb7e_0.conda
-  sha256: c939f23050463f3f62d08eaa5bdcd567799ed8f78d5270e50884cfe5ea35048d
-  md5: a5401d5f7b44aa4b805abc756ddb403a
-  depends:
-  - r-base >=4.5,<4.6.0a0
-  - r-rlang
-  - r-vctrs >=0.2.1
-  license: GPL-3.0-only
-  license_family: GPL3
-  size: 70126
-  timestamp: 1768440582521
 - conda: https://conda.anaconda.org/conda-forge/noarch/r-brew-1.0_10-r45hc72bb7e_2.conda
   sha256: 9324cbb93b6c3a2903b5f12c57eb7f03355b35ca1f1db15becf57f15fc40b796
   md5: 91c64b596d193d6ea30fc491ec9ae50f
@@ -9227,40 +9348,6 @@ packages:
   license_family: OTHER
   size: 2292928
   timestamp: 1757499792317
-- conda: https://conda.anaconda.org/conda-forge/noarch/r-dbi-1.3.0-r45hc72bb7e_0.conda
-  sha256: 82dbc27e1db79f9a897626656c3b418a071a681a07f4c47f6f15f98ec12e09fe
-  md5: 8a912a3730695141b5566202130a11e1
-  depends:
-  - r-base >=4.5,<4.6.0a0
-  license: LGPL-2.1-or-later
-  license_family: LGPL
-  size: 892756
-  timestamp: 1772009847613
-- conda: https://conda.anaconda.org/conda-forge/noarch/r-dbplyr-2.5.2-r45hc72bb7e_0.conda
-  sha256: d20fb999446dceaa575d458974e5c446ee6807e67c8e5797cca398cf051dd9ac
-  md5: d1dc488c56da3d0078b552153bd02f74
-  depends:
-  - r-base >=4.5,<4.6.0a0
-  - r-blob >=1.2.0
-  - r-cli >=3.6.1
-  - r-dbi >=1.1.3
-  - r-dplyr >=1.1.2
-  - r-glue >=1.6.2
-  - r-lifecycle >=1.0.3
-  - r-magrittr
-  - r-pillar >=1.9.0
-  - r-purrr >=1.0.1
-  - r-r6 >=2.2.2
-  - r-rlang >=1.1.1
-  - r-tibble >=3.2.1
-  - r-tidyr >=1.3.0
-  - r-tidyselect >=1.2.1
-  - r-vctrs >=0.6.3
-  - r-withr >=2.5.0
-  license: MIT
-  license_family: MIT
-  size: 1217410
-  timestamp: 1770973839074
 - conda: https://conda.anaconda.org/conda-forge/linux-64/r-deldir-2.0_4-r45heaba542_2.conda
   sha256: a767d7004b66129bdb48c3a5410acb674d3038f6705e07708b783f44a653b42f
   md5: d701c1293a4c0e2d9d0e91afa0789c36

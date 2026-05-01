@@ -183,6 +183,12 @@ left_sidebar_ui <- function(){
                 icon = bsicons::bs_icon("file-earmark-arrow-up"),
                 mod_dataInput_inputUI("dataInput"),
                 class = "bg-light text-black"
+            ),
+            accordion_panel(
+                "Data Conversion",
+                icon = bsicons::bs_icon("arrow-left-right"),
+                mod_DataConversion_ui("dataConversion"),
+                class = "bg-light text-black"
             )
         )
     }else if(runningMode == "processing"){
@@ -192,6 +198,12 @@ left_sidebar_ui <- function(){
                 "File Input",
                 icon = bsicons::bs_icon("file-earmark-arrow-up"),
                 mod_dataInput_inputUI("dataInput"),
+                class = "bg-light text-black"
+            ),
+            accordion_panel(
+                "Data Conversion",
+                icon = bsicons::bs_icon("arrow-left-right"),
+                mod_DataConversion_ui("dataConversion"),
                 class = "bg-light text-black"
             ),
             accordion_panel(
@@ -243,10 +255,15 @@ left_sidebar_rail_ui <- function(){
 
     if(runningMode == "processing"){
         rail_buttons <- append(rail_buttons, list(
-            tags$button(type = "button", class = "left-sidebar-rail-btn", title = "Cell Filtering", `data-panel-index` = "1", bsicons::bs_icon("filter")),
-            tags$button(type = "button", class = "left-sidebar-rail-btn", title = "Clustering Settings", `data-panel-index` = "2", bsicons::bs_icon("sliders")),
-            tags$button(type = "button", class = "left-sidebar-rail-btn", title = "Cell Cycling", `data-panel-index` = "3", bsicons::bs_icon("clock-history")),
-            tags$button(type = "button", class = "left-sidebar-rail-btn", title = "Download Result", `data-panel-index` = "4", bsicons::bs_icon("cloud-download"))
+            tags$button(type = "button", class = "left-sidebar-rail-btn", title = "Data Conversion", `data-panel-index` = "1", bsicons::bs_icon("arrow-left-right")),
+            tags$button(type = "button", class = "left-sidebar-rail-btn", title = "Cell Filtering", `data-panel-index` = "2", bsicons::bs_icon("filter")),
+            tags$button(type = "button", class = "left-sidebar-rail-btn", title = "Clustering Settings", `data-panel-index` = "3", bsicons::bs_icon("sliders")),
+            tags$button(type = "button", class = "left-sidebar-rail-btn", title = "Cell Cycling", `data-panel-index` = "4", bsicons::bs_icon("clock-history")),
+            tags$button(type = "button", class = "left-sidebar-rail-btn", title = "Download Result", `data-panel-index` = "5", bsicons::bs_icon("cloud-download"))
+        ))
+    } else {
+        rail_buttons <- append(rail_buttons, list(
+            tags$button(type = "button", class = "left-sidebar-rail-btn", title = "Data Conversion", `data-panel-index` = "1", bsicons::bs_icon("arrow-left-right"))
         ))
     }
 

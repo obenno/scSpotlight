@@ -46,21 +46,6 @@ waiting_screen <- function(message = "Data Loading..."){
   )
 }
 
-#' Function to theme plotly figures
-#'
-#' @importFrom plotly config
-#' @noRd
-config_plotly_fig <- function(fig){
-    config(
-        fig,
-        displaylogo = FALSE,
-        modeBarButtonsToRemove = c('zoom', 'pan', 'select', 'zoomIn', 'zoomOut', 'autoScale',
-                                   'hoverClosestCartesian', 'hoverCompareCartesian'),
-        toImageButtonOptions = list(height= NULL, width= NULL, scale= 2)
-    )
-}
-
-
 ## refer to: https://github.com/daattali/shinycssloaders/pull/77
 ##withSpinner <- function(
 ##    ui_element,

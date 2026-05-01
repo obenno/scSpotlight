@@ -11,12 +11,12 @@ mod_Download_ui <- function(id){
   ns <- NS(id)
 
   tagList(
-      selectInput(
+      selectizeInput(
           inputId = ns("downloadFormat"),
           label = "Result Format",
           choices = "",
           selected = "",
-          selectize = TRUE,
+          options = list(dropdownParent = "body"),
           width = NULL
       ),
       actionButton(
@@ -61,7 +61,7 @@ mod_Download_server <- function(id,
             runningMode <- golem::get_golem_options("runningMode")
             message("download, runningMode: ", runningMode)
             if(runningMode == "processing" && isTruthy(seuratObj())){
-                downloadFormat <- c("BPCells", "Rds", "metaData")
+                downloadFormat <- c("BPCells", "h5ad", "Rds", "metaData")
             }else{
                 downloadFormat <- c("metaData")
             }
@@ -69,7 +69,7 @@ mod_Download_server <- function(id,
             if(!isTruthy(seuratObj())){
                 downloadFormat <- character(0)
             }
-            updateSelectInput(
+            updateSelectizeInput(
                 session = session,
                 inputId = "downloadFormat",
                 label = "Result Format",
@@ -115,7 +115,8 @@ mod_Download_server <- function(id,
                 prefix <- "scSpotlight."
                 outFile <- case_when(
                     input$downloadFormat == "metaData" ~ paste0(prefix, "metaData.", Sys.Date(), ".tsv.gz"),
-                    input$downloadFormat == "BPCells" ~ paste0(prefix, Sys.Date(), ".tar.gz"),
+                    input$downloadFormat == "BPCells" ~ paste0(prefix, Sys.Date(), ".zip"),
+                    input$downloadFormat == "h5ad" ~ paste0(prefix, Sys.Date(), ".h5ad"),
                     TRUE ~ paste0(prefix, Sys.Date(), ".Rds")
                 )
                 outFile
@@ -160,10 +161,27 @@ mod_Download_server <- function(id,
                             old_wd <- getwd()
                             on.exit(setwd(old_wd), add = TRUE)
                             setwd(dirname(bundleDir))
-                            tar(tarfile = file, files = basename(bundleDir), compression = "gzip")
+                            create_bundle_archive(
+                                tarfile = file,
+                                files = basename(bundleDir)
+                            )
                         },
                         message = "Saving BPCells bundle...",
                         detail = "Preparing bundle"
+                    )
+                }else if(input$downloadFormat == "h5ad"){
+                    progressr::withProgressShiny(
+                        {
+                            h5ad_progress <- progressr::progressor(steps = 4)
+                            h5ad_progress(message = "Preparing h5ad export")
+                            write_h5ad_scanpy(
+                                obj,
+                                output_file = file
+                            )
+                            h5ad_progress(message = "h5ad export ready")
+                        },
+                        message = "Saving h5ad...",
+                        detail = "Preparing Scanpy export"
                     )
                 }else{
                     stop("Format is not supported")
