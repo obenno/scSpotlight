@@ -63,7 +63,10 @@ coerce_bpcells_source_matrix <- function(mat) {
     return(methods::as(Matrix::Matrix(mat, sparse = TRUE), Class = "dgCMatrix"))
   }
 
-  mat
+  stop(
+    "Unsupported matrix class for BPCells conversion: ",
+    paste(class(mat), collapse = "/")
+  )
 }
 
 #' @noRd
@@ -1789,7 +1792,6 @@ write_h5ad_scanpy <- function(
   obsm_chunk_rows = 4096L
 ) {
   assert_h5ad_write_dependencies()
-  on.exit(rhdf5::h5closeAll(), add = TRUE)
 
   if (!inherits(object, "Seurat")) {
     stop("object must be a Seurat object")
@@ -2076,10 +2078,20 @@ convert_to_scanpy_h5ad <- function(
   }
 
   if (is.null(output_file)) {
-    output_file <- sub("\\.[^.]+$", ".h5ad", input_file)
+    output_file <- if (identical(input_type, "h5ad")) {
+      sub("\\.[^.]+$", "-scanpy.h5ad", input_file)
+    } else {
+      sub("\\.[^.]+$", ".h5ad", input_file)
+    }
   }
   if (!grepl("\\.[Hh]5[Aa][Dd]$", output_file)) {
     stop("output_file must end with .h5ad")
+  }
+
+  normalized_input <- normalizePath(input_file, winslash = "/", mustWork = TRUE)
+  normalized_output <- normalizePath(output_file, winslash = "/", mustWork = FALSE)
+  if (identical(normalized_input, normalized_output)) {
+    stop("output_file must not overwrite input_file")
   }
 
   work_root <- tempfile("scspotlight_h5ad_export_")

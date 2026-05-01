@@ -22,7 +22,7 @@ test_that("write_h5ad_scanpy writes AnnData-compatible structure", {
     embeddings = pca_embeddings,
     loadings = pca_loadings,
     stdev = c(2, 1, 0.5),
-    assay = DefaultAssay(obj),
+    assay = SeuratObject::DefaultAssay(obj),
     key = "PC_"
   )
 
@@ -120,5 +120,20 @@ test_that("import_h5ad_as_seurat_bpcells validates AnnData encoding", {
   expect_error(
     import_h5ad_as_seurat_bpcells(tmp, backend_root = tempdir()),
     "does not appear to be a valid AnnData file"
+  )
+})
+
+test_that("convert_to_scanpy_h5ad rejects in-place h5ad conversion", {
+  skip_if_not_installed("BPCells")
+  skip_if_not_installed("rhdf5")
+
+  convert_to_scanpy_h5ad <- getFromNamespace("convert_to_scanpy_h5ad", "scSpotlight")
+
+  tmp <- tempfile(fileext = ".h5ad")
+  rhdf5::h5createFile(tmp)
+
+  expect_error(
+    convert_to_scanpy_h5ad(tmp, output_file = tmp),
+    "output_file must not overwrite input_file"
   )
 })

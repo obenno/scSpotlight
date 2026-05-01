@@ -223,6 +223,60 @@ const getCurrentReductionName = () => {
   return el?.value && el.value !== "None" ? el.value : null;
 };
 
+const resolveActiveReduction = (reductions, activeReductionName) => {
+  if (!Array.isArray(reductions) || reductions.length === 0) {
+    return null;
+  }
+
+  const findByName = (name) => reductions.find(
+    (reduction) => reduction.reductionName === name,
+  );
+
+  return (
+    findByName(activeReductionName) ||
+    findByName(getCurrentReductionName()) ||
+    reductions[0]
+  );
+};
+
+const showPlotTransferError = (message) => {
+  const parentDiv = document.getElementById(mainPlotElId);
+  if (!parentDiv) return;
+
+  let errorEl = parentDiv.querySelector("#plot-transfer-error");
+  if (!errorEl) {
+    errorEl = document.createElement("div");
+    errorEl.id = "plot-transfer-error";
+    errorEl.style.position = "absolute";
+    errorEl.style.inset = "1rem auto auto 1rem";
+    errorEl.style.zIndex = "10";
+    errorEl.style.maxWidth = "min(34rem, calc(100% - 2rem))";
+    errorEl.style.padding = "0.75rem 1rem";
+    errorEl.style.borderRadius = "0.5rem";
+    errorEl.style.background = "#fff3cd";
+    errorEl.style.border = "1px solid #ffecb5";
+    errorEl.style.color = "#664d03";
+    parentDiv.appendChild(errorEl);
+  }
+
+  errorEl.textContent = message;
+};
+
+const clearPlotTransferError = () => {
+  document.getElementById("plot-transfer-error")?.remove();
+};
+
+const handlePlotTransferError = (error, requestId, message) => {
+  console.error("There was a problem:", error);
+  if (mainPlotSpinner) {
+    mainPlotSpinner.style.display = "none";
+  }
+  showPlotTransferError(message);
+  if (requestId) {
+    notifyInitialPlotSettled(requestId);
+  }
+};
+
 const decodeReductionBuffer = (buffer) => {
   const table = decodeArrowIPC(buffer);
   return {
@@ -232,6 +286,7 @@ const decodeReductionBuffer = (buffer) => {
 };
 
 const plotReductionBuffer = (buffer) => {
+  clearPlotTransferError();
   reglElementData.updateReductionData(decodeReductionBuffer(buffer));
   Shiny.setInputValue("reductionProcessed", true, { priority: "event" });
 };
@@ -544,14 +599,18 @@ Shiny.addCustomMessageHandler("reduction_ready", (msg) => {
 
       // do not hide the spinner, since it will trigger the reglScatter_plot immediately
     })().catch((error) => {
-      console.error("There was a problem:", error);
-      mainPlotSpinner.style.display = "none";
-      notifyInitialPlotSettled(requestId);
+      handlePlotTransferError(
+        error,
+        requestId,
+        "Reduction data failed to load. Try switching reductions or reloading the dataset.",
+      );
     });
   } catch (error) {
-    console.error("There was a problem:", error);
-    mainPlotSpinner.style.display = "none";
-    notifyInitialPlotSettled(requestId);
+    handlePlotTransferError(
+      error,
+      requestId,
+      "Reduction data failed to load. Try switching reductions or reloading the dataset.",
+    );
   }
 });
 
@@ -568,27 +627,25 @@ Shiny.addCustomMessageHandler("reductions_ready", (msg) => {
       }
 
       const reductions = Array.isArray(msg.reductions) ? msg.reductions : [];
-      const currentReduction = getCurrentReductionName() || msg.activeReduction;
-      const activeReduction = reductions.find(
-        (reduction) => reduction.reductionName === currentReduction,
-      );
+      const activeReduction = resolveActiveReduction(reductions, msg.activeReduction);
+      if (!activeReduction) {
+        throw new Error("No reductions were provided for plotting");
+      }
       const inactiveReductions = reductions.filter(
-        (reduction) => reduction.reductionName !== currentReduction,
+        (reduction) => reduction.reductionName !== activeReduction.reductionName,
       );
 
-      if (activeReduction) {
-        const activeURL =
-          window.location.origin + "/data/reduction/" + activeReduction.reductionFile;
-        const activeBuffer = await fetchArrowIPCBuffer(activeURL);
-        setCacheEntry(
-          ipcCache.reductions,
-          makeReductionCacheKey(msg.reductionVersion, activeReduction.reductionName),
-          activeBuffer,
-          REDUCTION_CACHE_LIMIT,
-        );
-        updateReductionCacheKeys();
-        plotReductionBuffer(activeBuffer);
-      }
+      const activeURL =
+        window.location.origin + "/data/reduction/" + activeReduction.reductionFile;
+      const activeBuffer = await fetchArrowIPCBuffer(activeURL);
+      setCacheEntry(
+        ipcCache.reductions,
+        makeReductionCacheKey(msg.reductionVersion, activeReduction.reductionName),
+        activeBuffer,
+        REDUCTION_CACHE_LIMIT,
+      );
+      updateReductionCacheKeys();
+      plotReductionBuffer(activeBuffer);
 
       await Promise.all(
         inactiveReductions.map(async (reduction) => {
@@ -605,15 +662,19 @@ Shiny.addCustomMessageHandler("reductions_ready", (msg) => {
       );
       updateReductionCacheKeys();
     })().catch((error) => {
-      console.error("There was a problem:", error);
-      mainPlotSpinner.style.display = "none";
+      handlePlotTransferError(
+        error,
+        requestId,
+        "Reduction data failed to load. Try switching reductions or reloading the dataset.",
+      );
       Shiny.setInputValue("reductionProcessed", false, { priority: "event" });
-      notifyInitialPlotSettled(requestId);
     });
   } catch (error) {
-    console.error("There was a problem:", error);
-    mainPlotSpinner.style.display = "none";
-    notifyInitialPlotSettled(requestId);
+    handlePlotTransferError(
+      error,
+      requestId,
+      "Reduction data failed to load. Try switching reductions or reloading the dataset.",
+    );
   }
 });
 
@@ -644,13 +705,19 @@ Shiny.addCustomMessageHandler("reduction_cached", (msg) => {
 
       plotReductionBuffer(buffer);
     })().catch((error) => {
-      console.error("There was a problem:", error);
-      mainPlotSpinner.style.display = "none";
+      handlePlotTransferError(
+        error,
+        pendingInitialPlotRequestId,
+        "Cached reduction data failed to load. Fetching a fresh copy may resolve this.",
+      );
       Shiny.setInputValue("reductionProcessed", false, { priority: "event" });
     });
   } catch (error) {
-    console.error("There was a problem:", error);
-    mainPlotSpinner.style.display = "none";
+    handlePlotTransferError(
+      error,
+      pendingInitialPlotRequestId,
+      "Cached reduction data failed to load. Fetching a fresh copy may resolve this.",
+    );
   }
 });
 
@@ -1003,19 +1070,24 @@ Shiny.addCustomMessageHandler("meta_ready", (msg) => {
       const table = await readArrowIPC(metaURL);
       const out = parseMetaFromArrow(table);
       console.log("metaData", out);
+      clearPlotTransferError();
       reglElementData.updateCellMetaData(out);
       syncMetaUiAfterUpdate({ fullTransfer: true });
 
       // do not hide the spinner, since it will trigger the reglScatter_plot immediately
     })().catch((error) => {
-      console.error("There was a problem:", error);
-      mainPlotSpinner.style.display = "none";
-      notifyInitialPlotSettled(requestId);
+      handlePlotTransferError(
+        error,
+        requestId,
+        "Metadata failed to load. Reload the dataset or check the server logs.",
+      );
     });
   } catch (error) {
-    console.error("There was a problem:", error);
-    mainPlotSpinner.style.display = "none";
-    notifyInitialPlotSettled(requestId);
+    handlePlotTransferError(
+      error,
+      requestId,
+      "Metadata failed to load. Reload the dataset or check the server logs.",
+    );
   }
 });
 
@@ -1311,7 +1383,6 @@ Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
     categoryAccordionBody.appendChild(nextCatLegendEl);
     categoryAccordionBody.appendChild(nextExpLegendEl);
 
-    previousReglElementData.destroy();
     reglElementData = nextReglElementData;
     pushSidebarMetaState();
 
@@ -1335,6 +1406,7 @@ Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
     initRenameClusterClientSelection();
 
     nextPlotEl.style.display = "flex";
+    previousReglElementData.destroy();
 
     // hide spinner
     if (mainPlotSpinner.style.display !== "none") {

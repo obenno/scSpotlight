@@ -236,6 +236,15 @@ const resetReglInstance = () => {
   testState.reglInstance.selectionSource = null;
   testState.reglInstance.selectionHandlers = null;
   testState.reglInstance.interactions = { clearLasso: vi.fn() };
+  testState.reglInstance.createRenderReplacement = Object.getPrototypeOf(
+    testState.reglInstance,
+  ).createRenderReplacement;
+  testState.reglInstance.destroy = Object.getPrototypeOf(
+    testState.reglInstance,
+  ).destroy;
+  testState.reglInstance.setSelectionHandlers = Object.getPrototypeOf(
+    testState.reglInstance,
+  ).setSelectionHandlers;
 };
 
 const setCategoryMeta = (columnName, mapping) => {
@@ -336,6 +345,10 @@ describe("rename cluster client selection", () => {
       return new Float32Array([colName === "X" ? value : value + 10]);
     });
 
+    document.getElementById("updateReduction-reduction").innerHTML = `
+      <option value="stale" selected>stale</option>
+    `;
+
     await testState.handlers.reductions_ready({
       reductionVersion: 1,
       activeReduction: "umap",
@@ -357,6 +370,37 @@ describe("rename cluster client selection", () => {
     });
   });
 
+  it("falls back to first prefetched reduction when active reduction is absent", async () => {
+    const arrowReader = await import("./modules/arrowReader.js");
+    arrowReader.fetchArrowIPCBuffer.mockImplementation((url) =>
+      Promise.resolve(new TextEncoder().encode(url).buffer),
+    );
+    arrowReader.decodeArrowIPC.mockImplementation((buffer) => ({ buffer }));
+    arrowReader.getFloat32Column.mockImplementation((table, colName) => {
+      const url = new TextDecoder().decode(table.buffer);
+      const value = url.includes("pca") ? 3 : 4;
+      return new Float32Array([colName === "X" ? value : value + 10]);
+    });
+    document.getElementById("updateReduction-reduction").innerHTML = `
+      <option value="stale" selected>stale</option>
+    `;
+
+    await testState.handlers.reductions_ready({
+      reductionVersion: 2,
+      activeReduction: "missing",
+      reductions: [
+        { reductionName: "pca", reductionFile: "pca-ipc" },
+        { reductionName: "umap", reductionFile: "umap-ipc" },
+      ],
+    });
+
+    await vi.waitFor(() => {
+      expect(testState.reglInstance.origData.reductionData.X).toEqual(
+        new Float32Array([3]),
+      );
+    });
+  });
+
   it("settles initial plot readiness when reduction loading fails", async () => {
     const arrowReader = await import("./modules/arrowReader.js");
     arrowReader.fetchArrowIPCBuffer.mockRejectedValueOnce(new Error("network failed"));
@@ -364,7 +408,7 @@ describe("rename cluster client selection", () => {
     testState.handlers.await_initial_plot_ready({});
     testState.handlers.reduction_ready({
       reductionFile: "broken-ipc",
-      reductionVersion: 1,
+      reductionVersion: 3,
       reductionName: "umap",
     });
 
@@ -374,6 +418,9 @@ describe("rename cluster client selection", () => {
         expect.any(Number),
         { priority: "event" },
       ]);
+      expect(document.getElementById("plot-transfer-error")?.textContent).toMatch(
+        /Reduction data failed to load/,
+      );
     });
   });
 
@@ -432,6 +479,39 @@ describe("rename cluster client selection", () => {
       moduleScore: null,
     });
 
+    expect(mainPlot.contains(previousPlotEl)).toBe(true);
+    expect(legendBody.contains(previousCatLegendEl)).toBe(true);
+    expect(legendBody.contains(previousExpLegendEl)).toBe(true);
+    testState.reglInstance = currentInstance;
+  });
+
+  it("does not destroy previous plot before late render setup completes", () => {
+    const mainPlot = document.getElementById("mainClusterPlot-clusterPlot");
+    const legendBody = document.querySelector(
+      '.accordion-item[data-value="analysis_category"] .accordion-body',
+    );
+    const currentInstance = testState.reglInstance;
+    const previousPlotEl = testState.reglInstance.plotEl;
+    const previousCatLegendEl = testState.reglInstance.catLegendEl;
+    const previousExpLegendEl = testState.reglInstance.expLegendEl;
+
+    mainPlot.appendChild(previousPlotEl);
+    legendBody.appendChild(previousCatLegendEl);
+    legendBody.appendChild(previousExpLegendEl);
+    const replacement = currentInstance.createRenderReplacement();
+    replacement.setSelectionHandlers = vi.fn(() => {
+      throw new Error("late setup failed");
+    });
+    currentInstance.createRenderReplacement = vi.fn(() => replacement);
+    currentInstance.destroy = vi.fn();
+
+    testState.handlers.reglScatter_plot({
+      group_by: "clusterA",
+      split_by: "None",
+      moduleScore: null,
+    });
+
+    expect(currentInstance.destroy).not.toHaveBeenCalled();
     expect(mainPlot.contains(previousPlotEl)).toBe(true);
     expect(legendBody.contains(previousCatLegendEl)).toBe(true);
     expect(legendBody.contains(previousExpLegendEl)).toBe(true);

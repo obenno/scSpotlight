@@ -528,11 +528,50 @@ validate_seuratRDS <- function(seuratObj,
                                nDims = 30,
                                resolution = 1,
                                backend_root = NULL){
+    message("calculating mt")
+    if("counts" %in% Layers(seuratObj) &&
+       !("percent.mt" %in% colnames(seuratObj[[]]))){
+        seuratObj[["percent.mt"]] <- PercentageFeatureSet(seuratObj, pattern = "^(MT-|mt-)")
+    }
+    message("calculating rp")
+    if("counts" %in% Layers(seuratObj) &&
+       !("percent.rp" %in% colnames(seuratObj[[]]))){
+        seuratObj[["percent.rp"]] <- PercentageFeatureSet(seuratObj, pattern = "^(RPL|RPS|Rpl|Rps)")
+    }
+
     seuratObj <- ensure_normalized_layer(
         seuratObj,
         backend_root = backend_root,
         input_label = "Input object"
     )
+
+    if(identical(runningMode, "processing")){
+        if(!HVG_exist(seuratObj)){
+            waiter_update(html = waiting_screen("Finding HVGs..."))
+            seuratObj <- set_variable_features_backend(
+                seuratObj,
+                selection.method = hvgSelectMethod
+            )
+        }
+        if(!reduction_exist(seuratObj)){
+            waiter_update(html = waiting_screen("Calculating Reductions..."))
+            seuratObj <- run_memory_conserving_pca(
+                seuratObj,
+                npcs = max(nDims, 30L)
+            )
+            seuratObj <- FindNeighbors(seuratObj, dims = 1:nDims, reduction = "pca")
+            seuratObj <- FindClusters(seuratObj, resolution = resolution)
+            seuratObj <- RunUMAP(seuratObj, dims = 1:nDims, reduction = "pca")
+        }
+        if (isTruthy(backend_root)) {
+            seuratObj <- ensure_bpcells_backing(
+                seuratObj,
+                root_dir = backend_root,
+                layers = NULL
+            )
+        }
+    }
+
     assert_processed_input_requirements(seuratObj, input_label = "Input object")
     message("Finished validating object requirements...")
     return(seuratObj)

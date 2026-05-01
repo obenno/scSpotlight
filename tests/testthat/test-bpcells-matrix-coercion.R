@@ -26,3 +26,12 @@ test_that("ensure_bpcells_backing accepts non-dgC sparse layers", {
   expect_true(inherits(SeuratObject::LayerData(object, assay = "RNA", layer = "counts"), "IterableMatrix"))
   expect_true(inherits(SeuratObject::LayerData(object, assay = "RNA", layer = "data"), "IterableMatrix"))
 })
+
+test_that("coerce_bpcells_source_matrix rejects unsupported inputs clearly", {
+  coerce_bpcells_source_matrix <- getFromNamespace("coerce_bpcells_source_matrix", "scSpotlight")
+
+  expect_error(
+    coerce_bpcells_source_matrix(data.frame(x = 1)),
+    "Unsupported matrix class for BPCells conversion"
+  )
+})
