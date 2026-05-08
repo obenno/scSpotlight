@@ -1,0 +1,24 @@
+# Pixi environment (will be installed inside container)
+.pixi
+
+# Node modules (will be installed inside container)
+node_modules
+
+# Git
+.git
+.gitignore
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Documentation builds
+docs
+
+# IDE
+.vscode
+.idea
+
+# OS
+.DS_Store
+Thumbs.db

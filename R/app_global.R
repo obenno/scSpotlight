@@ -269,15 +269,12 @@ AddModuleScore <- function(
     if (!is.null(x = seed)) {
         set.seed(seed = seed)
     }
-    assay.old <- DefaultAssay(object = object)
-    assay <- assay %||% assay.old
-    DefaultAssay(object = object) <- assay
-    assay.data <- GetAssayData(object = object, assay = assay, slot = "data")
-    ##assay.data <- LayerData(object = object, layer = "data")
+    assay <- assay %||% SeuratObject::DefaultAssay(object = object)
+    assay.data <- SeuratObject::LayerData(object = object, assay = assay, layer = "data")
     ##message("str(assay.data): ", str(assay.data))
     ##message("dim(assay.data): ", paste(dim(assay.data),collapse = " "))
     features.old <- features
-    pool <- pool %||% rownames(x = object)
+    pool <- pool %||% rownames(x = assay.data)
     if (k) {
         .NotYetUsed(arg = 'k')
         features <- list()
@@ -349,7 +346,7 @@ AddModuleScore <- function(
         features <- lapply(
             X = features.old,
             FUN = CaseMatch,
-            match = rownames(x = object)
+            match = rownames(x = assay.data)
         )
     }
     if (!all(Seurat:::LengthCheck(values = features))) {
@@ -409,7 +406,6 @@ AddModuleScore <- function(
     rownames(x = features.scores.use) <- colnames(x = object)
     ##object[[colnames(x = features.scores.use)]] <- features.scores.use
     SeuratObject::CheckGC()
-    ##DefaultAssay(object = object) <- assay.old
     ##return(object)
 
     ## return features.scores.use instead of seurat object

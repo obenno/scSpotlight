@@ -37,6 +37,7 @@ mod_UpdateReduction_server <- function(id,
   moduleServer( id, function(input, output, session){
       ns <- session$ns
       prefetchingReductionVersion <- reactiveVal(NULL)
+      prefetchingReductionNames <- reactiveVal(character(0))
 
       observeEvent(reductionUpdateIndicator(), {
           req(isTruthy(seuratObj()))
@@ -89,7 +90,13 @@ mod_UpdateReduction_server <- function(id,
               )
           }
 
-          prefetched_reductions <- utils::head(ordered_reduction, 5L)
+          prefetch_limit <- if (ncol(obj) >= 250000L) 1L else 5L
+          prefetched_reductions <- if (prefetch_limit == 1L) {
+              selected_reduction
+          } else {
+              utils::head(ordered_reduction, prefetch_limit)
+          }
+          prefetched_reductions <- intersect(unique(prefetched_reductions), ordered_reduction)
           if (length(prefetched_reductions) > 0) {
               invoke_all_reduction_transfer(prefetched_reductions, selected_reduction)
           }
@@ -181,6 +188,7 @@ mod_UpdateReduction_server <- function(id,
           dirPath <- file.path(session$userData$tempDir, "reduction")
           reductionVersion <- reductionUpdateIndicator()
           prefetchingReductionVersion(reductionVersion)
+          prefetchingReductionNames(reduction_names)
           reduction_payloads <- lapply(reduction_names, function(reduction_name) {
               get_backend_reduction(seuratObj(), reduction = reduction_name)
           })
@@ -224,6 +232,7 @@ mod_UpdateReduction_server <- function(id,
               reductions_promise,
               function() {
                   prefetchingReductionVersion(NULL)
+                  prefetchingReductionNames(character(0))
                   removeNotification(id = "update_reduction_notification", session = session)
               }
           )
@@ -248,7 +257,10 @@ mod_UpdateReduction_server <- function(id,
               return()
           }
 
-          if (identical(prefetchingReductionVersion(), reductionVersion)) {
+          if (
+              identical(prefetchingReductionVersion(), reductionVersion) &&
+              input$reduction %in% prefetchingReductionNames()
+          ) {
               reductionProcessed(FALSE)
               return()
           }

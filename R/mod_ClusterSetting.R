@@ -91,11 +91,11 @@ mod_ClusterSetting_server <- function(id,
 
             }else if(input$updateClusterOpt == "Update nDim Only"){
                 incProgress(0, message = paste("Updating UMAP...", "0/2"))
-                obj <- RunUMAP(seuratObj(), dims = 1:input$cluster_dims, reduction = "pca")
+                obj <- Seurat::RunUMAP(seuratObj(), dims = 1:input$cluster_dims, reduction = "pca")
 
                 incProgress(1/2, message = paste("Updating Cluster...", "1/2"))
-                obj <- FindNeighbors(obj, dims = 1:input$cluster_dims, reduction = "pca")
-                obj <- FindClusters(obj, resolution = input$cluster_resolution)
+                obj <- Seurat::FindNeighbors(obj, dims = 1:input$cluster_dims, reduction = "pca")
+                obj <- Seurat::FindClusters(obj, resolution = input$cluster_resolution)
 
                 message("ClusterSetting module increased meta and reduction indicator")
                 metaUpdateIndicator(metaUpdateIndicator()+1)
@@ -107,12 +107,12 @@ mod_ClusterSetting_server <- function(id,
                 graph_names <- paste(assayName, c("nn", "snn"), sep = "_")
                 if(all(graph_names %in% Graphs(obj))){
                     incProgress(0, message = paste("Updating Cluster...", "0/1"))
-                    obj <- FindClusters(obj, resolution = input$cluster_resolution)
+                    obj <- Seurat::FindClusters(obj, resolution = input$cluster_resolution)
                 }else{
                     incProgress(0, message = paste("Updating SNN...", "0/2"))
-                    obj <- FindNeighbors(obj, dims = 1:input$cluster_dims, reduction = "pca")
+                    obj <- Seurat::FindNeighbors(obj, dims = 1:input$cluster_dims, reduction = "pca")
                     incProgress(1/2, message = paste("Updating Cluster...", "1/2"))
-                    obj <- FindClusters(obj, resolution = input$cluster_resolution)
+                    obj <- Seurat::FindClusters(obj, resolution = input$cluster_resolution)
                 }
 
                 message("ClusterSetting module increased meta and reduction indicator")

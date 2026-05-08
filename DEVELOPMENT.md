@@ -393,6 +393,23 @@ Implementation notes:
 - `R/fct_bpcells_backend.R` uses `optimize_bpcells_matrix_type()` before `write_matrix_dir()`.
 - `R/mod_dataInput.R` applies the same optimization in `BPCells_Read10X()`.
 
+### 16a. Portable bundles should not preserve Seurat graph state
+
+Decision:
+
+- scSpotlight BPCells bundles drop Seurat `graphs` and `neighbors` before saving the portable RDS.
+
+Why:
+
+- Neighbor and SNN graphs can be hundreds of MB for 500K+ cells and are not needed for initial visualization.
+- Clusters are already represented in metadata, and graph state can be recomputed from PCA when clustering settings are updated.
+- Keeping graph state in the serialized RDS can make a BPCells-backed bundle OOM before the assay layers are ever touched.
+
+Implementation notes:
+
+- `R/fct_bpcells_backend.R` removes graphs and neighbors through SeuratObject accessors in `prepare_bundle_object()` after BPCells layer paths are made portable.
+- Large reduction prefetch is limited to the selected reduction to avoid copying several 500K+ cell coordinate payloads during initial load.
+
 ### 17. Portable BPCells downloads use a scSpotlight bundle contract
 
 Decision:

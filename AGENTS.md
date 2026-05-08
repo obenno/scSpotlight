@@ -23,12 +23,15 @@ All code contributions must consider performance implications for large datasets
 ```bash
 pixi install                     # Create/update the locked project environment
 pixi run setup                  # Install conda R deps, pak fallbacks, local package, and JS deps
+pixi run setup-r                # Install R deps and local package without JS deps
 pixi run run-app                # Start app in viewer mode
 pixi run run-app-processing     # Start app in processing mode
 ```
 
 Notes:
-- Pixi is the only project environment manager; the repo does not use `renv`.
+- Pixi is the source-checkout environment manager for development, CI, and Docker builds; normal users can install and run the app as an R package without Pixi.
+- `DESCRIPTION` remains the source of truth for installed-package runtime dependencies.
+- Pixi is the only repo environment manager; the repo does not use `renv`.
 - `pixi run setup` is written to work in native Windows shells as well as Unix shells.
 - `pixi run setup` currently uses Pixi-managed R packages where available and falls back to `pak` for packages that are not available on every supported platform.
 
@@ -90,11 +93,14 @@ run_app()
 ```
 
 ### Docker
+The Dockerfile uses the [pixi](https://pixi.sh/) base image in the build stage, installs locked `default` and `prod` environments, builds JavaScript assets in `default`, installs the R package into `prod`, and copies only the activated `prod` environment into the runtime image. The final container runs `Rscript` directly and does not require Pixi at runtime.
+
 ```bash
 docker build -t scspotlight .
-docker run -p 8081:8081 scspotlight \
-  Rscript -e 'scSpotlight::run_app(options = list(port=8081, host="0.0.0.0", launch.browser=FALSE), runningMode="processing")'
+docker run -p 8081:8081 scspotlight
 ```
+
+The container's default `CMD` already starts the app in processing mode on port 8081.
 
 ---
 

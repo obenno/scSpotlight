@@ -20,6 +20,19 @@ test_that("write_scspotlight_bundle writes loadable BPCells bundles", {
     assays = "RNA",
     layers = c("counts", "data")
   )
+  graph_matrix <- Matrix::Diagonal(n = 2, x = 1)
+  rownames(graph_matrix) <- colnames(counts)
+  colnames(graph_matrix) <- colnames(counts)
+  graph <- SeuratObject::as.Graph(graph_matrix)
+  object[["RNA_snn"]] <- graph
+  object[["RNA_nn"]] <- methods::new(
+    "Neighbor",
+    nn.idx = matrix(1L, nrow = 2, ncol = 1),
+    nn.dist = matrix(0, nrow = 2, ncol = 1),
+    alg.idx = NULL,
+    alg.info = list(),
+    cell.names = colnames(counts)
+  )
 
   bundle_dir <- tempfile("bundle_write_")
   dir.create(bundle_dir)
@@ -36,4 +49,6 @@ test_that("write_scspotlight_bundle writes loadable BPCells bundles", {
 
   expect_s4_class(loaded, "Seurat")
   expect_setequal(SeuratObject::Layers(loaded[["RNA"]]), c("counts", "data"))
+  expect_length(SeuratObject::Graphs(loaded), 0)
+  expect_length(SeuratObject::Neighbors(loaded), 0)
 })
