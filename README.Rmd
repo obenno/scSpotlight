@@ -35,7 +35,22 @@ knitr::include_graphics("https://raw.githubusercontent.com/obenno/scSpotlight/ma
 
 ## Installation
 
-You can install the development version of scSpotlight from [GitHub](https://github.com/) with:
+You can install the development version of scSpotlight from
+[R-universe](https://r-universe.dev/) with:
+
+``` r
+install.packages(
+  "scSpotlight",
+  repos = c(
+    "https://obenno.r-universe.dev",
+    "https://satijalab.r-universe.dev",
+    "https://bnprks.r-universe.dev",
+    "https://cloud.r-project.org"
+  )
+)
+```
+
+You can also install the development version from [GitHub](https://github.com/) with:
 
 ``` r
 # install.packages("devtools")
@@ -49,13 +64,22 @@ or a much faster installation with `pak`:
 pak::pkg_install("obenno/scSpotlight")
 ```
 
-## Dependency policy (dev + CI)
+After installation, start the app from any R session; a source checkout is not required:
 
-- `pixi.toml` is the source of truth for the development and CI environment.
-- `DESCRIPTION` remains the source of truth for R package runtime dependencies.
-- The repo no longer uses `renv`; package and toolchain setup are managed through Pixi plus `pak` fallbacks.
-- `pixi run ...` commands materialize the environment automatically, so `pixi install` is optional unless you want to prefetch the environment without running a task.
-- Run `pixi run setup` to install conda-first R dependencies, install `pak` fallbacks for missing required packages, install `scSpotlight`, and install JavaScript dependencies.
+``` r
+scSpotlight::run_app()
+scSpotlight::run_app(runningMode = "processing")
+```
+
+## Development and CI environment
+
+- `DESCRIPTION` is the source of truth for installed-package runtime dependencies.
+- `pixi.toml` is the source of truth for source-checkout development, CI, JavaScript builds, and Docker builds.
+- Pixi is not required to run an already installed `scSpotlight` R package.
+- The repo no longer uses `renv`; contributor setup is managed through Pixi plus `pak` fallbacks.
+- `pixi run ...` commands materialize the checkout environment automatically, so `pixi install` is optional unless you want to prefetch the environment without running a task.
+- Run `pixi run setup` from the repository root to install conda-first R dependencies, install `pak` fallbacks for missing required packages, install `scSpotlight`, and install JavaScript dependencies.
+- Run `pixi run setup-r` when you only need to bootstrap R dependencies and install the local R package without JavaScript dependencies.
 - `BPCells >= 0.3.1` is a required runtime dependency and is installed by `pixi run setup` via the fallback R package bootstrap.
 - `rhdf5` is a required runtime dependency for full `.h5ad` import/export support and is installed by `pixi run setup`.
 - Run `pixi run install-optional-packages` when you want optional performance support via `presto`. It uses `pak`, with `presto` sourced from `immunogenomics/presto`.
@@ -71,7 +95,7 @@ pak::pkg_install("obenno/scSpotlight")
 - The `bootstrap-r` task clears conflicting library and toolchain environment variables inside R, so `pixi run setup` works on native Windows as well as Unix shells.
 - `pixi run setup` installs the BPCells-backed runtime used by both viewer mode and processing mode.
 
-### Quickstart with pixi
+### Source checkout quickstart
 
 ```bash
 # install pixi once: https://pixi.prefix.dev/latest/
@@ -90,25 +114,32 @@ pixi run run-app-processing
 
 ### Pixi commands
 
-#### User-facing
-
-- `pixi run setup` - install required R and JavaScript dependencies and install `scSpotlight`
-- `pixi run install-optional-packages` - install optional performance support
-- `pixi run doctor-env` - verify the active Pixi/R environment and report missing optional packages
-- `pixi run run-app` - launch the app in viewer mode
-- `pixi run run-app-processing` - launch the app in processing mode
-
-#### Developer-oriented
-
 - `pixi install` - prefetch/materialize the lockfile environment without running a task
+- `pixi run setup-r` - install required R fallbacks and install the local R package
 - `pixi run setup` - run the full app bootstrap: use Pixi-native dependencies where available, fall back to `pak::pkg_install()` for missing R packages, install JavaScript dependencies, and install the local package
 - `pixi run dev` - start the Vite development server
 - `pixi run build-js` - build the frontend bundle
 - `pixi run test-js` - run frontend tests once
 - `pixi run r-check` - run `devtools::check()`
 - `pixi run build-pkgdown` - build the pkgdown site
+- `pixi run run-app` - launch the source-checkout app in viewer mode
+- `pixi run run-app-processing` - launch the source-checkout app in processing mode
 
 ## Docker
+
+The Docker image uses Pixi during the build to create a locked production R environment, but the final image runs the installed R package directly with `Rscript`.
+
+To build the image locally:
+
+```bash
+docker build -t scspotlight .
+```
+
+To run the app on `port:8081`:
+
+```bash
+docker run -p 8081:8081 scspotlight
+```
 
 To pull the latest image from the command line
 
@@ -119,5 +150,5 @@ docker pull registry-intl.cn-hangzhou.aliyuncs.com/thunderbio/scspotlight:0.0.3
 To run the app on `port:8081`, please use the command below:
 
 ```
-docker run -p 8081:8081 registry-intl.cn-hangzhou.aliyuncs.com/thunderbio/scspotlight:0.0.3 Rscript -e 'scSpotlight::run_app(options = list(port=8081, host="0.0.0.0", launch.browser = FALSE), runningMode="processing")'
+docker run -p 8081:8081 registry-intl.cn-hangzhou.aliyuncs.com/thunderbio/scspotlight:0.0.3
 ```

@@ -6,14 +6,11 @@ description = "scSpotlight unified development environment"
 requires-pixi = ">=0.40"
 
 [dependencies]
-r-base = ">=4.5,<4.6"
+r-base = ">=4.4,<4.6"
 r-shiny = "*"
 r-seurat = "*"
 r-seuratobject = "*"
 r-pak = "*"
-r-devtools = "*"
-r-pkgdown = "*"
-r-roxygen2 = "*"
 r-bslib = "*"
 r-cli = "*"
 r-config = "*"
@@ -23,8 +20,10 @@ r-future = "*"
 r-ggplot2 = "*"
 r-golem = "*"
 r-htmltools = "*"
+r-jsonlite = "*"
 r-magrittr = "*"
 r-promises = "*"
+r-progressr = "*"
 r-rhpcblasctl = "*"
 r-readr = "*"
 r-readxl = "*"
@@ -35,7 +34,13 @@ r-shinywidgets = "*"
 r-stringr = "*"
 r-tibble = "*"
 r-waiter = "*"
+r-zip = "*"
 r-arrow = "*"
+
+[feature.dev.dependencies]
+r-devtools = "*"
+r-pkgdown = "*"
+r-roxygen2 = "*"
 nodejs = ">=20.19,<23"
 git = "*"
 make = "*"
@@ -48,17 +53,25 @@ xz = "*"
 
 [target.osx-64.dependencies]
 bioconductor-rhdf5 = "*"
+r-bpcells = ">=0.3.1"
 
 [target.osx-arm64.dependencies]
 bioconductor-rhdf5 = "*"
+r-bpcells = ">=0.3.1"
 
 [target.linux-64.dependencies]
 bioconductor-rhdf5 = "*"
+r-bpcells = ">=0.3.1"
 
 [target.win-64.dependencies]
 
+[environments]
+default = { features = ["dev"], solve-group = "scspotlight" }
+prod = { features = [], solve-group = "scspotlight" }
+
 [tasks]
 install-optional-packages = "Rscript dev/install_optional_packages.R"
+setup-r = "Rscript dev/bootstrap_r_deps.R && Rscript dev/install_local_package.R"
 setup = "Rscript dev/bootstrap_r_deps.R && npm install && Rscript dev/install_local_package.R"
 dev = "npm run dev"
 build-js = "npm run build"

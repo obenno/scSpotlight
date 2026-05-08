@@ -20,12 +20,21 @@ onStart <- function(maxSize = 20 * 1000 * 1024^2,
 set_options <- function(maxSize = 20 * 1000 * 1024^2,
                         nCores = 2){
 
+    nCores <- suppressWarnings(as.integer(nCores))
+    if (is.na(nCores) || nCores < 1L) {
+        nCores <- 1L
+    }
+
     options(shiny.maxRequestSize=20000*1024^2)
     ##options(shiny.usecairo = TRUE)
 
     options(future.globals.maxSize = maxSize)
     options(Seurat.object.assay.version = "v5")
-    plan(multisession, workers = min(nCores, availableCores()))
+    if (nCores <= 1L) {
+        plan(sequential)
+    } else {
+        plan(multisession, workers = min(nCores, availableCores()))
+    }
 
     RhpcBLASctl::blas_set_num_threads(1) # https://github.com/satijalab/seurat/issues/3991
 

@@ -495,7 +495,11 @@ BPCells_Read10X <- function(
 #' @noRd
 dataNormalized <- function(seuratObj){
     ##!identical(seuratObj[["RNA"]]$counts, seuratObj[["RNA"]]$data)
-    m <- GetAssayData(seuratObj, assay = NULL, layer = "data")
+    m <- SeuratObject::LayerData(
+        seuratObj,
+        assay = SeuratObject::DefaultAssay(seuratObj),
+        layer = "data"
+    )
     any(dim(m) > 0)
 }
 
@@ -559,9 +563,9 @@ validate_seuratRDS <- function(seuratObj,
                 seuratObj,
                 npcs = max(nDims, 30L)
             )
-            seuratObj <- FindNeighbors(seuratObj, dims = 1:nDims, reduction = "pca")
-            seuratObj <- FindClusters(seuratObj, resolution = resolution)
-            seuratObj <- RunUMAP(seuratObj, dims = 1:nDims, reduction = "pca")
+            seuratObj <- Seurat::FindNeighbors(seuratObj, dims = 1:nDims, reduction = "pca")
+            seuratObj <- Seurat::FindClusters(seuratObj, resolution = resolution)
+            seuratObj <- Seurat::RunUMAP(seuratObj, dims = 1:nDims, reduction = "pca")
         }
         if (isTruthy(backend_root)) {
             seuratObj <- ensure_bpcells_backing(

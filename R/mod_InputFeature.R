@@ -115,7 +115,10 @@ mod_InputFeature_server <- function(id,
 
           configured_workers <- suppressWarnings(as.integer(session$userData$nCores %||% 2L))
           if (is.na(configured_workers) || configured_workers < 1L) {
-              configured_workers <- 2L
+              configured_workers <- 1L
+          }
+          if (configured_workers <= 1L) {
+              return(invisible(NULL))
           }
 
           future::plan(

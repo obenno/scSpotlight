@@ -1057,7 +1057,13 @@ ensure_normalized_layer <- function(
     )
   }
 
-  object <- Seurat::NormalizeData(object, assay = assay, verbose = FALSE)
+  object <- Seurat::NormalizeData(
+    object,
+    assay = assay,
+    layer = "counts",
+    save = "data",
+    verbose = FALSE
+  )
 
   if (isTruthy(backend_root)) {
     object <- ensure_bpcells_backing(
@@ -1263,8 +1269,14 @@ run_memory_conserving_pca <- function(
     return(run_bpcells_pca(object, assay = assay, layer = layer, npcs = npcs))
   }
 
-  object <- Seurat::ScaleData(object, features = VariableFeatures(object))
-  Seurat::RunPCA(object, npcs = npcs)
+  object <- Seurat::ScaleData(
+    object,
+    assay = assay,
+    layer = layer,
+    features = VariableFeatures(object),
+    save = "scale.data"
+  )
+  Seurat::RunPCA(object, assay = assay, npcs = npcs)
 }
 
 #' @noRd
@@ -1279,7 +1291,12 @@ run_memory_conserving_processing <- function(
   npcs <- npcs %||% max(ndims, 30L)
 
   if (normalization) {
-    seuratObj <- Seurat::NormalizeData(seuratObj)
+    seuratObj <- Seurat::NormalizeData(
+      seuratObj,
+      assay = SeuratObject::DefaultAssay(seuratObj),
+      layer = "counts",
+      save = "data"
+    )
   }
 
   seuratObj <- set_variable_features_backend(
@@ -2247,6 +2264,13 @@ prepare_bundle_object <- function(object, bundle_dir) {
         layer = layer
       ) <- BPCells::open_matrix_dir(dest_path)
     }
+  }
+
+  for (graph_name in SeuratObject::Graphs(object_copy)) {
+    object_copy[[graph_name]] <- NULL
+  }
+  for (neighbor_name in SeuratObject::Neighbors(object_copy)) {
+    object_copy[[neighbor_name]] <- NULL
   }
 
   object_copy
