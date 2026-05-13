@@ -10,7 +10,7 @@ run_app(
   enableBookmarking = NULL,
   uiPattern = "/",
   dataDir = NULL,
-  runningMode = "processing",
+  runningMode = "analysis",
   maxSize = 20 * 1000 * 1024^2,
   nCores = 2,
   ...
@@ -40,9 +40,9 @@ expression in order for the match to be considered successful.}
 \item{dataDir}{Direcotry path of the input data, user could put the large dataset in the
 direcoty to avoid uploading files}
 
-\item{runningMode}{The running mode of the app. This could be "processing" (default) or "viewer".
-The "processing" mode allows users to process input data by Seurat package while in "viewer" mode,
-user will only be able to view the dimension reduction result and query gene expressions.}
+\item{runningMode}{The running mode of the app. Use "analysis" (default) for
+full data processing and analysis, or "explore" for read-only exploration of
+processed data. Legacy aliases "processing" and "viewer" are accepted.}
 
 \item{maxSize}{Maximum allowed total size (in bytes) of global variables identified, see future.globals.maxSize.}
 
@@ -56,14 +56,14 @@ Run the scSpotlight App
 }
 \examples{
 \dontrun{
- ## Run app in processing mode
+ ## Run app in Analysis Mode
  run_app()
 
- ## Run app in viewer mode and load data in dataDir
- run_app(runningMode = "viewer", dataDir = "/path/to/data")
+ ## Run app in Explore Mode and load data in dataDir
+ run_app(runningMode = "explore", dataDir = "/path/to/data")
 
  ## Run app on port 8081, shiny::runApp() options need to be wrapped in a list
- run_app(options = list(port = 8081, host ="0.0.0.0", launch.browser = FALSE), runningMode = "processing")
+ run_app(options = list(port = 8081, host ="0.0.0.0", launch.browser = FALSE), runningMode = "analysis")
 }
 
 }

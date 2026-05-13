@@ -1,10 +1,22 @@
 test_that("BPCells-native HVG methods match Seurat exactly", {
   skip_if_not_installed("BPCells")
 
-  ensure_bpcells_backing <- getFromNamespace("ensure_bpcells_backing", "scSpotlight")
-  materialize_bpcells_layers <- getFromNamespace("materialize_bpcells_layers", "scSpotlight")
-  preferred_expr_layer <- getFromNamespace("preferred_expr_layer", "scSpotlight")
-  set_variable_features_backend <- getFromNamespace("set_variable_features_backend", "scSpotlight")
+  ensure_bpcells_backing <- getFromNamespace(
+    "ensure_bpcells_backing",
+    "scSpotlight"
+  )
+  materialize_bpcells_layers <- getFromNamespace(
+    "materialize_bpcells_layers",
+    "scSpotlight"
+  )
+  preferred_expr_layer <- getFromNamespace(
+    "preferred_expr_layer",
+    "scSpotlight"
+  )
+  set_variable_features_backend <- getFromNamespace(
+    "set_variable_features_backend",
+    "scSpotlight"
+  )
 
   set.seed(42)
   counts <- Matrix::rsparsematrix(1500, 300, density = 0.04)
@@ -19,7 +31,11 @@ test_that("BPCells-native HVG methods match Seurat exactly", {
   dense_obj <- materialize_bpcells_layers(bp_obj)
 
   compare_method <- function(method, nfeatures = 200L) {
-    layer <- if (identical(method, "vst")) "counts" else preferred_expr_layer(bp_obj)
+    layer <- if (identical(method, "vst")) {
+      "counts"
+    } else {
+      preferred_expr_layer(bp_obj)
+    }
     expected <- Seurat::FindVariableFeatures(
       dense_obj,
       selection.method = method,
@@ -34,7 +50,10 @@ test_that("BPCells-native HVG methods match Seurat exactly", {
       verbose = FALSE
     )
 
-    expect_identical(Seurat::VariableFeatures(actual), Seurat::VariableFeatures(expected))
+    expect_identical(
+      Seurat::VariableFeatures(actual),
+      Seurat::VariableFeatures(expected)
+    )
   }
 
   compare_method("mean.var.plot")

@@ -4,30 +4,30 @@
 #'
 #' @param id,input,output,session Internal parameters for {shiny}.
 #'
-#' @noRd 
+#' @noRd
 #'
 #' @importFrom shiny NS tagList
-mod_UpdateCategory_ui <- function(id){
+mod_UpdateCategory_ui <- function(id) {
   ns <- NS(id)
   tagList(
-      selectizeInput(
-          ns("group.by"),
-          "Choose group.by",
-          choices = "None",
-          selected = "None",
-          multiple = FALSE,
-          options = list(dropdownParent = "body"),
-          width = NULL
-      ),
-      selectizeInput(
-          ns("split.by"),
-          "Choose split.by",
-          choices = "None",
-          selected = "None",
-          multiple = FALSE,
-          options = list(dropdownParent = "body"),
-          width = NULL
-      )
+    selectizeInput(
+      ns("group.by"),
+      "Choose group.by",
+      choices = "None",
+      selected = "None",
+      multiple = FALSE,
+      options = list(dropdownParent = "body"),
+      width = NULL
+    ),
+    selectizeInput(
+      ns("split.by"),
+      "Choose split.by",
+      choices = "None",
+      selected = "None",
+      multiple = FALSE,
+      options = list(dropdownParent = "body"),
+      width = NULL
+    )
   )
 }
 
@@ -38,87 +38,107 @@ mod_UpdateCategory_ui <- function(id){
 #' @import Seurat
 #' @import shiny
 #' @noRd
-mod_UpdateCategory_server <- function(id,
-                                       metaCols,
-                                       metaSidebarState,
-                                       scatterUpdateIndicator){
-  moduleServer( id, function(input, output, session){
+mod_UpdateCategory_server <- function(
+  id,
+  metaCols,
+  metaSidebarState,
+  scatterUpdateIndicator
+) {
+  moduleServer(id, function(input, output, session) {
+    ns <- session$ns
+    last_category_selection <- reactiveVal(list(
+      group.by = NULL,
+      split.by = NULL
+    ))
 
-      ns <- session$ns
-      last_category_selection <- reactiveVal(list(group.by = NULL, split.by = NULL))
+    observeEvent(
+      metaSidebarState(),
+      {
+        state <- metaSidebarState()
+        choices <- state$cols
+        req(choices)
 
-      observeEvent(metaSidebarState(), {
-          state <- metaSidebarState()
-          choices <- state$cols
-          req(choices)
-
-          current_group <- state$groupBy
-          if (!isTruthy(current_group) || !current_group %in% choices) {
-              current_group <- if ("seurat_clusters" %in% choices) "seurat_clusters" else NULL
+        current_group <- state$groupBy
+        if (!isTruthy(current_group) || !current_group %in% choices) {
+          current_group <- if ("seurat_clusters" %in% choices) {
+            "seurat_clusters"
+          } else {
+            NULL
           }
+        }
 
-          split_choices <- c("None", choices)
-          current_split <- state$splitBy
-          if (!isTruthy(current_split) || !current_split %in% split_choices) {
-              current_split <- "None"
-          }
+        split_choices <- c("None", choices)
+        current_split <- state$splitBy
+        if (!isTruthy(current_split) || !current_split %in% split_choices) {
+          current_split <- "None"
+        }
 
-          updateSelectizeInput(
-              session = session,
-              inputId = "group.by",
-              label = "Choose group.by",
-              choices = choices,
-              selected = current_group
-          )
-          updateSelectizeInput(
-              session = session,
-              inputId = "split.by",
-              label = "Choose split.by",
-              choices = split_choices,
-              selected = current_split
-          )
+        updateSelectizeInput(
+          session = session,
+          inputId = "group.by",
+          label = "Choose group.by",
+          choices = choices,
+          selected = current_group
+        )
+        updateSelectizeInput(
+          session = session,
+          inputId = "split.by",
+          label = "Choose split.by",
+          choices = split_choices,
+          selected = current_split
+        )
 
-          current_selection <- list(
-              group.by = current_group %||% "None",
-              split.by = current_split %||% "None"
-          )
-          previous_selection <- last_category_selection()
+        current_selection <- list(
+          group.by = current_group %||% "None",
+          split.by = current_split %||% "None"
+        )
+        previous_selection <- last_category_selection()
 
-          if (!identical(current_selection, previous_selection)) {
-              last_category_selection(current_selection)
-              message("category selection initialized from sidebar state, increasing scatterUpdateIndicator()")
-              scatterUpdateIndicator(scatterUpdateIndicator() + 1)
-          }
-      }, priority = -10)
-
-      observeEvent(list(input$group.by, input$split.by), {
-          current_selection <- list(
-              group.by = if (is.null(input$group.by)) "None" else input$group.by,
-              split.by = if (is.null(input$split.by)) "None" else input$split.by
-          )
-          previous_selection <- last_category_selection()
-
-          if (identical(current_selection, previous_selection)) {
-              return()
-          }
-
+        if (!identical(current_selection, previous_selection)) {
           last_category_selection(current_selection)
-          message("category selection changed, increasing scatterUpdateIndicator()")
+          message(
+            "category selection initialized from sidebar state, increasing scatterUpdateIndicator()"
+          )
           scatterUpdateIndicator(scatterUpdateIndicator() + 1)
-      }, ignoreInit = TRUE)
+        }
+      },
+      priority = -10
+    )
 
-      selected_group.by <- reactive({
-          input$group.by %||% last_category_selection()$group.by
-      })
+    observeEvent(
+      list(input$group.by, input$split.by),
+      {
+        current_selection <- list(
+          group.by = if (is.null(input$group.by)) "None" else input$group.by,
+          split.by = if (is.null(input$split.by)) "None" else input$split.by
+        )
+        previous_selection <- last_category_selection()
 
-      selected_split.by <- reactive({
-          input$split.by %||% last_category_selection()$split.by
-      })
+        if (identical(current_selection, previous_selection)) {
+          return()
+        }
 
-      list(
-          group.by = selected_group.by,
-          split.by = selected_split.by
-      )
+        last_category_selection(current_selection)
+        message(
+          "category selection changed, increasing scatterUpdateIndicator()"
+        )
+        scatterUpdateIndicator(scatterUpdateIndicator() + 1)
+      },
+      ignoreInit = TRUE
+    )
+
+    selected_group.by <- reactive({
+      input$group.by %||% last_category_selection()$group.by
+    })
+
+    selected_split.by <- reactive({
+      input$split.by %||% last_category_selection()$split.by
+    })
+
+    list(
+      group.by = selected_group.by,
+      split.by = selected_split.by
+    )
   })
 }
 

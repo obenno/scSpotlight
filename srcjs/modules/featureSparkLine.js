@@ -4,11 +4,18 @@ const syncFeaturePlotSelectionState = () => {
   window.dispatchEvent(new CustomEvent("scspotlight:featurePlotSelectionChanged"));
 };
 
+const resolveReglElementData = (reglElementData) => {
+  return typeof reglElementData === "function"
+    ? reglElementData()
+    : reglElementData;
+};
+
 const syncSelectedFeatureLabelStyles = (reglElementData) => {
-  const firstSelectedFeature = reglElementData.plotMetaData.selectedFeatures?.[0] || null;
+  const currentReglElementData = resolveReglElementData(reglElementData);
+  const firstSelectedFeature = currentReglElementData.plotMetaData.selectedFeatures?.[0] || null;
   document.querySelectorAll(".featureSparkLine").forEach((containerEl) => {
     const geneLabel = containerEl.querySelector(".feature-gene-symbol");
-    if (!geneLabel) return;
+  if (!geneLabel) return;
 
     geneLabel.style.fontWeight = geneLabel.textContent === firstSelectedFeature ? "700" : "400";
   });
@@ -85,6 +92,7 @@ export const createSparkLine = (feature) => {
 };
 
 export const updateSparkLine = (containerEl, reglElementData) => {
+  const currentReglElementData = resolveReglElementData(reglElementData);
   // generate square icon svg
   const square = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-square" viewBox="0 0 16 16">
   <path d="M14 1a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1zM2 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2z"/>
@@ -112,7 +120,7 @@ export const updateSparkLine = (containerEl, reglElementData) => {
   sparkLineSpan.innerHTML = "Loading...";
   sparkLineEl.appendChild(sparkLineSpan);
   const feature = containerEl.querySelector("span").innerHTML;
-  const expressionData = reglElementData.origData.expressionData[feature];
+  const expressionData = currentReglElementData.origData.expressionData[feature];
   const binExprCount = binArrCount(expressionData, 20);
   // generate sparkline
   $("#" + sparkLineSpan.id)
@@ -126,6 +134,8 @@ export const updateSparkLine = (containerEl, reglElementData) => {
   sparkLineSpan.querySelector("canvas").style.width="100%";
 
   containerEl.addEventListener('click', function() {
+    const currentReglElementData = resolveReglElementData(reglElementData);
+    const selectedFeatures = currentReglElementData.plotMetaData.selectedFeatures ||= [];
     let currentStatus = this.getAttribute('data-status');
     // Update the status based on current value
     let newStatus;
@@ -133,31 +143,33 @@ export const updateSparkLine = (containerEl, reglElementData) => {
     switch(currentStatus) {
       case 'ready':
         newStatus = 'checked';
-        reglElementData.plotMetaData.selectedFeatures.push(feature);
+        if (!selectedFeatures.includes(feature)) {
+          selectedFeatures.push(feature);
+        }
         iconDiv.innerHTML = "";
         iconDiv.innerHTML = check2square;
         // send selected features to server
         Shiny.setInputValue("selectedFeatures",
-                             reglElementData.plotMetaData.selectedFeatures,
+                             selectedFeatures,
                              {priority: "event"});
-        console.log("selectedFeatures: ", reglElementData.plotMetaData.selectedFeatures);
-        syncSelectedFeatureLabelStyles(reglElementData);
+        console.log("selectedFeatures: ", selectedFeatures);
+        syncSelectedFeatureLabelStyles(currentReglElementData);
         syncFeaturePlotSelectionState();
         break;
       case 'checked':
         newStatus = 'ready';
-        let index = reglElementData.plotMetaData.selectedFeatures.indexOf(feature);
+        let index = selectedFeatures.indexOf(feature);
         if (index !== -1) {
-          reglElementData.plotMetaData.selectedFeatures.splice(index, 1);
+          selectedFeatures.splice(index, 1);
         }
         iconDiv.innerHTML = "";
         iconDiv.innerHTML = square;
         // send selected features to server
         Shiny.setInputValue("selectedFeatures",
-                             reglElementData.plotMetaData.selectedFeatures,
+                             selectedFeatures,
                              {priority: "event"});
-        console.log("selectedFeatures: ", reglElementData.plotMetaData.selectedFeatures);
-        syncSelectedFeatureLabelStyles(reglElementData);
+        console.log("selectedFeatures: ", selectedFeatures);
+        syncSelectedFeatureLabelStyles(currentReglElementData);
         syncFeaturePlotSelectionState();
         break;
       default:

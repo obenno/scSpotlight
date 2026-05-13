@@ -7,42 +7,42 @@
 #' @importFrom bslib bs_theme bs_add_variables
 #'
 #' @noRd
-global_theme <- function(){
-    bs_theme(
-        version = "5",
-        preset = "flatly",
-        ##primary = "#191970",
-        base_font = "Fira Sans",
-        ##base_font = font_collection(font_google("Fira+Sans", wght = "200..900", local = TRUE), "Roboto", "sans-serif"),
-        ##code_font = font_collection(font_google("Fira+Code", wght = "200..900", local = FALSE), "Roboto", "sans-serif"),
-        ##heading_font = font_collection(font_google("Fredoka+One", wght = "200..900", local = FALSE), "Roboto", "sans-serif"),
-        ## https://community.rstudio.com/t/simplest-way-to-get-local-fonts-in-your-shiny-app/148326
-        font_scale = NULL
-    )
+global_theme <- function() {
+  bs_theme(
+    version = "5",
+    preset = "flatly",
+    ##primary = "#191970",
+    base_font = "Fira Sans",
+    ##base_font = font_collection(font_google("Fira+Sans", wght = "200..900", local = TRUE), "Roboto", "sans-serif"),
+    ##code_font = font_collection(font_google("Fira+Code", wght = "200..900", local = FALSE), "Roboto", "sans-serif"),
+    ##heading_font = font_collection(font_google("Fredoka+One", wght = "200..900", local = FALSE), "Roboto", "sans-serif"),
+    ## https://community.rstudio.com/t/simplest-way-to-get-local-fonts-in-your-shiny-app/148326
+    font_scale = NULL
+  )
 }
 
 #' Function to define info icon
 #'
 #' @importFrom bsicons bs_icon
 #' @noRd
-infoIcon <- function(info, placement = "auto"){
-    div(
-        style = "display: inline-block; margin-left: 2px; margin-right: 2px;",
-        `data-bs-toggle`="tooltip",
-        `data-bs-placement`= placement,
-        title = info,
-        bsicons::bs_icon("info-circle-fill", size = "1.2em", class = "text-primary")
-    )
+infoIcon <- function(info, placement = "auto") {
+  div(
+    style = "display: inline-block; margin-left: 2px; margin-right: 2px;",
+    `data-bs-toggle` = "tooltip",
+    `data-bs-placement` = placement,
+    title = info,
+    bsicons::bs_icon("info-circle-fill", size = "1.2em", class = "text-primary")
+  )
 }
 
 #' Default waiter loading screen
 #'
 #' @importFrom waiter spin_folding_cube
 #' @noRd
-waiting_screen <- function(message = "Data Loading..."){
-    tagList(
-        spin_folding_cube(),
-        h4(message)
+waiting_screen <- function(message = "Data Loading...") {
+  tagList(
+    spin_folding_cube(),
+    h4(message)
   )
 }
 
@@ -160,37 +160,39 @@ waiting_screen <- function(message = "Data Loading..."){
 #'
 #' @noRd
 add_style <- function(x) {
-    shiny::tags$head(
-        shiny::tags$style(
-            shiny::HTML(x)
-        )
+  shiny::tags$head(
+    shiny::tags$style(
+      shiny::HTML(x)
     )
+  )
 }
 
 #' get_proxy_element
 #'
 #' @noRd
 get_proxy_element <- function(ui_element, proxy.height, hide.ui) {
-    if (!hide.ui) {
-        return(shiny::tagList())
-    }
+  if (!hide.ui) {
+    return(shiny::tagList())
+  }
 
-    if (is.null(proxy.height)) {
-        if (!grepl("height:\\s*\\d", ui_element)) {
-            proxy.height <- "400px"
-        }
-    } else {
-        if (is.numeric(proxy.height)) {
-            proxy.height <- paste0(proxy.height, "px")
-        }
+  if (is.null(proxy.height)) {
+    if (!grepl("height:\\s*\\d", ui_element)) {
+      proxy.height <- "400px"
     }
+  } else {
+    if (is.numeric(proxy.height)) {
+      proxy.height <- paste0(proxy.height, "px")
+    }
+  }
 
-    if (is.null(proxy.height)) {
-        proxy_element <- shiny::tagList()
-    } else {
-        proxy_element <- shiny::div(style=glue::glue("height:{proxy.height}"),
-                                    class="shiny-spinner-placeholder")
-    }
+  if (is.null(proxy.height)) {
+    proxy_element <- shiny::tagList()
+  } else {
+    proxy_element <- shiny::div(
+      style = glue::glue("height:{proxy.height}"),
+      class = "shiny-spinner-placeholder"
+    )
+  }
 }
 
 #' withWaiter
@@ -206,9 +208,10 @@ withWaiterOnElement <- function(
   html = spin_1(),
   color = "#333e48",
   image = ""
-){
-  if(missing(element))
+) {
+  if (missing(element)) {
     stop("Missing `element`", call. = FALSE)
+  }
 
   id <- element$attribs$id
   targetID <- target_element_ID
@@ -217,21 +220,35 @@ withWaiterOnElement <- function(
 
   script <- paste0(
     "$(document).on('shiny:outputinvalidated', function(event) {
-      if(event.target.id != '", id, "')
+      if(event.target.id != '",
+    id,
+    "')
         return;
 
       scSpotlight.myWaiter.show({
-        id: '", targetID, "',
-        html: '", html, "',
-        color: '", color, "',
-        image: '", image, "'
+        id: '",
+    targetID,
+    "',
+        html: '",
+    html,
+    "',
+        color: '",
+    color,
+    "',
+        image: '",
+    image,
+    "'
       });
     });
     
     $(document).on('shiny:value shiny:error shiny:recalculated shiny:visualchange', function(event) {
-      if(event.target.id != '", id, "')
+      if(event.target.id != '",
+    id,
+    "')
         return;
-      waiter.hide('", targetID, "');
+      waiter.hide('",
+    targetID,
+    "');
     });"
   )
 
@@ -254,160 +271,178 @@ withWaiterOnElement <- function(
 #' @importFrom SeuratObject CheckGC
 #' @noRd
 AddModuleScore <- function(
-    object,
-    features,
-    pool = NULL,
-    nbin = 24,
-    ctrl = 100,
-    k = FALSE,
-    assay = NULL,
-    name = 'Cluster',
-    seed = 1,
-    search = FALSE,
-    ...
-    ) {
-    if (!is.null(x = seed)) {
-        set.seed(seed = seed)
+  object,
+  features,
+  pool = NULL,
+  nbin = 24,
+  ctrl = 100,
+  k = FALSE,
+  assay = NULL,
+  name = 'Cluster',
+  seed = 1,
+  search = FALSE,
+  ...
+) {
+  if (!is.null(x = seed)) {
+    set.seed(seed = seed)
+  }
+  assay <- assay %||% SeuratObject::DefaultAssay(object = object)
+  assay.data <- SeuratObject::LayerData(
+    object = object,
+    assay = assay,
+    layer = "data"
+  )
+  ##message("str(assay.data): ", str(assay.data))
+  ##message("dim(assay.data): ", paste(dim(assay.data),collapse = " "))
+  features.old <- features
+  pool <- pool %||% rownames(x = assay.data)
+  if (k) {
+    .NotYetUsed(arg = 'k')
+    features <- list()
+    for (i in as.numeric(
+      x = names(x = table(object@kmeans.obj[[1]]$cluster))
+    )) {
+      features[[i]] <- names(x = which(x = object@kmeans.obj[[1]]$cluster == i))
     }
-    assay <- assay %||% SeuratObject::DefaultAssay(object = object)
-    assay.data <- SeuratObject::LayerData(object = object, assay = assay, layer = "data")
-    ##message("str(assay.data): ", str(assay.data))
-    ##message("dim(assay.data): ", paste(dim(assay.data),collapse = " "))
-    features.old <- features
-    pool <- pool %||% rownames(x = assay.data)
-    if (k) {
-        .NotYetUsed(arg = 'k')
-        features <- list()
-        for (i in as.numeric(x = names(x = table(object@kmeans.obj[[1]]$cluster)))) {
-            features[[i]] <- names(x = which(x = object@kmeans.obj[[1]]$cluster == i))
-        }
-        cluster.length <- length(x = features)
-    } else {
-        if (is.null(x = features)) {
-            stop("Missing input feature list")
-        }
-        features <- lapply(
-            X = features,
-            FUN = function(x, pool) {
-                missing.features <- setdiff(x = x, y = pool)
-                if (length(x = missing.features) > 0) {
-                    warning(
-                        "The following features are not present in the object: ",
-                        paste(missing.features, collapse = ", "),
-                        ifelse(
-                            test = search,
-                            yes = ", attempting to find updated synonyms",
-                            no = ", not searching for symbol synonyms"
-                        ),
-                        call. = FALSE,
-                        immediate. = TRUE
-                    )
-                    if (search) {
-                        tryCatch(
-                            expr = {
-                                updated.features <- UpdateSymbolList(symbols = missing.features, ...)
-                                names(x = updated.features) <- missing.features
-                                for (miss in names(x = updated.features)) {
-                                    index <- which(x == miss)
-                                    x[index] <- updated.features[miss]
-                                }
-                            },
-                            error = function(...) {
-                                warning(
-                                    "Could not reach HGNC's gene names database",
-                                    call. = FALSE,
-                                    immediate. = TRUE
-                                )
-                            }
-                        )
-                        missing.features <- setdiff(x = x, y = pool)
-                        if (length(x = missing.features) > 0) {
-                            warning(
-                                "The following features are still not present in the object: ",
-                                paste(missing.features, collapse = ", "),
-                                call. = FALSE,
-                                immediate. = TRUE
-                            )
-                        }
-                    }
+    cluster.length <- length(x = features)
+  } else {
+    if (is.null(x = features)) {
+      stop("Missing input feature list")
+    }
+    features <- lapply(
+      X = features,
+      FUN = function(x, pool) {
+        missing.features <- setdiff(x = x, y = pool)
+        if (length(x = missing.features) > 0) {
+          warning(
+            "The following features are not present in the object: ",
+            paste(missing.features, collapse = ", "),
+            ifelse(
+              test = search,
+              yes = ", attempting to find updated synonyms",
+              no = ", not searching for symbol synonyms"
+            ),
+            call. = FALSE,
+            immediate. = TRUE
+          )
+          if (search) {
+            tryCatch(
+              expr = {
+                updated.features <- UpdateSymbolList(
+                  symbols = missing.features,
+                  ...
+                )
+                names(x = updated.features) <- missing.features
+                for (miss in names(x = updated.features)) {
+                  index <- which(x == miss)
+                  x[index] <- updated.features[miss]
                 }
-                return(intersect(x = x, y = pool))
-            },
-            pool = pool
-        )
-        cluster.length <- length(x = features)
-    }
-    if (!all(Seurat:::LengthCheck(values = features))) {
-        warning(paste(
-            'Could not find enough features in the object from the following feature lists:',
-            paste(names(x = which(x = !Seurat:::LengthCheck(values = features)))),
-            'Attempting to match case...'
-        ))
-        features <- lapply(
-            X = features.old,
-            FUN = CaseMatch,
-            match = rownames(x = assay.data)
-        )
-    }
-    if (!all(Seurat:::LengthCheck(values = features))) {
-        stop(paste(
-            'The following feature lists do not have enough features present in the object:',
-            paste(names(x = which(x = !Seurat:::LengthCheck(values = features)))),
-            'exiting...'
-        ))
-    }
-    ##pool <- pool %||% rownames(x = object)
-    message("length(pool): ", length(pool))
-    data.avg <- Matrix::rowMeans(x = assay.data[pool, ])
-    data.avg <- data.avg[order(data.avg)]
-    message("length(data.avg): ", length(data.avg))
-    data.cut <- cut_number(x = data.avg + rnorm(n = length(data.avg))/1e30, n = nbin, labels = FALSE, right = FALSE)
-                                        #data.cut <- as.numeric(x = Hmisc::cut2(x = data.avg, m = round(x = length(x = data.avg) / (nbin + 1))))
-    names(x = data.cut) <- names(x = data.avg)
-    message("head(data.cut) :",  head(data.cut))
-    ctrl.use <- vector(mode = "list", length = cluster.length)
-    message("length(cluster.length): ", length(cluster.length))
-    for (i in 1:cluster.length) {
-        features.use <- features[[i]]
-        for (j in 1:length(x = features.use)) {
-            ctrl.use[[i]] <- c(
-                ctrl.use[[i]],
-                names(x = sample(
-                          x = data.cut[which(x = data.cut == data.cut[features.use[j]])],
-                          size = ctrl,
-                          replace = FALSE
-                      ))
+              },
+              error = function(...) {
+                warning(
+                  "Could not reach HGNC's gene names database",
+                  call. = FALSE,
+                  immediate. = TRUE
+                )
+              }
             )
+            missing.features <- setdiff(x = x, y = pool)
+            if (length(x = missing.features) > 0) {
+              warning(
+                "The following features are still not present in the object: ",
+                paste(missing.features, collapse = ", "),
+                call. = FALSE,
+                immediate. = TRUE
+              )
+            }
+          }
         }
-    }
-    ctrl.use <- lapply(X = ctrl.use, FUN = unique)
-    ctrl.scores <- matrix(
-        data = numeric(length = 1L),
-        nrow = length(x = ctrl.use),
-        ncol = ncol(x = object)
+        return(intersect(x = x, y = pool))
+      },
+      pool = pool
     )
-    for (i in 1:length(ctrl.use)) {
-        features.use <- ctrl.use[[i]]
-        ctrl.scores[i, ] <- Matrix::colMeans(x = assay.data[features.use, ])
-    }
-    features.scores <- matrix(
-        data = numeric(length = 1L),
-        nrow = cluster.length,
-        ncol = ncol(x = object)
+    cluster.length <- length(x = features)
+  }
+  features_found <- vapply(features, length, integer(1)) > 0L
+  if (!all(features_found)) {
+    warning(paste(
+      'Could not find enough features in the object from the following feature lists:',
+      paste(names(x = which(x = !features_found))),
+      'Attempting to match case...'
+    ))
+    features <- lapply(
+      X = features.old,
+      FUN = CaseMatch,
+      match = rownames(x = assay.data)
     )
-    for (i in 1:cluster.length) {
-        features.use <- features[[i]]
-        data.use <- assay.data[features.use, , drop = FALSE]
-        features.scores[i, ] <- Matrix::colMeans(x = data.use)
+  }
+  features_found <- vapply(features, length, integer(1)) > 0L
+  if (!all(features_found)) {
+    stop(paste(
+      'The following feature lists do not have enough features present in the object:',
+      paste(names(x = which(x = !features_found)), collapse = ", "),
+      'exiting...'
+    ))
+  }
+  ##pool <- pool %||% rownames(x = object)
+  message("length(pool): ", length(pool))
+  data.avg <- Matrix::rowMeans(x = assay.data[pool, ])
+  data.avg <- data.avg[order(data.avg)]
+  message("length(data.avg): ", length(data.avg))
+  data.cut <- cut_number(
+    x = data.avg + rnorm(n = length(data.avg)) / 1e30,
+    n = nbin,
+    labels = FALSE,
+    right = FALSE
+  )
+  #data.cut <- as.numeric(x = Hmisc::cut2(x = data.avg, m = round(x = length(x = data.avg) / (nbin + 1))))
+  names(x = data.cut) <- names(x = data.avg)
+  message("head(data.cut) :", head(data.cut))
+  ctrl.use <- vector(mode = "list", length = cluster.length)
+  message("length(cluster.length): ", length(cluster.length))
+  for (i in 1:cluster.length) {
+    features.use <- features[[i]]
+    for (j in 1:length(x = features.use)) {
+      ctrl.use[[i]] <- c(
+        ctrl.use[[i]],
+        names(
+          x = sample(
+            x = data.cut[which(x = data.cut == data.cut[features.use[j]])],
+            size = ctrl,
+            replace = FALSE
+          )
+        )
+      )
     }
-    features.scores.use <- features.scores - ctrl.scores
-    rownames(x = features.scores.use) <- paste0(name, 1:cluster.length)
-    features.scores.use <- as.data.frame(x = t(x = features.scores.use))
-    rownames(x = features.scores.use) <- colnames(x = object)
-    ##object[[colnames(x = features.scores.use)]] <- features.scores.use
-    SeuratObject::CheckGC()
-    ##return(object)
+  }
+  ctrl.use <- lapply(X = ctrl.use, FUN = unique)
+  ctrl.scores <- matrix(
+    data = numeric(length = 1L),
+    nrow = length(x = ctrl.use),
+    ncol = ncol(x = object)
+  )
+  for (i in 1:length(ctrl.use)) {
+    features.use <- ctrl.use[[i]]
+    ctrl.scores[i, ] <- Matrix::colMeans(x = assay.data[features.use, ])
+  }
+  features.scores <- matrix(
+    data = numeric(length = 1L),
+    nrow = cluster.length,
+    ncol = ncol(x = object)
+  )
+  for (i in 1:cluster.length) {
+    features.use <- features[[i]]
+    data.use <- assay.data[features.use, , drop = FALSE]
+    features.scores[i, ] <- Matrix::colMeans(x = data.use)
+  }
+  features.scores.use <- features.scores - ctrl.scores
+  rownames(x = features.scores.use) <- paste0(name, 1:cluster.length)
+  features.scores.use <- as.data.frame(x = t(x = features.scores.use))
+  rownames(x = features.scores.use) <- colnames(x = object)
+  ##object[[colnames(x = features.scores.use)]] <- features.scores.use
+  SeuratObject::CheckGC()
+  ##return(object)
 
-    ## return features.scores.use instead of seurat object
-    return(features.scores.use)
+  ## return features.scores.use instead of seurat object
+  return(features.scores.use)
 }

@@ -14,6 +14,7 @@ r-pak = "*"
 r-bslib = "*"
 r-cli = "*"
 r-config = "*"
+r-dbi = "*"
 r-dplyr = "*"
 r-dt = "*"
 r-future = "*"
@@ -54,6 +55,7 @@ xz = "*"
 [target.osx-64.dependencies]
 bioconductor-rhdf5 = "*"
 r-bpcells = ">=0.3.1"
+r-duckdb = "*"
 
 [target.osx-arm64.dependencies]
 bioconductor-rhdf5 = "*"
@@ -62,8 +64,10 @@ r-bpcells = ">=0.3.1"
 [target.linux-64.dependencies]
 bioconductor-rhdf5 = "*"
 r-bpcells = ">=0.3.1"
+r-duckdb = "*"
 
 [target.win-64.dependencies]
+r-duckdb = "*"
 
 [environments]
 default = { features = ["dev"], solve-group = "scspotlight" }
@@ -79,5 +83,6 @@ test-js = "npm test"
 r-check = "Rscript -e \"devtools::check()\""
 build-pkgdown = "Rscript -e \"pkgdown::build_site_github_pages(new_process = FALSE, install = FALSE)\""
 run-app = "Rscript -e \"scSpotlight::run_app()\""
-run-app-processing = "Rscript -e \"scSpotlight::run_app(runningMode = 'processing')\""
+run-app-explore = "Rscript -e \"scSpotlight::run_app(runningMode = 'explore')\""
+run-app-analysis = "Rscript -e \"scSpotlight::run_app(runningMode = 'analysis')\""
 doctor-env = "Rscript dev/doctor_env.R"

@@ -1,6 +1,6 @@
 ^pixi\.toml$
 ^pixi\.lock$
-^\.pixi$
+(^|/)\.pixi($|/)
 ^.*\.Rproj$
 ^\.Rproj\.user$
 ^data-raw$

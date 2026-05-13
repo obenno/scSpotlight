@@ -1,10 +1,10 @@
 #' Run the scSpotlight App
 #'
-#' 
 #'
-#' @param runningMode The running mode of the app. This could be "processing" (default) or "viewer".
-#' The "processing" mode allows users to process input data by Seurat package while in "viewer" mode,
-#' user will only be able to view the dimension reduction result and query gene expressions.
+#'
+#' @param runningMode The running mode of the app. Use "analysis" (default) for
+#' full data processing and analysis, or "explore" for read-only exploration of
+#' processed data. Legacy aliases "processing" and "viewer" are accepted.
 #' @param dataDir Direcotry path of the input data, user could put the large dataset in the
 #' direcoty to avoid uploading files
 #' @param nCores Number of the threads to use (by [future::plan()]).
@@ -15,14 +15,14 @@
 #'
 #' @examples
 #' \dontrun{
-#'  ## Run app in processing mode
+#'  ## Run app in Analysis Mode
 #'  run_app()
 #'
-#'  ## Run app in viewer mode and load data in dataDir
-#'  run_app(runningMode = "viewer", dataDir = "/path/to/data")
+#'  ## Run app in Explore Mode and load data in dataDir
+#'  run_app(runningMode = "explore", dataDir = "/path/to/data")
 #'
 #'  ## Run app on port 8081, shiny::runApp() options need to be wrapped in a list
-#'  run_app(options = list(port = 8081, host ="0.0.0.0", launch.browser = FALSE), runningMode = "processing")
+#'  run_app(options = list(port = 8081, host ="0.0.0.0", launch.browser = FALSE), runningMode = "analysis")
 #' }
 #'
 #' @export
@@ -34,11 +34,13 @@ run_app <- function(
   enableBookmarking = NULL,
   uiPattern = "/",
   dataDir = NULL,
-  runningMode = "processing", # processing mode or viewer mode
+  runningMode = "analysis",
   maxSize = 20 * 1000 * 1024^2,
   nCores = 2,
   ...
 ) {
+  runningMode <- normalize_running_mode(runningMode)
+
   with_golem_options(
     app = shinyApp(
       ui = app_ui,
@@ -48,8 +50,38 @@ run_app <- function(
       enableBookmarking = enableBookmarking,
       uiPattern = uiPattern
     ),
-    golem_opts = list(dataDir = dataDir,
-                      runningMode = runningMode,
-                      nCores = nCores, ...)
+    golem_opts = list(
+      dataDir = dataDir,
+      runningMode = runningMode,
+      nCores = nCores,
+      ...
+    )
   )
+}
+
+#' @noRd
+normalize_running_mode <- function(runningMode = "analysis") {
+  if (is.null(runningMode) || length(runningMode) == 0L) {
+    runningMode <- "analysis"
+  }
+  if (
+    !is.character(runningMode) ||
+      length(runningMode) != 1L ||
+      is.na(runningMode)
+  ) {
+    stop("runningMode must be one of 'analysis' or 'explore'", call. = FALSE)
+  }
+
+  mode <- tolower(trimws(runningMode))
+  mode_aliases <- c(
+    analysis = "analysis",
+    explore = "explore",
+    processing = "analysis",
+    viewer = "explore"
+  )
+  normalized <- unname(mode_aliases[mode])
+  if (is.na(normalized)) {
+    stop("runningMode must be one of 'analysis' or 'explore'", call. = FALSE)
+  }
+  normalized
 }

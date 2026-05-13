@@ -43,6 +43,20 @@ is_bpcells_matrix <- function(x) {
 }
 
 #' @noRd
+bpcells_matrix_dir <- function(x) {
+  if (inherits(x, "MatrixDir") && "dir" %in% methods::slotNames(x)) {
+    path <- methods::slot(x, "dir")
+    return(Filter(nzchar, path))
+  }
+
+  if ("matrix" %in% methods::slotNames(x)) {
+    return(bpcells_matrix_dir(methods::slot(x, "matrix")))
+  }
+
+  character(0)
+}
+
+#' @noRd
 bpcells_target_layers <- function(object, assay) {
   tryCatch(SeuratObject::Layers(object[[assay]]), error = function(...) {
     character(0)
@@ -889,10 +903,20 @@ import_h5ad_as_seurat_bpcells <- function(
   encoding_type <- root_attrs[["encoding-type"]]
   encoding_version <- root_attrs[["encoding-version"]]
   if (!is.null(encoding_type) && encoding_type != "anndata") {
-    stop("File does not appear to be a valid AnnData file: encoding-type='", encoding_type, "'")
+    stop(
+      "File does not appear to be a valid AnnData file: encoding-type='",
+      encoding_type,
+      "'"
+    )
   }
-  if (!is.null(encoding_version) && !encoding_version %in% c("0.1.0", "0.2.0")) {
-    warning("Unsupported AnnData encoding version: ", encoding_version, ". Proceeding with caution.")
+  if (
+    !is.null(encoding_version) && !encoding_version %in% c("0.1.0", "0.2.0")
+  ) {
+    warning(
+      "Unsupported AnnData encoding version: ",
+      encoding_version,
+      ". Proceeding with caution."
+    )
   }
 
   index <- h5ad_h5ls(input_file)
@@ -916,7 +940,9 @@ import_h5ad_as_seurat_bpcells <- function(
   }
   meta <- h5ad_read_dataframe(input_file, index, "obs")
   if (is.null(meta)) {
-    warning("No 'obs' dataframe found in h5ad file. Proceeding without metadata.")
+    warning(
+      "No 'obs' dataframe found in h5ad file. Proceeding without metadata."
+    )
   }
 
   if (is.null(counts)) {
@@ -989,7 +1015,32 @@ extract_expr_vector <- function(mat, feature_name) {
 }
 
 #' @noRd
+extract_expr_slice <- function(mat, feature_idx, cell_idx) {
+  feature_values <- tryCatch(
+    mat[feature_idx, cell_idx, drop = TRUE],
+    error = function(...) mat[feature_idx, cell_idx, drop = FALSE]
+  )
+
+  if (
+    isS4(feature_values) ||
+      is.matrix(feature_values) ||
+      inherits(feature_values, "Matrix")
+  ) {
+    feature_values <- as.matrix(feature_values)
+    if (nrow(feature_values) == 1L || ncol(feature_values) == 1L) {
+      feature_values <- drop(feature_values)
+    }
+  }
+
+  as.numeric(feature_values)
+}
+
+#' @noRd
 get_backend_features <- function(object, assay = NULL, layer = NULL) {
+  if (is_scspotlight_explore_bundle(object)) {
+    return(explore_bundle_features(object, assay = assay, layer = layer))
+  }
+
   assay <- assay %||% DefaultAssay(object)
   layer <- layer %||% preferred_expr_layer(object, assay)
   mat <- SeuratObject::LayerData(object, assay = assay, layer = layer)
@@ -998,6 +1049,10 @@ get_backend_features <- function(object, assay = NULL, layer = NULL) {
 
 #' @noRd
 get_backend_metadata <- function(object, cols = NULL) {
+  if (is_scspotlight_explore_bundle(object)) {
+    return(explore_bundle_metadata(object, cols = cols))
+  }
+
   meta <- object[[]]
   if (isTruthy(cols)) {
     cols <- intersect(cols, colnames(meta))
@@ -1106,11 +1161,23 @@ assert_processed_input_requirements <- function(
 
 #' @noRd
 get_backend_reduction_names <- function(object) {
+  if (is_scspotlight_explore_bundle(object)) {
+    return(explore_bundle_reduction_names(object))
+  }
+
   SeuratObject::Reductions(object)
 }
 
 #' @noRd
 get_backend_reduction <- function(object, reduction, n_components = 2L) {
+  if (is_scspotlight_explore_bundle(object)) {
+    return(explore_bundle_reduction(
+      object,
+      reduction,
+      n_components = n_components
+    ))
+  }
+
   emb <- Seurat::Embeddings(object[[reduction]])
   keep <- seq_len(min(ncol(emb), n_components))
   out <- as.data.frame(emb[, keep, drop = FALSE])
@@ -1123,6 +1190,19 @@ get_backend_reduction <- function(object, reduction, n_components = 2L) {
 
 #' @noRd
 get_backend_expr <- function(object, assay = NULL, features, layer = NULL) {
+  if (is_scspotlight_explore_bundle(object)) {
+    out <- lapply(features, function(feature_name) {
+      explore_bundle_expr_vector(
+        object,
+        feature_name,
+        assay = assay,
+        layer = layer
+      )
+    })
+    names(out) <- features
+    return(out)
+  }
+
   assay <- assay %||% DefaultAssay(object)
   layer <- layer %||% preferred_expr_layer(object, assay)
   mat <- SeuratObject::LayerData(object, assay = assay, layer = layer)
@@ -1132,6 +1212,46 @@ get_backend_expr <- function(object, assay = NULL, features, layer = NULL) {
   })
   names(out) <- features
   out
+}
+
+#' @noRd
+get_backend_cell_count <- function(object) {
+  if (is_scspotlight_explore_bundle(object)) {
+    return(explore_bundle_cell_count(object))
+  }
+
+  ncol(object)
+}
+
+#' @noRd
+get_backend_assays <- function(object) {
+  if (is_scspotlight_explore_bundle(object)) {
+    return(explore_bundle_assays(object))
+  }
+
+  Assays(object)
+}
+
+#' @noRd
+get_backend_default_assay <- function(object) {
+  if (is_scspotlight_explore_bundle(object)) {
+    return(explore_bundle_default_assay(object))
+  }
+
+  DefaultAssay(object)
+}
+
+#' @noRd
+get_backend_pca_stdev <- function(object) {
+  if (is_scspotlight_explore_bundle(object)) {
+    return(explore_bundle_pca_stdev(object))
+  }
+
+  if (isTruthy(object) && "pca" %in% SeuratObject::Reductions(object)) {
+    return(object[["pca"]]@stdev)
+  }
+
+  numeric()
 }
 
 #' @noRd
@@ -1149,10 +1269,7 @@ get_bpcells_layer_ref <- function(
     stop("Selected assay layer is not BPCells-backed: ", assay, "/", layer)
   }
 
-  matrix_dir <- tryCatch(SeuratObject:::.FilePath(mat), error = function(...) {
-    character(0)
-  })
-  matrix_dir <- Filter(nzchar, matrix_dir)
+  matrix_dir <- bpcells_matrix_dir(mat)
   if (length(matrix_dir) == 1L && dir.exists(matrix_dir[[1]])) {
     return(list(
       assay = assay,
@@ -1177,19 +1294,68 @@ get_bpcells_layer_ref <- function(
 }
 
 #' @noRd
-extract_bpcells_expr_to_ipc <- function(matrix_dir, feature, output_file) {
+extract_bpcells_expr_to_ipc <- function(
+  matrix_dir,
+  feature,
+  output_file,
+  chunk_size = scspotlight_expression_transfer_chunk_size
+) {
   assert_bpcells_available()
   mat <- BPCells::open_matrix_dir(matrix_dir)
-  expr <- extract_expr_vector(mat, feature)
+  feature_idx <- match(feature, rownames(mat))
+  if (is.na(feature_idx)) {
+    stop(sprintf("Feature '%s' not found", feature))
+  }
+  cell_count <- ncol(mat)
+  chunk_size <- suppressWarnings(as.integer(chunk_size))
+  if (is.na(chunk_size) || chunk_size < 1L) {
+    chunk_size <- scspotlight_expression_transfer_chunk_size
+  }
 
+  dir.create(dirname(output_file), recursive = TRUE, showWarnings = FALSE)
   if (file.exists(output_file)) {
     file.remove(output_file)
   }
 
-  write_ipc_stream(
-    arrow_table(expr = Array$create(expr, type = float32())),
-    output_file
+  sink <- arrow::FileOutputStream$create(output_file)
+  writer <- arrow::RecordBatchStreamWriter$create(
+    sink,
+    arrow::schema(expr = arrow::float32())
   )
+  writer_closed <- FALSE
+  sink_closed <- FALSE
+  on.exit(
+    {
+      if (!writer_closed) {
+        try(writer$close(), silent = TRUE)
+      }
+      if (!sink_closed) {
+        try(sink$close(), silent = TRUE)
+      }
+    },
+    add = TRUE
+  )
+
+  chunk_start <- 1L
+  while (chunk_start <= cell_count) {
+    chunk_end <- min(chunk_start + chunk_size - 1L, cell_count)
+    expr_chunk <- extract_expr_slice(
+      mat,
+      feature_idx,
+      seq.int(chunk_start, chunk_end)
+    )
+    writer$write(
+      arrow::arrow_table(
+        expr = arrow::Array$create(expr_chunk, type = arrow::float32())
+      )
+    )
+    chunk_start <- chunk_end + 1L
+  }
+
+  writer$close()
+  writer_closed <- TRUE
+  sink$close()
+  sink_closed <- TRUE
 
   invisible(output_file)
 }
@@ -1883,11 +2049,14 @@ write_h5ad_scanpy <- function(
   if (file.exists(temp_file)) {
     unlink(temp_file)
   }
-  on.exit({
-    if (file.exists(temp_file)) {
-      unlink(temp_file)
-    }
-  }, add = TRUE)
+  on.exit(
+    {
+      if (file.exists(temp_file)) {
+        unlink(temp_file)
+      }
+    },
+    add = TRUE
+  )
 
   rhdf5::h5createFile(temp_file)
   h5ad_write_encoding(
@@ -2106,7 +2275,11 @@ convert_to_scanpy_h5ad <- function(
   }
 
   normalized_input <- normalizePath(input_file, winslash = "/", mustWork = TRUE)
-  normalized_output <- normalizePath(output_file, winslash = "/", mustWork = FALSE)
+  normalized_output <- normalizePath(
+    output_file,
+    winslash = "/",
+    mustWork = FALSE
+  )
   if (identical(normalized_input, normalized_output)) {
     stop("output_file must not overwrite input_file")
   }
@@ -2241,8 +2414,7 @@ prepare_bundle_object <- function(object, bundle_dir) {
         next
       }
 
-      src_path <- SeuratObject:::.FilePath(layer_data)
-      src_path <- Filter(nzchar, src_path)
+      src_path <- bpcells_matrix_dir(layer_data)
       if (!length(src_path)) {
         next
       }

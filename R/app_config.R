@@ -15,7 +15,11 @@ app_sys <- function(...) {
   }
 
   source_path <- file.path("inst", ...)
-  if (file.exists(source_path) || dir.exists(source_path) || length(list(...)) == 0L) {
+  if (
+    file.exists(source_path) ||
+      dir.exists(source_path) ||
+      length(list(...)) == 0L
+  ) {
     return(source_path)
   }
 
