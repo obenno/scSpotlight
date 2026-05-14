@@ -445,6 +445,10 @@ document.addEventListener(
       markVlnPlotDirty();
       refreshVlnDropOptions();
       syncVlnPlotPanelState();
+      markDotPlotDirty();
+      markFeaturePlotDirty();
+      syncDotPlotPanelState();
+      syncFeaturePlotPanelState();
     });
 
     // add select widget to vlnplot box
@@ -1148,7 +1152,7 @@ Shiny.addCustomMessageHandler("expr_ready", (msg) => {
       const sparkLineArray = [...sparkLine];
       sparkLineArray.forEach((e) => {
         if (e.querySelector("span").innerHTML == feature) {
-          updateSparkLine(e, reglElementData);
+          updateSparkLine(e, () => reglElementData);
         }
       });
       markVlnPlotDirty();
@@ -1195,7 +1199,7 @@ Shiny.addCustomMessageHandler("expr_cached", (msg) => {
       const sparkLineArray = [...sparkLine];
       sparkLineArray.forEach((e) => {
         if (e.querySelector("span").innerHTML == feature) {
-          updateSparkLine(e, reglElementData);
+          updateSparkLine(e, () => reglElementData);
         }
       });
       markVlnPlotDirty();

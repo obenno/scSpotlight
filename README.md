@@ -56,7 +56,7 @@ After installation, start the app from any R session; a source checkout is not r
 
 ``` r
 scSpotlight::run_app()
-scSpotlight::run_app(runningMode = "processing")
+scSpotlight::run_app(runningMode = "explore")
 ```
 
 ## Development and CI environment
@@ -86,9 +86,8 @@ scSpotlight::run_app(runningMode = "processing")
   sourced from `immunogenomics/presto`.
 - Run `pixi run doctor-env` to verify `scSpotlight` is installed,
   `.libPaths()` points to Pixi, and no required package is missing.
-- Run `pixi run run-app` to start the app in viewer mode.
-- Run `pixi run run-app-processing` to start the app in processing
-  mode.
+- Run `pixi run run-app` to start the app in Analysis Mode.
+- Run `pixi run run-app-explore` to start the app in Explore Mode.
 - Commit `pixi.toml` and `pixi.lock`; do not commit `.pixi/`.
 
 ### R and RStudio with pixi
@@ -101,7 +100,7 @@ scSpotlight::run_app(runningMode = "processing")
   environment variables inside R, so `pixi run setup` works on native
   Windows as well as Unix shells.
 - `pixi run setup` installs the BPCells-backed runtime used by both
-  viewer mode and processing mode.
+  Analysis Mode and Explore Mode.
 
 ### Source checkout quickstart
 
@@ -112,12 +111,12 @@ pixi run doctor-env
 pixi run run-app
 ```
 
-For processing mode instead of viewer mode:
+For Explore Mode instead of Analysis Mode:
 
 ``` bash
 pixi run setup
 pixi run doctor-env
-pixi run run-app-processing
+pixi run run-app-explore
 ```
 
 ### Pixi commands
@@ -135,9 +134,11 @@ pixi run run-app-processing
 - `pixi run test-js` - run frontend tests once
 - `pixi run r-check` - run `devtools::check()`
 - `pixi run build-pkgdown` - build the pkgdown site
-- `pixi run run-app` - launch the source-checkout app in viewer mode
-- `pixi run run-app-processing` - launch the source-checkout app in
-  processing mode
+- `pixi run run-app` - launch the source-checkout app in Analysis Mode
+- `pixi run run-app-analysis` - explicitly launch the source-checkout app
+  in Analysis Mode
+- `pixi run run-app-explore` - launch the source-checkout app in Explore
+  Mode
 
 ## Docker
 

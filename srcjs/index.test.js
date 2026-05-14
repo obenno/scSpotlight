@@ -188,8 +188,18 @@ const buildDom = () => {
     <button id="renameCluster-assign"></button>
     <select id="updateReduction-reduction"><option value="umap" selected>umap</option></select>
     <div id="floatingVlnPlot"></div>
-    <div id="floatingFeaturePlot"></div>
-    <div id="floatingDotPlot"></div>
+    <div id="floatingFeaturePlot">
+      <button id="floatingFeaturePlotAction"><i class="bi bi-play-circle"></i></button>
+      <div id="floatingFeaturePlotStatus"></div>
+      <input id="floatingFeaturePlotNcol" value="3" />
+    </div>
+    <div id="floatingDotPlot">
+      <button id="floatingDotPlotAction"><i class="bi bi-play-circle"></i></button>
+      <div id="floatingDotPlotStatus"></div>
+      <div id="floatingDotPlotOrderList"></div>
+      <button id="floatingDotPlotOrderReset"></button>
+      <span id="floatingDotPlotOrderMode"></span>
+    </div>
     <div class="accordion-item" data-value="analysis_category">
       <div class="accordion-body"></div>
     </div>
@@ -515,5 +525,28 @@ describe("rename cluster client selection", () => {
     expect(mainPlot.contains(previousPlotEl)).toBe(true);
     expect(legendBody.contains(previousCatLegendEl)).toBe(true);
     expect(legendBody.contains(previousExpLegendEl)).toBe(true);
+    testState.reglInstance = currentInstance;
+  });
+
+  it("enables DotPlot and FeaturePlot actions after selected genes change", () => {
+    setCategoryMeta("clusterA", { A: [0, 1], B: [2] });
+    testState.reglInstance.plotMetaData.group_by = "clusterA";
+
+    const dotAction = document.getElementById("floatingDotPlotAction");
+    const featureAction = document.getElementById("floatingFeaturePlotAction");
+    dotAction.disabled = true;
+    featureAction.disabled = true;
+
+    testState.reglInstance.plotMetaData.selectedFeatures = ["GeneA", "GeneB"];
+    window.dispatchEvent(new CustomEvent("scspotlight:featurePlotSelectionChanged"));
+
+    expect(dotAction.disabled).toBe(false);
+    expect(featureAction.disabled).toBe(false);
+    expect(document.getElementById("floatingDotPlotStatus").textContent).toContain(
+      "GeneA, GeneB",
+    );
+    expect(document.getElementById("floatingFeaturePlotStatus").textContent).toContain(
+      "GeneA, GeneB",
+    );
   });
 });

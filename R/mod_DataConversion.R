@@ -7,7 +7,7 @@
 #' @noRd
 #'
 #' @importFrom shiny NS tagList fileInput selectInput actionButton downloadButton
-mod_DataConversion_ui <- function(id){
+mod_DataConversion_ui <- function(id) {
   ns <- NS(id)
 
   tagList(
@@ -15,7 +15,10 @@ mod_DataConversion_ui <- function(id){
       ns("conversionInput"),
       tagList(
         "Upload Source File",
-        infoIcon("Convert processed Seurat RDS or Scanpy/AnnData h5ad files into BPCells bundles or Scanpy-standard h5ad exports", "right")
+        infoIcon(
+          "Convert processed Seurat RDS or Scanpy/AnnData h5ad files into BPCells bundles, Explore bundles, or Scanpy-standard h5ad exports",
+          "right"
+        )
       ),
       multiple = FALSE,
       width = "100%",
@@ -24,7 +27,11 @@ mod_DataConversion_ui <- function(id){
     selectizeInput(
       inputId = ns("conversionFormat"),
       label = "Output Format",
-      choices = c("BPCells" = "bpcells", "h5ad" = "h5ad"),
+      choices = c(
+        "Explore Bundle" = "explore",
+        "BPCells" = "bpcells",
+        "h5ad" = "h5ad"
+      ),
       selected = "bpcells",
       multiple = FALSE,
       options = list(dropdownParent = "body"),
@@ -49,12 +56,15 @@ mod_DataConversion_ui <- function(id){
 #' DataConversion Server Functions
 #'
 #' @noRd
-mod_DataConversion_server <- function(id){
-  moduleServer(id, function(input, output, session){
+mod_DataConversion_server <- function(id) {
+  moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
     source_file_path <- reactive({
-      req(isTruthy(input$conversionInput), isTruthy(input$conversionInput$datapath))
+      req(
+        isTruthy(input$conversionInput),
+        isTruthy(input$conversionInput$datapath)
+      )
       input$conversionInput$datapath
     })
 
@@ -67,10 +77,14 @@ mod_DataConversion_server <- function(id){
       shinyjs::click("conversionDownload")
     }
 
-    observeEvent(input$conversionTrigger, {
-      req(isTruthy(source_file_path()), isTruthy(input$conversionFormat))
-      trigger_download()
-    }, ignoreNULL = TRUE)
+    observeEvent(
+      input$conversionTrigger,
+      {
+        req(isTruthy(source_file_path()), isTruthy(input$conversionFormat))
+        trigger_download()
+      },
+      ignoreNULL = TRUE
+    )
 
     output$conversionDownload <- downloadHandler(
       filename = function() {
@@ -79,6 +93,10 @@ mod_DataConversion_server <- function(id){
 
         if (identical(input$conversionFormat, "h5ad")) {
           return(paste0(base_name, ".h5ad"))
+        }
+
+        if (identical(input$conversionFormat, "explore")) {
+          return(paste0(base_name, ".explore-parquet.zip"))
         }
 
         paste0(base_name, ".zip")
@@ -95,6 +113,20 @@ mod_DataConversion_server <- function(id){
               convert_progress(message = "h5ad conversion ready")
             },
             message = "Converting to h5ad...",
+            detail = "Preparing export"
+          )
+          return(invisible(NULL))
+        }
+
+        if (identical(input$conversionFormat, "explore")) {
+          progressr::withProgressShiny(
+            {
+              convert_progress <- progressr::progressor(steps = 2)
+              convert_progress(message = "Preparing Explore bundle")
+              convert_to_explore_bundle(source_file_path(), output_file = file)
+              convert_progress(message = "Explore bundle ready")
+            },
+            message = "Converting to Explore bundle...",
             detail = "Preparing export"
           )
           return(invisible(NULL))

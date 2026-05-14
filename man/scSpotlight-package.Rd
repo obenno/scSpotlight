@@ -22,5 +22,10 @@ Useful links:
 \author{
 \strong{Maintainer}: Zhixia Xiao \email{obennoname@gmail.com}
 
+Authors:
+\itemize{
+  \item Zhixia Xiao \email{obennoname@gmail.com}
+}
+
 }
 \keyword{internal}

@@ -273,7 +273,7 @@ These notes capture the recent backend reconstruction from a DuckDB-centered run
 
 Decision:
 
-- Processing mode and viewer mode now treat Seurat objects as the single source of truth.
+- Analysis Mode and Explore Mode now treat Seurat objects as the single source of truth.
 - DuckDB-backed assay/query storage has been removed from the active app runtime.
 - BPCells is a required part of the runtime rather than an optional acceleration path.
 - Counts and normalized data layers are stored as BPCells-backed on-disk matrices whenever possible.
@@ -291,21 +291,24 @@ Implementation notes:
 - `R/mod_dataInput.R` converts loaded Seurat objects to BPCells-backed assay layers through `ensure_bpcells_backing()`.
 - Metadata, reduction, and expression transfers now read directly from the Seurat object rather than querying DuckDB.
 
-### 12. Client data exports should remain asynchronous
+### 12. Client data exports should remain low-memory
 
 Decision:
 
-- Metadata, reduction, and expression IPC generation should still use `future_promise()` for Arrow file writing and browser notification.
-- BPCells-backed Seurat reads should remain on the Shiny main thread before the async boundary.
+- Metadata and reduction IPC generation can use `future_promise()` for Arrow file writing and browser notification.
+- Analysis Mode expression IPC generation should remain in-process, queued one feature at a time per session, and should not use `multisession` workers.
+- BPCells-backed Seurat reads should remain on the Shiny main thread.
 
 Why:
 
 - BPCells-backed assay data is not a good fit for inter-process transfer or forked worker access.
-- Arrow serialization can still be moved off the reactive loop after the in-process data extraction step.
+- Large Analysis Mode sessions already hold substantial Seurat/BPCells state in the main R process. Spawning R worker processes for expression queries can exceed low-memory Docker limits even when each feature vector is chunked.
+- Expression extraction is already chunked through BPCells and Arrow IPC writers, so queuing avoids overlapping memory peaks without materializing full assay data.
 
 Implementation notes:
 
-- `R/mod_UpdateMetaData.R`, `R/mod_UpdateReduction.R`, and `R/mod_InputFeature.R` fetch Seurat/BPCells data in-process, then wrap Arrow IPC writing in background promises before notifying the browser on completion.
+- `R/mod_UpdateMetaData.R` and `R/mod_UpdateReduction.R` fetch Seurat/BPCells data in-process, then wrap Arrow IPC writing in background promises before notifying the browser on completion.
+- `R/mod_InputFeature.R` queues expression transfers and writes each selected feature through the BPCells/Explore chunked IPC writer in the main R process before notifying the browser.
 
 ### 13. Metadata and reductions are exported directly from Seurat
 
@@ -338,6 +341,7 @@ Implementation notes:
 
 - `R/mod_InputFeature.R` uses `get_backend_expr()` for expression payload generation.
 - `R/fct_bpcells_backend.R` chooses the preferred layer via `preferred_expr_layer()` and extracts feature vectors from the active BPCells or in-memory layer.
+- Analysis Mode feature expression transfers use `prepare_backend_expression_transfer()` plus `extract_bpcells_expr_to_ipc()` so only one feature vector chunk is in memory at a time.
 
 ### 15. Processing mode should prefer BPCells-compatible code paths
 
@@ -425,7 +429,7 @@ Why:
 
 Implementation notes:
 
-- `R/mod_Download.R` now defaults to `BPCells` format in processing mode.
+- `R/mod_Download.R` now defaults to `BPCells` format in Analysis Mode.
 - `R/mod_Download.R` now uses a single confirm modal before standard `Rds` export for large or BPCells-backed objects.
 - `R/mod_Download.R` uses `progressr::withProgressShiny()` for BPCells bundle export and for coarse-grained standard `Rds` export progress.
 - `R/fct_bpcells_backend.R` writes bundles containing:
@@ -469,6 +473,136 @@ Implementation notes:
 - `R/fct_bpcells_backend.R` now prefers native BPCells `.h5ad` import and falls back to reconstructing CSR/CSC matrices plus AnnData dataframe encodings via `rhdf5` when BPCells cannot open the matrix layout directly.
 - `R/mod_dataInput.R` now accepts direct `.h5ad` uploads and routes them through the same BPCells-backed import path used by bundle conversion.
 - `R/fct_bpcells_backend.R` also provides Scanpy-compatible `.h5ad` export. It writes `X` and sparse matrix layers with BPCells, then fills the AnnData structure (`obs`, `var`, `raw`, `obsm`, `varm`, `uns`) with `rhdf5`.
+
+## Explore Parquet Bundle Format
+
+The Explore Parquet bundle is the read-optimized Explore Mode distribution format. It is produced by `convert_to_explore_bundle()` and loaded by `R/mod_dataInput.R` through `read_scspotlight_explore_bundle()`.
+
+### Format goals
+
+- Keep Explore Mode startup independent of Seurat/BPCells object loading.
+- Keep the canonical stored data portable across R, Python, Arrow, DuckDB, and other Parquet readers.
+- Keep expression lookup fast enough for interactive single-gene queries at 1M+ cells.
+- Keep all cross-table joins on zero-based integer ids, not barcodes or gene names.
+
+### Archive and discovery contract
+
+- The converter writes a `.zip` archive containing one bundle root directory.
+- The bundle root is identified by `manifest.json` with `bundle_type = "scspotlight_explore_parquet_bundle"`.
+- Explore Mode accepts only `.explore-parquet.zip` archives as user input. Direct extracted bundle directories and direct `manifest.json` paths remain internal discovery helpers, but they are not exposed as supported Explore Mode inputs.
+- The bundle is immutable/read-only at app runtime. User-created metadata during an Explore session is client/session state unless a future explicit export path is added.
+
+### Required file layout
+
+```text
+<bundle>/
+  manifest.json
+  cells.parquet
+  metadata.parquet
+  features.parquet
+  reductions/
+    <reduction>.parquet
+    pca_stdev.parquet        # optional, present when PCA stdev exists
+  expression/
+    block_00000.parquet
+    block_00001.parquet
+    ...
+```
+
+### `manifest.json`
+
+Required fields for schema version 1:
+
+- `bundle_type`: must be `scspotlight_explore_parquet_bundle`.
+- `schema_version`: currently `1`.
+- `created_at`: creation timestamp.
+- `scspotlight_version`: package version that wrote the bundle.
+- `assay`: exported assay name.
+- `layer`: exported assay layer, usually `data`.
+- `assays`: list of exported assays and layers.
+- `default_assay`: default assay exposed to the app.
+- `cell_count`: total number of cells.
+- `feature_count`: total number of exported features.
+- `block_size`: number of features per expression block.
+- `expression_compression`: Parquet compression codec.
+- `reductions`: dimensional reductions available under `reductions/`.
+
+If any field changes incompatibly, bump `schema_version` and add a loader migration or a clear unsupported-version error.
+
+### `cells.parquet`
+
+Schema:
+
+- `cell_idx`: zero-based integer cell id.
+- `cell_id`: original cell barcode/name.
+
+`cell_idx` is the canonical row id across the bundle. It must be dense and ordered from `0` to `cell_count - 1`.
+
+### `metadata.parquet`
+
+Schema:
+
+- one column per metadata field.
+- row position is aligned to `cell_idx`.
+- row names are not stored.
+
+Metadata is transferred to the browser as Arrow IPC after the transfer path adds the client-facing `cells` column. Do not add `cells` to the canonical Parquet metadata unless the schema is intentionally changed. Factors and logical columns are stored as character-like values; numeric columns must replace `NaN` and infinite values with missing values before writing. Explore Mode metadata transfers must stream from `metadata.parquet` through DuckDB/Arrow IPC chunks instead of materializing the full metadata frame in R.
+
+### `features.parquet`
+
+Schema:
+
+- `feature_idx`: zero-based integer feature id.
+- `feature`: feature/gene name.
+- `assay`: exported assay name.
+- `layer`: exported layer name.
+- `block`: integer expression block id.
+
+`feature_idx` must be dense and ordered from `0` to `feature_count - 1`. The current block assignment is `feature_idx %/% block_size`.
+
+### `reductions/<reduction>.parquet`
+
+Schema:
+
+- `cell_idx`: zero-based integer cell id.
+- one column per reduction component, preserving the source embedding column names.
+
+The app currently uses the first two component columns for the main scatter and renames them to `X` and `Y` in the IPC payload. Additional dimensions may be stored for external readers or future UI work.
+
+### `reductions/pca_stdev.parquet`
+
+Schema:
+
+- `stdev`: PCA standard deviation values.
+
+This file is optional. It is used for the client-side ElbowPlot when present.
+
+### `expression/block_*.parquet`
+
+Schema:
+
+- `feature_idx`: zero-based integer feature id.
+- `cell_idx`: zero-based integer cell id.
+- `value`: non-zero normalized expression value.
+
+Each block file contains sparse long-format expression rows for the features assigned to that block. Rows should be sorted by `feature_idx, cell_idx` when written. Missing `(feature_idx, cell_idx)` pairs represent zero expression.
+
+Expression queries must use DuckDB. The app selects the correct block from `features.parquet`, runs `read_parquet(<block>) WHERE feature_idx = <id> ORDER BY cell_idx`, and writes a dense Arrow IPC `expr` vector only for the requested feature. Explore Mode expression transfers should fetch sparse rows and write dense Float32 IPC chunks incrementally so R never holds both the full sparse query result and dense vector at once. Do not reintroduce a full-block Arrow fallback for expression queries; it is substantially slower and higher-memory for common genes.
+
+### Conversion path
+
+- `convert_to_explore_bundle()` converts processed Seurat `.Rds` or `.h5ad` files into this format.
+- `R/mod_DataConversion.R` exposes the same converter in the Analysis Mode Data Conversion panel as `Explore Bundle`.
+- `R/mod_Download.R` exposes the same format for the current in-memory object as `Explore Parquet`.
+- The converter requires metadata, normalized expression, and at least one reduction. Analysis Mode may compute missing processed state before conversion only through separate analysis workflows; the Explore bundle writer itself should not silently invent reductions.
+
+### Runtime transfer path
+
+- Parquet is the canonical stored format.
+- Arrow IPC remains the R-to-browser transport format for metadata, reductions, PCA stdev, and expression vectors.
+- `R/fct_explore_bundle.R` owns bundle loading and Parquet/DuckDB queries.
+- `R/fct_bpcells_backend.R` exposes backend-agnostic helpers so app modules can work with either Seurat/BPCells objects or Explore bundles.
+- Explore Mode transfer futures should receive paths/query plans only, not live bundle objects or eager data frames. Metadata, reductions, and expression all stream DuckDB fetch batches into Arrow IPC writers to keep server-side peak memory bounded by chunk size.
 
 ## Scatter Interaction Notes
 
@@ -642,22 +776,22 @@ Implementation notes:
 - `srcjs/index.js` uses `handlePlotTransferError()` for `reduction_ready`, `reductions_ready`, `reduction_cached`, and `meta_ready` failures.
 - Successful reduction or metadata transfer clears the visible transfer error.
 
-### 29. Processing mode can derive missing processed state
+### 29. Analysis Mode can derive missing processed state
 
 Decision:
 
-- Viewer mode should continue requiring processed inputs with metadata, normalized data, and reductions.
-- Processing mode may accept an object missing reductions and compute the missing HVG/PCA/neighbors/clusters/UMAP state.
+- Explore Mode should continue requiring processed inputs with metadata, normalized data, and reductions.
+- Analysis Mode may accept an object missing reductions and compute the missing HVG/PCA/neighbors/clusters/UMAP state.
 
 Why:
 
-- Processing mode is intended to complete analysis workflows from partially processed inputs.
+- Analysis Mode is intended to complete analysis workflows from partially processed inputs.
 - Requiring reductions in all modes regresses the existing RDS import path for processable datasets.
 
 Implementation notes:
 
 - `R/mod_dataInput.R` keeps `ensure_normalized_layer()` before validation.
-- In processing mode, `validate_seuratRDS()` computes missing HVGs and reductions before calling `assert_processed_input_requirements()`.
+- In Analysis Mode, `validate_seuratRDS()` computes missing HVGs and reductions before calling `assert_processed_input_requirements()`.
 - When `backend_root` is available, the processed object is re-backed through BPCells after derived state is created.
 
 ### 30. h5ad export must not close unrelated HDF5 handles or overwrite source files
@@ -705,6 +839,7 @@ If behavior changes again, review these files together:
 - `srcjs/modules/deckScatter.js`
 - `R/mod_UpdateMetaData.R`
 - `R/fct_bpcells_backend.R`
+- `R/fct_explore_bundle.R`
 - `R/mod_dataInput.R`
 - `R/mod_Download.R`
 - `R/mod_InputFeature.R`

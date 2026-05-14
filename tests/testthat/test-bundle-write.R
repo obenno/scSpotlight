@@ -2,12 +2,24 @@ test_that("write_scspotlight_bundle writes loadable BPCells bundles", {
   skip_if_not_installed("BPCells")
   skip_if_not_installed("Seurat")
 
-  write_scspotlight_bundle <- getFromNamespace("write_scspotlight_bundle", "scSpotlight")
-  load_scspotlight_bundle <- getFromNamespace("load_scspotlight_bundle", "scSpotlight")
+  write_scspotlight_bundle <- getFromNamespace(
+    "write_scspotlight_bundle",
+    "scSpotlight"
+  )
+  load_scspotlight_bundle <- getFromNamespace(
+    "load_scspotlight_bundle",
+    "scSpotlight"
+  )
   ensure_assay5 <- getFromNamespace("ensure_assay5", "scSpotlight")
-  ensure_bpcells_backing <- getFromNamespace("ensure_bpcells_backing", "scSpotlight")
+  ensure_bpcells_backing <- getFromNamespace(
+    "ensure_bpcells_backing",
+    "scSpotlight"
+  )
 
-  counts <- as(Matrix::Matrix(matrix(c(1, 0, 2, 3), nrow = 2), sparse = TRUE), "dgCMatrix")
+  counts <- as(
+    Matrix::Matrix(matrix(c(1, 0, 2, 3), nrow = 2), sparse = TRUE),
+    "dgCMatrix"
+  )
   rownames(counts) <- c("g1", "g2")
   colnames(counts) <- c("c1", "c2")
 
@@ -39,11 +51,27 @@ test_that("write_scspotlight_bundle writes loadable BPCells bundles", {
   on.exit(unlink(bundle_dir, recursive = TRUE, force = TRUE), add = TRUE)
 
   bundle_file <- file.path(bundle_dir, "object.Rds")
-  write_scspotlight_bundle(object, bundle_dir, file_name = basename(bundle_file))
+  write_scspotlight_bundle(
+    object,
+    bundle_dir,
+    file_name = basename(bundle_file)
+  )
 
   expect_true(file.exists(bundle_file))
-  expect_true(file.exists(file.path(bundle_dir, "supporting", "RNA", "counts", "version")))
-  expect_true(file.exists(file.path(bundle_dir, "supporting", "RNA", "data", "version")))
+  expect_true(file.exists(file.path(
+    bundle_dir,
+    "supporting",
+    "RNA",
+    "counts",
+    "version"
+  )))
+  expect_true(file.exists(file.path(
+    bundle_dir,
+    "supporting",
+    "RNA",
+    "data",
+    "version"
+  )))
 
   loaded <- load_scspotlight_bundle(bundle_file)
 

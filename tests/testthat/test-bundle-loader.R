@@ -1,7 +1,13 @@
 test_that("load_scspotlight_bundle validates input path", {
-  load_scspotlight_bundle <- getFromNamespace("load_scspotlight_bundle", "scSpotlight")
+  load_scspotlight_bundle <- getFromNamespace(
+    "load_scspotlight_bundle",
+    "scSpotlight"
+  )
 
-  expect_error(load_scspotlight_bundle(character(0)), "Expected a single RDS file path")
+  expect_error(
+    load_scspotlight_bundle(character(0)),
+    "Expected a single RDS file path"
+  )
   expect_error(load_scspotlight_bundle(""), "Expected a single RDS file path")
   expect_error(
     load_scspotlight_bundle(file.path(tempdir(), "missing_bundle_file.Rds")),
@@ -10,7 +16,10 @@ test_that("load_scspotlight_bundle validates input path", {
 })
 
 test_that("load_scspotlight_bundle reports loader failures clearly", {
-  load_scspotlight_bundle <- getFromNamespace("load_scspotlight_bundle", "scSpotlight")
+  load_scspotlight_bundle <- getFromNamespace(
+    "load_scspotlight_bundle",
+    "scSpotlight"
+  )
 
   bundle_dir <- tempfile("bundle_loader_")
   dir.create(bundle_dir)

@@ -55,4 +55,4 @@ EXPOSE 8081
 ENTRYPOINT ["/app/entrypoint.sh"]
 
 ## Run the installed R package inside the activated prod environment.
-CMD ["Rscript", "-e", "scSpotlight::run_app(options = list(port = 8081, host = '0.0.0.0', launch.browser = FALSE), runningMode = 'processing')"]
+CMD ["Rscript", "-e", "scSpotlight::run_app(options = list(port = 8081, host = '0.0.0.0', launch.browser = FALSE), runningMode = 'analysis')"]

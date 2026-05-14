@@ -4,20 +4,20 @@
 #'
 #' @param id,input,output,session Internal parameters for {shiny}.
 #'
-#' @noRd 
+#' @noRd
 #'
-#' @importFrom shiny NS tagList 
-mod_CellCycling_ui <- function(id){
-    ns <- NS(id)
-    tagList(
-        actionButton(
-            inputId = ns("addCycling"),
-            label = "Assign Cycling Phase",
-            icon = icon("clock-rotate-left"),
-            style = "width:200px",
-            class = "border border-1 border-primary shadow"
-        )
+#' @importFrom shiny NS tagList
+mod_CellCycling_ui <- function(id) {
+  ns <- NS(id)
+  tagList(
+    actionButton(
+      inputId = ns("addCycling"),
+      label = "Assign Cycling Phase",
+      icon = icon("clock-rotate-left"),
+      style = "width:200px",
+      class = "border border-1 border-primary shadow"
     )
+  )
 }
 
 #' CellCyling Server Functions
@@ -25,80 +25,82 @@ mod_CellCycling_ui <- function(id){
 #' @importFrom Seurat CellCycleScoring
 #'
 #' @noRd
-mod_CellCycling_server <- function(id,
-                                   seuratObj,
-                                   assay,
-                                   metaPatchRequest,
-                                   metaPatchVersion){
-    moduleServer( id, function(input, output, session){
-        ns <- session$ns
-        observeEvent(input$addCycling, {
-            s.genes <- Seurat::cc.genes$s.genes
-            g2m.genes <- Seurat::cc.genes$g2m.genes
-            if(!isTruthy(seuratObj())){
-                showNotification(
-                    ui = "Please input single cell data before adding cycling phase...",
-                    action = NULL,
-                    duration = 3,
-                    closeButton = TRUE,
-                    type = "default",
-                    session = session
-                )
-            }else if(!dataNormalized(seuratObj())){
-                showNotification(
-                    ui = "Please normalize data before adding cycling phase...",
-                    action = NULL,
-                    duration = 3,
-                    closeButton = TRUE,
-                    type = "default",
-                    session = session
-                )
-            }else{
-                obj <- seuratObj()
+mod_CellCycling_server <- function(
+  id,
+  seuratObj,
+  assay,
+  metaPatchRequest,
+  metaPatchVersion
+) {
+  moduleServer(id, function(input, output, session) {
+    ns <- session$ns
+    observeEvent(input$addCycling, {
+      s.genes <- Seurat::cc.genes$s.genes
+      g2m.genes <- Seurat::cc.genes$g2m.genes
+      if (!isTruthy(seuratObj())) {
+        showNotification(
+          ui = "Please input single cell data before adding cycling phase...",
+          action = NULL,
+          duration = 3,
+          closeButton = TRUE,
+          type = "default",
+          session = session
+        )
+      } else if (!dataNormalized(seuratObj())) {
+        showNotification(
+          ui = "Please normalize data before adding cycling phase...",
+          action = NULL,
+          duration = 3,
+          closeButton = TRUE,
+          type = "default",
+          session = session
+        )
+      } else {
+        obj <- seuratObj()
 
-                ## use the seurat original CellCycling function for now
-                withProgress(
-                    message = "Calculating Cell Cycling Score...",
-                    tryCatch(
-                    {
-                        obj <- CellCycleScoring(
-                            obj,
-                            s.features = s.genes,
-                            g2m.features = g2m.genes,
-                            ctrl = NULL,
-                            set.ident = FALSE
-                        )
-                        seuratObj(obj)
-                        nextPatchVersion <- metaPatchVersion() + 1L
-                        metaPatchVersion(nextPatchVersion)
-                        metaPatchRequest(list(
-                            cols = c("S.Score", "G2M.Score", "Phase"),
-                            version = nextPatchVersion
-                        ))
-                        showNotification(
-                            ui = "Successfully Added!",
-                            action = NULL,
-                            duration = 3,
-                            closeButton = TRUE,
-                            type = "default",
-                            session = session
-                        )
-                    },
-                    error = function(cond){
-                        showNotification(
-                            ui = paste0("CellCycleScoring failed: ", cond),
-                            action = NULL,
-                            duration = 3,
-                            closeButton = TRUE,
-                            type = "default",
-                            session = session
-                        )
-                    }
-                    )
-                )
+        ## use the seurat original CellCycling function for now
+        withProgress(
+          message = "Calculating Cell Cycling Score...",
+          tryCatch(
+            {
+              obj <- CellCycleScoring(
+                obj,
+                s.features = s.genes,
+                g2m.features = g2m.genes,
+                ctrl = NULL,
+                set.ident = FALSE
+              )
+              seuratObj(obj)
+              nextPatchVersion <- metaPatchVersion() + 1L
+              metaPatchVersion(nextPatchVersion)
+              metaPatchRequest(list(
+                cols = c("S.Score", "G2M.Score", "Phase"),
+                version = nextPatchVersion
+              ))
+              showNotification(
+                ui = "Successfully Added!",
+                action = NULL,
+                duration = 3,
+                closeButton = TRUE,
+                type = "default",
+                session = session
+              )
+            },
+            error = function(cond) {
+              showNotification(
+                ui = paste0("CellCycleScoring failed: ", cond),
+                action = NULL,
+                duration = 3,
+                closeButton = TRUE,
+                type = "default",
+                session = session
+              )
             }
-        })
+          )
+        )
+      }
     })
+  })
 }
 
 #' CellCycleScoring_2
@@ -112,54 +114,53 @@ mod_CellCycling_server <- function(id,
 #' @importFrom Seurat CellCycleScoring
 #' @noRd
 CellCycleScoring_2 <- function(
-    object,
-    s.features,
-    g2m.features,
-    ctrl = NULL,
-    set.ident = FALSE,
-    nbin = 24,
-    ...
-    ){
-    startBin <- nbin
-    obj <- NULL
-    while(startBin >= 4){
-        obj <- tryCatch(
-        {
-            message("Using nbin: ", startBin)
-            seuratObj <- CellCycleScoring(
-                object = object,
-                s.features = s.features,
-                g2m.features = g2m.features,
-                ctrl = ctrl,
-                set.ident = set.ident,
-                nbin = startBin,
-                ...
-            )
-            ## if the function works, break the loop
-            message("succeed")
-            return(seuratObj)
-            ##break
-        },
-        error=function(cond) {
-            message(cond)
-            startBin <<- startBin-1
-            message("Decreasing nbin: ", startBin)
-            return(NULL)
-        },
-        finally={
-            message("Done.")
-        }
+  object,
+  s.features,
+  g2m.features,
+  ctrl = NULL,
+  set.ident = FALSE,
+  nbin = 24,
+  ...
+) {
+  startBin <- nbin
+  obj <- NULL
+  while (startBin >= 4) {
+    obj <- tryCatch(
+      {
+        message("Using nbin: ", startBin)
+        seuratObj <- CellCycleScoring(
+          object = object,
+          s.features = s.features,
+          g2m.features = g2m.features,
+          ctrl = ctrl,
+          set.ident = set.ident,
+          nbin = startBin,
+          ...
         )
-        if(!is.null(obj)){
-            break
-        }
+        ## if the function works, break the loop
+        message("succeed")
+        return(seuratObj)
+        ##break
+      },
+      error = function(cond) {
+        message(cond)
+        startBin <<- startBin - 1
+        message("Decreasing nbin: ", startBin)
+        return(NULL)
+      },
+      finally = {
+        message("Done.")
+      }
+    )
+    if (!is.null(obj)) {
+      break
     }
-    return(obj)
+  }
+  return(obj)
 }
-
 
 ## To be copied in the UI
 # mod_CellCycling_ui("CellCyling_1")
-    
+
 ## To be copied in the server
 # mod_CellCycling_server("CellCyling_1")

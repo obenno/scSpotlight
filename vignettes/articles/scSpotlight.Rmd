@@ -31,17 +31,17 @@ To start using scSpotlight, please use the command below and access the app via:
 scSpotlight::run_app(options = list(port = 8081, host = "0.0.0.0"))
 ```
 
-The default mode of app is `processing`. User could also change mode to `viewer`, which will only allow illustrating
-dataset and querying gene expressions:
+The default app mode is `analysis`. Users can also change mode to `explore`,
+which only allows exploring processed datasets and querying gene expressions:
 
 ```R
-scSpotlight::run_app(options = list(port = 8081, host = "0.0.0.0"), runningMode = "viewer")
+scSpotlight::run_app(options = list(port = 8081, host = "0.0.0.0"), runningMode = "explore")
 ```
 
 If one needs to load a very large dataset, use `dataDir` parameter to mount data directory and load `Rds` file directly.
 
 ```R
-scSpotlight::run_app(options = list(port = 8081, host = "0.0.0.0"), runningMode = "viewer", dataDir = "/path/to/data_directory")
+scSpotlight::run_app(options = list(port = 8081, host = "0.0.0.0"), runningMode = "explore", dataDir = "/path/to/data_directory")
 ```
 
 ## Main Panel
@@ -54,7 +54,7 @@ knitr::include_graphics("images/main_panel.png")
 
 ## Input Files
 
-Under the "processing" mode, `scSpotlight` supports compressed file containing typical 10X 
+Under Analysis Mode, `scSpotlight` supports compressed files containing typical 10X
 cellranger output ([Matrix Market Format](https://math.nist.gov/MatrixMarket/formats.html)):
 
 ```

@@ -4,153 +4,169 @@
 #'
 #' @param id,input,output,session Internal parameters for {shiny}.
 #'
-#' @noRd 
+#' @noRd
 #'
 #' @importFrom shiny NS tagList
-mod_FindMarkers_ui <- function(id){
+mod_FindMarkers_ui <- function(id) {
   ns <- NS(id)
   tagList(
-      selectizeInput(
-          inputId = ns("DEG_method"),
-          label = "Choose DEG Calculation Method",
-          choices = c("wilcox", "MAST"),
-          selected = "wilcox",
-          options = list(dropdownParent = "body")
+    selectizeInput(
+      inputId = ns("DEG_method"),
+      label = "Choose DEG Calculation Method",
+      choices = c("wilcox", "MAST"),
+      selected = "wilcox",
+      options = list(dropdownParent = "body")
+    ),
+    numericInput(
+      inputId = ns("min.pct"),
+      label = tagList(
+        "min.pct",
+        infoIcon(
+          "only test genes that are detected in a minimum fraction of min.pct cells in either of the two populations. Meant to speed up the function by not testing genes that are very infrequently expressed. Default of Seurat v4 is 0.1",
+          "right"
+        )
       ),
-      numericInput(
-          inputId = ns("min.pct"),
-          label = tagList("min.pct", infoIcon("only test genes that are detected in a minimum fraction of min.pct cells in either of the two populations. Meant to speed up the function by not testing genes that are very infrequently expressed. Default of Seurat v4 is 0.1", "right")),
-          value = 0.1,
-          min = 0.1,
-          max = 1,
-          step = 0.05,
-          width = NULL
+      value = 0.1,
+      min = 0.1,
+      max = 1,
+      step = 0.05,
+      width = NULL
+    ),
+    numericInput(
+      inputId = ns("logfc.threshold"),
+      label = tagList(
+        "logfc.threshold",
+        infoIcon(
+          "Limit testing to genes which show, on average, at least X-fold difference (log-scale) between the two groups of cells. Default of Seurat v4 is 0.25 Increasing logfc.threshold speeds up the function, but can miss weaker signals.",
+          "right"
+        )
       ),
-      numericInput(
-          inputId = ns("logfc.threshold"),
-          label = tagList("logfc.threshold", infoIcon("Limit testing to genes which show, on average, at least X-fold difference (log-scale) between the two groups of cells. Default of Seurat v4 is 0.25 Increasing logfc.threshold speeds up the function, but can miss weaker signals.", "right")),
-          value = 0.25,
-          min = 0,
-          max = NA,
-          step = 0.05,
-          width = NULL
+      value = 0.25,
+      min = 0,
+      max = NA,
+      step = 0.05,
+      width = NULL
+    ),
+    numericInput(
+      inputId = ns("p_val_adj_cutoff"),
+      label = tagList(
+        "adjusted p-value cutoff",
+        infoIcon(
+          "Filter DEG heatmap genes to markers with adjusted p-value below this threshold. Default is 0.001.",
+          "right"
+        )
       ),
-      numericInput(
-          inputId = ns("p_val_adj_cutoff"),
-          label = tagList("adjusted p-value cutoff", infoIcon("Filter DEG heatmap genes to markers with adjusted p-value below this threshold. Default is 0.001.", "right")),
-          value = 0.001,
-          min = 0,
-          max = 1,
-          step = 0.001,
-          width = NULL
-      ),
-      actionButton(
-          inputId = ns("runFindAllMarkers"),
-          label = "Find Markers",
-          icon = icon("stats", lib = "glyphicon"),
-          width = "200px",
-          class = c("border", "border-1", "border-primary", "shadow")
-      )
+      value = 0.001,
+      min = 0,
+      max = 1,
+      step = 0.001,
+      width = NULL
+    ),
+    actionButton(
+      inputId = ns("runFindAllMarkers"),
+      label = "Find Markers",
+      icon = icon("stats", lib = "glyphicon"),
+      width = "200px",
+      class = c("border", "border-1", "border-primary", "shadow")
+    )
   )
 }
 
 #' FindMarkers Server Functions
 #'
 #' @importFrom promises %...>% %...!% finally
-#' @noRd 
-mod_FindMarkers_server <- function(id,
-                                   seuratObj,
-                                   group.by){
-    moduleServer( id, function(input, output, session){
-        ns <- session$ns
+#' @noRd
+mod_FindMarkers_server <- function(id, seuratObj, group.by) {
+  moduleServer(id, function(input, output, session) {
+    ns <- session$ns
 
-        DEG_markers <- reactiveVal(NULL)
-        observeEvent(input$runFindAllMarkers,{
-
-            if(!isTruthy(seuratObj())){
-                showNotification(
-                    ui = "Please input single cell data before calculating markers...",
-                    action = NULL,
-                    duration = 3,
-                    closeButton = TRUE,
-                    type = "default",
-                    session = session
-                )
-            }else{
-                showNotification(
-                    ui = div(div(class = c("spinner-border", "spinner-border-sm", "text-primary"),
-                                 role = "status",
-                                 span(class = "sr-only", "Loading...")),
-                             "Calculating DEG result..."),
-                    action = NULL,
-                    duration = NULL,
-                    closeButton = FALSE,
-                    type = "default",
-                    id = "DEG_notification",
-                    session = session
-                )
-                obj <- seuratObj()
-                DEG_method <- input$DEG_method
-                group.by_value <- group.by()
-                min_pct_value <- input$min.pct
-                logfc_threshold_value <- input$logfc.threshold
-                DEG_promise <- future_promise({
-                    message("Started FindAllMarkers...")
-                    if(isTruthy(group.by_value) && group.by_value != "None"){
-                        ## save original idents
-                        Idents(obj) <- group.by_value
-                    }
-                    markers <- FindAllMarkers(obj,
-                                              test.use = DEG_method,
-                                              only.pos = TRUE,
-                                              min.pct = min_pct_value,
-                                              logfc.threshold = logfc_threshold_value)
-
-                    markers
-                }) %...>% (
-                    function(markers) {
-                        DEG_markers(markers)
-
-                        markers
-                    }
-                ) %...!% (
-                    function(error) {
-                        showNotification(
-                            ui = paste("DEG analysis failed:", conditionMessage(error)),
-                            action = NULL,
-                            duration = 6,
-                            closeButton = TRUE,
-                            type = "error",
-                            session = session
-                        )
-                    }
-                )
-
-                promises::finally(
-                    DEG_promise,
-                    function(){ removeNotification(id = "DEG_notification", session = session) }
-                )
-
-            }
-            return(NULL) ## pretty important, or the future_promise will block the main thread
-        })
-        list(
-            markers = reactive({
-                DEG_markers()
-            }),
-            pAdjCutoff = reactive({
-                input$p_val_adj_cutoff
-            })
+    DEG_markers <- reactiveVal(NULL)
+    observeEvent(input$runFindAllMarkers, {
+      if (!isTruthy(seuratObj())) {
+        showNotification(
+          ui = "Please input single cell data before calculating markers...",
+          action = NULL,
+          duration = 3,
+          closeButton = TRUE,
+          type = "default",
+          session = session
         )
+      } else {
+        showNotification(
+          ui = div(
+            div(
+              class = c("spinner-border", "spinner-border-sm", "text-primary"),
+              role = "status",
+              span(class = "sr-only", "Loading...")
+            ),
+            "Calculating DEG result..."
+          ),
+          action = NULL,
+          duration = NULL,
+          closeButton = FALSE,
+          type = "default",
+          id = "DEG_notification",
+          session = session
+        )
+        obj <- seuratObj()
+        DEG_method <- input$DEG_method
+        group.by_value <- group.by()
+        min_pct_value <- input$min.pct
+        logfc_threshold_value <- input$logfc.threshold
+        DEG_promise <- future_promise({
+          message("Started FindAllMarkers...")
+          if (isTruthy(group.by_value) && group.by_value != "None") {
+            ## save original idents
+            Idents(obj) <- group.by_value
+          }
+          markers <- FindAllMarkers(
+            obj,
+            test.use = DEG_method,
+            only.pos = TRUE,
+            min.pct = min_pct_value,
+            logfc.threshold = logfc_threshold_value
+          )
+
+          markers
+        }) %...>%
+          (function(markers) {
+            DEG_markers(markers)
+
+            markers
+          }) %...!%
+          (function(error) {
+            showNotification(
+              ui = paste("DEG analysis failed:", conditionMessage(error)),
+              action = NULL,
+              duration = 6,
+              closeButton = TRUE,
+              type = "error",
+              session = session
+            )
+          })
+
+        promises::finally(
+          DEG_promise,
+          function() {
+            removeNotification(id = "DEG_notification", session = session)
+          }
+        )
+      }
+      return(NULL) ## pretty important, or the future_promise will block the main thread
     })
-
-    
-    
-
+    list(
+      markers = reactive({
+        DEG_markers()
+      }),
+      pAdjCutoff = reactive({
+        input$p_val_adj_cutoff
+      })
+    )
+  })
 }
-    
+
 ## To be copied in the UI
 # mod_FindMarkers_ui("FindMarkers_1")
-    
+
 ## To be copied in the server
 # mod_FindMarkers_server("FindMarkers_1")

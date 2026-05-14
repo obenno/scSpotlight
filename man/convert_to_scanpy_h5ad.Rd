@@ -12,7 +12,7 @@ convert_to_scanpy_h5ad(
   include_raw = TRUE,
   matrix_buffer_size = 16384L,
   matrix_chunk_size = 1024L,
-  gzip_level = 0L,
+  gzip_level = 6L,
   obsm_chunk_rows = 4096L
 )
 }

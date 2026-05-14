@@ -35,14 +35,12 @@ This is intended for converting exchange formats into a portable BPCells
 bundle that can be loaded by scSpotlight or by \code{SeuratObject::LoadSeuratRds()}
 from the extracted bundle directory context.
 
-\code{.h5ad} inputs require the optional \code{anndataR} package and are read with
-\code{anndataR::read_h5ad(..., as = "Seurat")}. In practice, \code{.h5ad} conversion
-also requires the HDF5 backend used by \code{anndataR} (for example \code{rhdf5}).
+\code{.h5ad} inputs are imported through \code{BPCells::open_matrix_anndata_hdf5()} for
+memory-conserving matrix access. The converter reads \code{obs} and \code{obsm} through
+\code{rhdf5} without materializing the full matrix in memory.
 
 Existing BPCells-backed layers are preserved. Non-BPCells assay layers are
 rewritten into BPCells-backed on-disk storage before the bundle is created.
-The bundle writer also drops \code{scale.data} layers to avoid packaging dense,
-derived matrices unnecessarily.
 }
 \examples{
 \dontrun{
