@@ -106,46 +106,46 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| BACK-01 | TBD | Pending |
-| BACK-02 | TBD | Pending |
-| BACK-03 | TBD | Pending |
-| BACK-04 | TBD | Pending |
-| XFER-01 | TBD | Pending |
-| XFER-02 | TBD | Pending |
-| XFER-03 | TBD | Pending |
-| XFER-04 | TBD | Pending |
-| XFER-05 | TBD | Pending |
-| SCAT-01 | TBD | Pending |
-| SCAT-02 | TBD | Pending |
-| SCAT-03 | TBD | Pending |
-| SCAT-04 | TBD | Pending |
-| SCAT-05 | TBD | Pending |
-| ANAL-01 | TBD | Pending |
-| ANAL-02 | TBD | Pending |
-| ANAL-03 | TBD | Pending |
-| ANAL-04 | TBD | Pending |
-| ANAL-05 | TBD | Pending |
-| BUND-01 | TBD | Pending |
-| BUND-02 | TBD | Pending |
-| BUND-03 | TBD | Pending |
-| BUND-04 | TBD | Pending |
-| BUND-05 | TBD | Pending |
-| PLOT-01 | TBD | Pending |
-| PLOT-02 | TBD | Pending |
-| PLOT-03 | TBD | Pending |
-| PLOT-04 | TBD | Pending |
-| PLOT-05 | TBD | Pending |
-| DOCS-01 | TBD | Pending |
-| DOCS-02 | TBD | Pending |
-| AI-01 | TBD | Pending |
-| AI-02 | TBD | Pending |
-| AI-03 | TBD | Pending |
+| BACK-01 | Phase 1 | Pending |
+| BACK-02 | Phase 4 | Pending |
+| BACK-03 | Phase 4 | Pending |
+| BACK-04 | Phase 6 | Pending |
+| XFER-01 | Phase 2 | Pending |
+| XFER-02 | Phase 2 | Pending |
+| XFER-03 | Phase 2 | Pending |
+| XFER-04 | Phase 2 | Pending |
+| XFER-05 | Phase 1 | Pending |
+| SCAT-01 | Phase 2 | Pending |
+| SCAT-02 | Phase 2 | Pending |
+| SCAT-03 | Phase 2 | Pending |
+| SCAT-04 | Phase 2 | Pending |
+| SCAT-05 | Phase 2 | Pending |
+| ANAL-01 | Phase 3 | Pending |
+| ANAL-02 | Phase 3 | Pending |
+| ANAL-03 | Phase 3 | Pending |
+| ANAL-04 | Phase 3 | Pending |
+| ANAL-05 | Phase 3 | Pending |
+| BUND-01 | Phase 4 | Pending |
+| BUND-02 | Phase 4 | Pending |
+| BUND-03 | Phase 4 | Pending |
+| BUND-04 | Phase 4 | Pending |
+| BUND-05 | Phase 4 | Pending |
+| PLOT-01 | Phase 5 | Pending |
+| PLOT-02 | Phase 5 | Pending |
+| PLOT-03 | Phase 5 | Pending |
+| PLOT-04 | Phase 5 | Pending |
+| PLOT-05 | Phase 5 | Pending |
+| DOCS-01 | Phase 1 | Pending |
+| DOCS-02 | Phase 6 | Pending |
+| AI-01 | Phase 6 | Pending |
+| AI-02 | Phase 6 | Pending |
+| AI-03 | Phase 6 | Pending |
 
 **Coverage:**
 - v1 requirements: 34 total
-- Mapped to phases: 0
-- Unmapped: 34 pending roadmap
+- Mapped to phases: 34
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-06-16*
-*Last updated: 2026-06-16 after initial definition*
+*Last updated: 2026-06-16 after initial roadmap creation*
