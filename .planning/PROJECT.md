@@ -24,6 +24,9 @@ Users can load or create large processed single-cell artifacts and inspect metad
 - ✓ JavaScript source is bundled with Vite and tested with Vitest.
 - ✓ Source-checkout development, CI, and Docker builds are managed through Pixi.
 - ✓ Explore Parquet bundle format is documented as the read-optimized Explore Mode distribution format.
+- ✓ Phase 1 validated Analysis Mode backend seams for Seurat/BPCells metadata, reductions, features, PCA summaries, and expression through contract tests.
+- ✓ Phase 1 established `inst/protocol/browser-payload-contracts.json` as the shared browser payload contract manifest with paired R producer and JS consumer/cache tests.
+- ✓ Phase 1 documented the runtime contract backbone in `DEVELOPMENT.md` and added a documentation guard test.
 
 ### Active
 
@@ -79,6 +82,8 @@ An optional LLM assistant design exists in the repo. It is disabled by default, 
 | Keep expression transfers queued in-process for Analysis Mode | Avoid worker-process memory spikes and unsafe BPCells object transfer | ✓ Good |
 | Keep floating DotPlot/FeaturePlot explicit-action | Prevent expensive automatic webR/server rerenders during selection changes | ✓ Good |
 | Keep main panel expression mode single-gene | Avoid ambiguous multi-gene color semantics and preserve current rendering assumptions | ✓ Good |
+| Use a browser payload contract manifest | Keep R producer tests, JS consumer/cache tests, and docs tied to one payload source of truth | ✓ Good |
+| Require all-or-nothing payload contract updates | Prevent metadata/reduction/expression/PCA/patch message drift across manifest, tests, cache versions, and docs | ✓ Good |
 | Keep optional LLM assistant disabled-by-default and summary-only | Protect sensitive large analysis state and avoid mandatory provider setup | — Pending |
 | Use Pixi instead of renv for source-checkout development | Keep one environment path for R, JS, CI, and Docker workflows | ✓ Good |
 
@@ -86,7 +91,7 @@ An optional LLM assistant design exists in the repo. It is disabled by default, 
 
 This document evolves at phase transitions and milestone boundaries.
 
-**After each phase transition** (via `/gsd-transition`):
+**After each phase transition** (via the internal GSD transition workflow):
 1. Requirements invalidated? -> Move to Out of Scope with reason
 2. Requirements validated? -> Move to Validated with phase reference
 3. New requirements emerged? -> Add to Active
@@ -100,4 +105,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-16 after initialization*
+*Last updated: 2026-06-20 after Phase 1*

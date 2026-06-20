@@ -18,25 +18,25 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-06-16)
+See: .planning/PROJECT.md (updated 2026-06-20)
 
 **Core value:** Users can load or create large processed single-cell artifacts and inspect metadata, reductions, expression, and marker signals interactively without materializing whole datasets in memory.
-**Current focus:** Phase 01 — runtime-contract-backbone
+**Current focus:** Phase 2 — Arrow Transfer & Main Scatter Reliability
 
 ## Current Position
 
-Phase: 2
+Phase: 2 of 6 (Arrow Transfer & Main Scatter Reliability)
 Plan: Not started
-Status: Phase complete — ready for verification
-Last activity: 2026-06-20
+Status: Ready to plan
+Last activity: 2026-06-20 — Phase 1 runtime contract backbone verified and completed.
 
-Progress: [██████████] 100%
+Progress: [██░░░░░░░░] 17%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 6
+- Total plans completed: 3
 - Average duration: 11 min
 - Total execution time: 0.6 hours
 
@@ -50,7 +50,6 @@ Progress: [██████████] 100%
 | 4. Portable Artifacts & Explore Mode End-to-end | 0/TBD | N/A | N/A |
 | 5. Floating Analysis Panels & DEG Workflows | 0/TBD | N/A | N/A |
 | 6. Optional Assistant Safety & Release Documentation | 0/TBD | N/A | N/A |
-| 01 | 3 | - | - |
 
 **Recent Trend:**
 
@@ -63,14 +62,9 @@ Progress: [██████████] 100%
 
 - Seurat v5 + BPCells remains the canonical Analysis Mode backend; mirrored Analysis DuckDB is out of scope.
 - Arrow IPC remains the large server-to-browser payload boundary for metadata, reductions, expression, PCA summaries, and metadata patches.
+- Browser payload contracts now have a shared manifest at `inst/protocol/browser-payload-contracts.json` used by paired R producer and JS consumer/cache tests.
+- Payload contract changes must update the manifest, paired R tests, paired JS tests, cache-version behavior, and `DEVELOPMENT.md` together.
 - Explore Mode remains constrained to validated processed `.explore-parquet.zip` artifacts and read-only inspection workflows.
-- Optional LLM assistant work remains disabled by default, server-side only, summary-only, and privacy guarded.
-- Phase 01 Plan 01: Kept Analysis metadata/reduction transfers on data-frame adapter jobs while expression uses BPCells path-based jobs.
-- Phase 01 Plan 01: Added source guards rather than helper source changes because existing Seurat/BPCells helper paths satisfied BACK-01 contract tests.
-- Phase 01 Plan 02: Browser payload contract manifest is the shared source of truth for R producer and JS consumer/cache tests.
-- Phase 01 Plan 02: Existing browser handlers already satisfied XFER-05 cache/version contracts; only JS test mocks needed API alignment.
-- [Phase 01]: Phase 01 Plan 03: Runtime contract docs use browser-payload-contracts.json as the source of truth for documented message names. — Keeping docs tied to the manifest prevents browser message names from drifting away from the R producer and JS consumer contract tests.
-- [Phase 01]: Phase 01 Plan 03: Payload changes must update the manifest, paired R producer test, paired JS consumer test, cache-version behavior, and DEVELOPMENT.md together. — The all-or-nothing checklist protects XFER-05 by making payload protocol, tests, cache behavior, and developer documentation change in one reviewed unit.
 
 ### Pending Todos
 
@@ -90,6 +84,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-06-20T13:53:49.011Z
-Stopped at: Completed 01-03-PLAN.md
+Last session: 2026-06-20
+Stopped at: Phase 1 complete, ready to discuss or plan Phase 2
 Resume file: None
