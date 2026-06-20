@@ -3,6 +3,7 @@
  */
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import payloadContracts from "../inst/protocol/browser-payload-contracts.json";
 
 const testState = vi.hoisted(() => ({
   handlers: {},
@@ -271,6 +272,46 @@ const selectValues = (id, values) => {
     option.selected = values.includes(option.value);
   });
   el.dispatchEvent(new Event("change"));
+};
+
+const browserContractMessageNames = [
+  "meta_ready",
+  "meta_patch_ready",
+  "reduction_ready",
+  "reductions_ready",
+  "pca_ready",
+  "expr_ready",
+  "reduction_cached",
+  "expr_cached",
+];
+
+const latestInputValue = (name) => {
+  const found = [...testState.inputs].reverse().find(([inputName]) => inputName === name);
+  return found?.[1];
+};
+
+const encodeLabelBuffer = (label) => new TextEncoder().encode(label).buffer;
+
+const decodeLabelBuffer = (buffer) => new TextDecoder().decode(buffer);
+
+const resetArrowReaderMocks = async () => {
+  const arrowReader = await import("./modules/arrowReader.js");
+  arrowReader.readArrowIPC.mockReset();
+  arrowReader.fetchArrowIPCBuffer.mockReset();
+  arrowReader.decodeArrowIPC.mockReset();
+  arrowReader.getFloat32Column.mockReset();
+  arrowReader.parseMetaFromArrow.mockReset();
+  return arrowReader;
+};
+
+const expectResourceUrl = (url, kind, basename) => {
+  expect(url).toBe(`${window.location.origin}/data/${kind}/${basename}`);
+  expect(url).not.toMatch(/filePath|output_file|matrix_dir|\/tmp|[A-Za-z]:\\/);
+};
+
+const numericValueFromResourceUrl = (url) => {
+  const match = /v(\d+)/.exec(url);
+  return match ? Number(match[1]) : 0;
 };
 
 describe("rename cluster client selection", () => {
@@ -548,5 +589,259 @@ describe("rename cluster client selection", () => {
     expect(document.getElementById("floatingFeaturePlotStatus").textContent).toContain(
       "GeneA, GeneB",
     );
+  });
+
+  it("registers custom message handlers for every browser payload contract", () => {
+    expect(Object.keys(payloadContracts.messages)).toEqual(browserContractMessageNames);
+    browserContractMessageNames.forEach((messageName) => {
+      expect(testState.handlers[messageName]).toEqual(expect.any(Function));
+    });
+  });
+
+  it("meta_ready fetches metaFile metadata and reports metaProcessed", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    const parsedMeta = {
+      cells: { type: "category", value: { Cell1: [0], Cell2: [1], Cell3: [2] } },
+      cluster: { type: "category", value: { alpha: [0, 2], beta: [1] } },
+      nCount: { type: "number", value: new Float32Array([1, 2, 3]) },
+    };
+    arrowReader.readArrowIPC.mockResolvedValue({ table: "meta" });
+    arrowReader.parseMetaFromArrow.mockReturnValue(parsedMeta);
+
+    testState.handlers.meta_ready({ metaFile: "meta-ipc", metaVersion: 100 });
+
+    await vi.waitFor(() => {
+      expectResourceUrl(arrowReader.readArrowIPC.mock.calls[0][0], "meta", "meta-ipc");
+      expect(arrowReader.parseMetaFromArrow).toHaveBeenCalledWith({ table: "meta" });
+      expect(testState.reglInstance.origData.cellMetaData).toBe(parsedMeta);
+      expect(latestInputValue("metaProcessed")).toBe(true);
+    });
+  });
+
+  it("meta_patch_ready fetches patch metadata and reports changed cols", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    testState.reglInstance.origData.cellMetaData = {
+      cells: { type: "category", value: { Cell1: [0], Cell2: [1], Cell3: [2] } },
+      cluster: { type: "category", value: { old: [0, 1, 2] } },
+      batch: { type: "category", value: { A: [0], B: [1, 2] } },
+    };
+    testState.reglInstance.plotMetaData.group_by = "cluster";
+    const parsedPatch = {
+      cluster: { type: "category", value: { alpha: [0, 2], beta: [1] } },
+    };
+    arrowReader.readArrowIPC.mockResolvedValue({ table: "patch" });
+    arrowReader.parseMetaFromArrow.mockReturnValue(parsedPatch);
+
+    testState.handlers.meta_patch_ready({
+      metaFile: "meta-patch-ipc",
+      metaVersion: 101,
+      cols: ["cluster"],
+    });
+
+    await vi.waitFor(() => {
+      expectResourceUrl(
+        arrowReader.readArrowIPC.mock.calls[0][0],
+        "meta",
+        "meta-patch-ipc",
+      );
+      expect(testState.reglInstance.origData.cellMetaData.cluster).toBe(
+        parsedPatch.cluster,
+      );
+      expect(testState.reglInstance.origData.cellMetaData.batch).toBeDefined();
+      expect(latestInputValue("metaPatchProcessed")).toEqual({
+        cols: ["cluster"],
+        refreshMainPlot: true,
+        timestamp: expect.any(Number),
+      });
+    });
+  });
+
+  it("pca_ready stores Float32Array stdev data and clears on null stdevFile", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    const stdev = new Float32Array([4.5, 2.25, 1.125]);
+    arrowReader.readArrowIPC.mockResolvedValue({ table: "pca" });
+    arrowReader.getFloat32Column.mockReturnValue(stdev);
+
+    testState.handlers.pca_ready({ stdevFile: "pca-stdev-ipc", reductionVersion: 102 });
+
+    await vi.waitFor(() => {
+      expectResourceUrl(
+        arrowReader.readArrowIPC.mock.calls[0][0],
+        "reduction",
+        "pca-stdev-ipc",
+      );
+      expect(arrowReader.getFloat32Column).toHaveBeenCalledWith({ table: "pca" }, "stdev");
+      expect(testState.reglInstance.origData.pcaStdev).toBeInstanceOf(Float32Array);
+      expect(Array.from(testState.reglInstance.origData.pcaStdev)).toEqual([
+        4.5,
+        2.25,
+        1.125,
+      ]);
+    });
+
+    testState.handlers.pca_ready({ stdevFile: null, reductionVersion: 103 });
+    await vi.waitFor(() => {
+      expect(testState.reglInstance.origData.pcaStdev).toBeNull();
+    });
+  });
+
+  it("reduction_ready, reductions_ready, and reduction_cached honor versioned cache keys", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    arrowReader.fetchArrowIPCBuffer.mockImplementation((url) =>
+      Promise.resolve(encodeLabelBuffer(url)),
+    );
+    arrowReader.decodeArrowIPC.mockImplementation((buffer) => ({
+      url: decodeLabelBuffer(buffer),
+    }));
+    arrowReader.getFloat32Column.mockImplementation((table, colName) => {
+      const value = numericValueFromResourceUrl(table.url);
+      return new Float32Array([colName === "X" ? value : value + 0.5]);
+    });
+
+    testState.handlers.reduction_ready({
+      reductionFile: "umap-v200",
+      reductionName: "umap",
+      reductionVersion: 200,
+    });
+    await vi.waitFor(() => {
+      expectResourceUrl(
+        arrowReader.fetchArrowIPCBuffer.mock.calls.at(-1)[0],
+        "reduction",
+        "umap-v200",
+      );
+      expect(latestInputValue("updateReduction-cachedReductionKeys")).toEqual([
+        "200::umap",
+      ]);
+      expect(Array.from(testState.reglInstance.origData.reductionData.X)).toEqual([
+        200,
+      ]);
+    });
+
+    testState.handlers.reductions_ready({
+      reductionVersion: 201,
+      activeReduction: "pca",
+      reductions: [
+        { reductionFile: "umap-v201", reductionName: "umap", reductionVersion: 201 },
+        { reductionFile: "pca-v201", reductionName: "pca", reductionVersion: 201 },
+      ],
+    });
+    await vi.waitFor(() => {
+      expect(latestInputValue("updateReduction-cachedReductionKeys")).toEqual([
+        "201::pca",
+        "201::umap",
+      ]);
+      expect(latestInputValue("updateReduction-cachedReductionKeys")).not.toContain(
+        "200::umap",
+      );
+      expect(Array.from(testState.reglInstance.origData.reductionData.X)).toEqual([
+        201,
+      ]);
+    });
+
+    const fetchCountBeforeStale = arrowReader.fetchArrowIPCBuffer.mock.calls.length;
+    testState.handlers.reduction_ready({
+      reductionFile: "umap-v199",
+      reductionName: "umap",
+      reductionVersion: 199,
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(arrowReader.fetchArrowIPCBuffer).toHaveBeenCalledTimes(fetchCountBeforeStale);
+    expect(Array.from(testState.reglInstance.origData.reductionData.X)).toEqual([201]);
+
+    testState.handlers.reduction_cached({
+      reductionName: "missing",
+      reductionVersion: 201,
+    });
+    await vi.waitFor(() => {
+      expect(latestInputValue("updateReduction-cacheMissReduction")).toBe("missing");
+    });
+  });
+
+  it("expr_ready and expr_cached honor assay/gene versioned cache keys", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    arrowReader.fetchArrowIPCBuffer.mockImplementation((url) =>
+      Promise.resolve(encodeLabelBuffer(url)),
+    );
+    arrowReader.decodeArrowIPC.mockImplementation((buffer) => ({
+      url: decodeLabelBuffer(buffer),
+    }));
+    arrowReader.getFloat32Column.mockImplementation((table) => {
+      const value = numericValueFromResourceUrl(table.url);
+      return new Float32Array([value, value + 1]);
+    });
+
+    testState.handlers.expr_ready({
+      exprFile: "gene-a-v300",
+      geneName: "GeneA",
+      assay: "RNA",
+      exprVersion: 300,
+    });
+    await vi.waitFor(() => {
+      expectResourceUrl(
+        arrowReader.fetchArrowIPCBuffer.mock.calls.at(-1)[0],
+        "expr",
+        "gene-a-v300",
+      );
+      expect(latestInputValue("inputFeatures-cachedExprKeys")).toEqual([
+        "300::RNA::GeneA",
+      ]);
+      expect(Array.from(testState.reglInstance.origData.expressionData.GeneA)).toEqual([
+        300,
+        301,
+      ]);
+    });
+
+    testState.handlers.expr_ready({
+      exprFile: "gene-b-v301",
+      geneName: "GeneB",
+      assay: "RNA",
+      exprVersion: 301,
+    });
+    await vi.waitFor(() => {
+      expect(latestInputValue("inputFeatures-cachedExprKeys")).toEqual([
+        "301::RNA::GeneB",
+      ]);
+      expect(latestInputValue("inputFeatures-cachedExprKeys")).not.toContain(
+        "300::RNA::GeneA",
+      );
+      expect(Array.from(testState.reglInstance.origData.expressionData.GeneB)).toEqual([
+        301,
+        302,
+      ]);
+    });
+
+    const fetchCountBeforeStale = arrowReader.fetchArrowIPCBuffer.mock.calls.length;
+    testState.handlers.expr_ready({
+      exprFile: "gene-stale-v299",
+      geneName: "GeneStale",
+      assay: "RNA",
+      exprVersion: 299,
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(arrowReader.fetchArrowIPCBuffer).toHaveBeenCalledTimes(fetchCountBeforeStale);
+    expect(testState.reglInstance.origData.expressionData.GeneStale).toBeUndefined();
+
+    testState.handlers.expr_cached({
+      geneName: "GeneB",
+      assay: "RNA",
+      exprVersion: 301,
+    });
+    await vi.waitFor(() => {
+      expect(Array.from(testState.reglInstance.origData.expressionData.GeneB)).toEqual([
+        301,
+        302,
+      ]);
+    });
+
+    testState.handlers.expr_cached({
+      geneName: "MissingGene",
+      assay: "RNA",
+      exprVersion: 301,
+    });
+    await vi.waitFor(() => {
+      expect(latestInputValue("inputFeatures-cacheMissFeature")).toBe("MissingGene");
+    });
   });
 });
