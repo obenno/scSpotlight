@@ -56,7 +56,7 @@ Requirements for the current roadmap. Each requirement maps to exactly one roadm
 
 ### Optional Assistant and Documentation
 
-- [ ] **DOCS-01**: Developer can update `DEVELOPMENT.md` whenever behavior contracts, packaging workflows, validations, or major architectural decisions change.
+- [x] **DOCS-01**: Developer can update `DEVELOPMENT.md` whenever behavior contracts, packaging workflows, validations, or major architectural decisions change.
 - [ ] **DOCS-02**: Developer can keep README, package docs, Pixi tasks, Docker guidance, and dependency metadata aligned with the current BPCells/Arrow/deck.gl/Explore architecture.
 - [ ] **AI-01**: User can start the app without LLM dependencies or provider configuration unless `enableLLM = TRUE` is explicitly requested.
 - [ ] **AI-02**: If enabled, assistant helpers expose only capped, aggregated, read-only summaries of app state, group counts, and top DEG rows.
@@ -135,7 +135,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PLOT-03 | Phase 5 | Pending |
 | PLOT-04 | Phase 5 | Pending |
 | PLOT-05 | Phase 5 | Pending |
-| DOCS-01 | Phase 1 | Pending |
+| DOCS-01 | Phase 1 | Complete |
 | DOCS-02 | Phase 6 | Pending |
 | AI-01 | Phase 6 | Pending |
 | AI-02 | Phase 6 | Pending |
