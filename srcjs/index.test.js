@@ -142,6 +142,27 @@ vi.mock("./modules/deckScatter.js", () => {
       this.origData.reductionData = reductionData;
     }
 
+    updateCellMetaData(cellMetaData) {
+      this.origData.cellMetaData = cellMetaData;
+    }
+
+    updateCellMetaDataPatch(cellMetaDataPatch) {
+      this.origData.cellMetaData = {
+        ...this.origData.cellMetaData,
+        ...cellMetaDataPatch,
+      };
+    }
+
+    updateExpressionData(expressionData) {
+      Object.entries(expressionData).forEach(([feature, values]) => {
+        this.origData.expressionData[feature] = new Float32Array(values);
+      });
+    }
+
+    updatePcaStdev(pcaStdev) {
+      this.origData.pcaStdev = pcaStdev ? new Float32Array(pcaStdev) : null;
+    }
+
     clearHighlight() {}
 
     setSelectedCells(selectedCells = [], { source = null } = {}) {
@@ -240,6 +261,7 @@ const resetReglInstance = () => {
     cellMetaData: {},
     expressionData: {},
     reductionData: { umap: [1] },
+    pcaStdev: null,
   };
   testState.reglInstance.plotEl = document.createElement("div");
   testState.reglInstance.catLegendEl = document.createElement("div");
