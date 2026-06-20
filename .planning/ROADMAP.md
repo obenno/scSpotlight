@@ -34,14 +34,14 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. Developer can change metadata, reduction, expression, PCA, or patch payloads only with paired R producer tests, JS consumer tests, cache-version behavior, and documented protocol notes.
   3. `DEVELOPMENT.md` reflects any behavior contracts, validation rules, or major architecture decisions changed by this phase.
 
-**Plans:** 1/3 plans executed
+**Plans:** 2/3 plans executed
 **Wave 1**
 
 - [x] 01-01-PLAN.md — Lock Analysis Mode Seurat/BPCells backend helper seams with contract tests.
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 01-02-PLAN.md — Add browser payload manifest with paired R producer and JS consumer/cache tests.
+- [x] 01-02-PLAN.md — Add browser payload manifest with paired R producer and JS consumer/cache tests.
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -181,7 +181,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Runtime Contract Backbone | 1/3 | In Progress|  |
+| 1. Runtime Contract Backbone | 2/3 | In Progress|  |
 | 2. Arrow Transfer & Main Scatter Reliability | 0/TBD | Not started | - |
 | 3. Analysis Mode Processing & Mutation Safety | 0/TBD | Not started | - |
 | 4. Portable Artifacts & Explore Mode End-to-end | 0/TBD | Not started | - |

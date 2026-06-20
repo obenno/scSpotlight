@@ -20,7 +20,7 @@ Requirements for the current roadmap. Each requirement maps to exactly one roadm
 - [ ] **XFER-02**: User can load or switch reductions through versioned Arrow IPC payloads and the app renders one real active reduction before reporting readiness.
 - [ ] **XFER-03**: User can query individual feature expression through queued, chunked, versioned Arrow IPC payloads without overlapping large BPCells/DuckDB memory peaks.
 - [ ] **XFER-04**: User can receive column-scoped metadata updates through `meta_patch_ready` without forcing full metadata reloads for every mutation.
-- [ ] **XFER-05**: Developer can change metadata, reduction, expression, PCA, or patch message payloads only with paired R producer tests, JS consumer tests, cache-version behavior, and `DEVELOPMENT.md` documentation.
+- [x] **XFER-05**: Developer can change metadata, reduction, expression, PCA, or patch message payloads only with paired R producer tests, JS consumer tests, cache-version behavior, and `DEVELOPMENT.md` documentation.
 
 ### Main Scatter Interaction
 
@@ -114,7 +114,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | XFER-02 | Phase 2 | Pending |
 | XFER-03 | Phase 2 | Pending |
 | XFER-04 | Phase 2 | Pending |
-| XFER-05 | Phase 1 | Pending |
+| XFER-05 | Phase 1 | Complete |
 | SCAT-01 | Phase 2 | Pending |
 | SCAT-02 | Phase 2 | Pending |
 | SCAT-03 | Phase 2 | Pending |
