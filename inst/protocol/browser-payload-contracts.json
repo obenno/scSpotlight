@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "description": "Browser payload contracts for scSpotlight Arrow IPC transfer messages.",
+  "messages": {
+    "meta_ready": {
+      "required_fields": ["metaFile", "metaVersion"],
+      "file_fields": ["metaFile"],
+      "version_field": "metaVersion",
+      "ipc_contract": "meta_ready"
+    },
+    "meta_patch_ready": {
+      "required_fields": ["metaFile", "metaVersion", "cols"],
+      "file_fields": ["metaFile"],
+      "version_field": "metaVersion",
+      "ipc_contract": "meta_patch_ready"
+    },
+    "reduction_ready": {
+      "required_fields": ["reductionFile", "reductionName", "reductionVersion"],
+      "file_fields": ["reductionFile"],
+      "version_field": "reductionVersion",
+      "cache_family": "reduction",
+      "ipc_contract": "reduction_ready"
+    },
+    "reductions_ready": {
+      "required_fields": ["reductions", "activeReduction", "reductionVersion"],
+      "entry_required_fields": ["reductionFile", "reductionName", "reductionVersion"],
+      "file_fields": ["reductionFile"],
+      "version_field": "reductionVersion",
+      "cache_family": "reduction",
+      "ipc_contract": "reduction_ready"
+    },
+    "pca_ready": {
+      "required_fields": ["stdevFile", "reductionVersion"],
+      "file_fields": ["stdevFile"],
+      "version_field": "reductionVersion",
+      "ipc_contract": "pca_ready"
+    },
+    "expr_ready": {
+      "required_fields": ["exprFile", "geneName", "assay", "exprVersion"],
+      "file_fields": ["exprFile"],
+      "version_field": "exprVersion",
+      "cache_family": "expression",
+      "ipc_contract": "expr_ready"
+    },
+    "reduction_cached": {
+      "required_fields": ["reductionName", "reductionVersion"],
+      "version_field": "reductionVersion",
+      "cache_family": "reduction"
+    },
+    "expr_cached": {
+      "required_fields": ["geneName", "assay", "exprVersion"],
+      "version_field": "exprVersion",
+      "cache_family": "expression"
+    }
+  },
+  "ipc_columns": {
+    "meta_ready": {
+      "required": ["cells"],
+      "notes": "Full metadata payload includes zero-based cells plus metadata columns."
+    },
+    "meta_patch_ready": {
+      "required": ["cells"],
+      "notes": "Patch payload includes zero-based cells plus only the requested cols."
+    },
+    "reduction_ready": {
+      "required": ["X", "Y"]
+    },
+    "pca_ready": {
+      "required": ["stdev"],
+      "nullable_when_file_missing": true
+    },
+    "expr_ready": {
+      "required": ["expr"]
+    }
+  },
+  "cache_versions": {
+    "reduction": {
+      "version_field": "reductionVersion",
+      "identity_fields": ["reductionName"],
+      "key_shape": "{reductionVersion}::{reductionName}",
+      "stale_policy": "ignore_older_versions",
+      "newer_version_policy": "clear_existing_reduction_cache",
+      "cache_miss_input": "updateReduction-cacheMissReduction"
+    },
+    "expression": {
+      "version_field": "exprVersion",
+      "identity_fields": ["assay", "geneName"],
+      "key_shape": "{exprVersion}::{assay}::{geneName}",
+      "stale_policy": "ignore_older_versions",
+      "newer_version_policy": "clear_existing_expression_cache",
+      "cache_miss_input": "inputFeatures-cacheMissFeature"
+    }
+  },
+  "browser_path_policy": {
+    "allow_absolute_paths": false,
+    "file_fields": ["metaFile", "reductionFile", "stdevFile", "exprFile"],
+    "forbidden_payload_fields": ["filePath", "output_file", "matrix_dir"],
+    "allowed_path_shape": "resource_basename_only"
+  }
+}
