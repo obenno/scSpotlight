@@ -1,12 +1,17 @@
 ---
-gsd_state_version: '1.0'
-status: planning
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+status: executing
+stopped_at: Completed 01-01-PLAN.md
+last_updated: "2026-06-20T13:15:13.411Z"
+last_activity: 2026-06-20 -- Phase 01 Plan 01 completed
 progress:
   total_phases: 6
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_plans: 3
+  completed_plans: 1
+  percent: 33
 ---
 
 # Project State
@@ -16,29 +21,30 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-16)
 
 **Core value:** Users can load or create large processed single-cell artifacts and inspect metadata, reductions, expression, and marker signals interactively without materializing whole datasets in memory.
-**Current focus:** Phase 1 — Runtime Contract Backbone
+**Current focus:** Phase 01 — runtime-contract-backbone
 
 ## Current Position
 
-Phase: 1 of 6 (Runtime Contract Backbone)
-Plan: TBD in current phase
-Status: Ready to plan
-Last activity: 2026-06-16 — Initial MVP roadmap created with 34/34 v1 requirements mapped.
+Phase: 01 (runtime-contract-backbone) — EXECUTING
+Plan: 2 of 3
+Status: Ready to execute
+Last activity: 2026-06-20 -- Phase 01 Plan 01 completed
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [███░░░░░░░] 33%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 0
-- Average duration: N/A
-- Total execution time: 0.0 hours
+
+- Total plans completed: 1
+- Average duration: 11 min
+- Total execution time: 0.2 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 1. Runtime Contract Backbone | 0/TBD | N/A | N/A |
+| 1. Runtime Contract Backbone | 1/3 | 11 min | 11 min |
 | 2. Arrow Transfer & Main Scatter Reliability | 0/TBD | N/A | N/A |
 | 3. Analysis Mode Processing & Mutation Safety | 0/TBD | N/A | N/A |
 | 4. Portable Artifacts & Explore Mode End-to-end | 0/TBD | N/A | N/A |
@@ -46,21 +52,20 @@ Progress: [░░░░░░░░░░] 0%
 | 6. Optional Assistant Safety & Release Documentation | 0/TBD | N/A | N/A |
 
 **Recent Trend:**
-- Last 5 plans: none
-- Trend: N/A
 
-*Updated after each plan completion*
+- Last 5 plans: 01-01 (11 min)
+- Trend: N/A
 
 ## Accumulated Context
 
 ### Decisions
 
-Decisions are logged in PROJECT.md Key Decisions table. Current roadmap preserves these working decisions:
-
 - Seurat v5 + BPCells remains the canonical Analysis Mode backend; mirrored Analysis DuckDB is out of scope.
 - Arrow IPC remains the large server-to-browser payload boundary for metadata, reductions, expression, PCA summaries, and metadata patches.
 - Explore Mode remains constrained to validated processed `.explore-parquet.zip` artifacts and read-only inspection workflows.
 - Optional LLM assistant work remains disabled by default, server-side only, summary-only, and privacy guarded.
+- Phase 01 Plan 01: Kept Analysis metadata/reduction transfers on data-frame adapter jobs while expression uses BPCells path-based jobs.
+- Phase 01 Plan 01: Added source guards rather than helper source changes because existing Seurat/BPCells helper paths satisfied BACK-01 contract tests.
 
 ### Pending Todos
 
@@ -80,6 +85,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-06-16
-Stopped at: Initial roadmap and state creation complete; ready for `/gsd-plan-phase 1`.
+Last session: 2026-06-20T13:15:13.407Z
+Stopped at: Completed 01-01-PLAN.md
 Resume file: None

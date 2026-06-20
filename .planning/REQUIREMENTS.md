@@ -9,7 +9,7 @@ Requirements for the current roadmap. Each requirement maps to exactly one roadm
 
 ### Backend Runtime
 
-- [ ] **BACK-01**: Developer can access Analysis Mode metadata, reductions, features, PCA summaries, and expression through Seurat/BPCells backend helpers without reintroducing a mirrored DuckDB runtime.
+- [x] **BACK-01**: Developer can access Analysis Mode metadata, reductions, features, PCA summaries, and expression through Seurat/BPCells backend helpers without reintroducing a mirrored DuckDB runtime.
 - [ ] **BACK-02**: Developer can access Explore Mode metadata, reductions, PCA summaries, and expression through validated Explore Parquet bundle paths/query plans without passing live bundle objects to futures.
 - [ ] **BACK-03**: Developer can rely on mode gates that keep Analysis-only mutation workflows unavailable in Explore Mode.
 - [ ] **BACK-04**: Developer can verify that optional packages such as `presto`, `ellmer`, and `shinychat` remain guarded and do not break core app startup when absent.
@@ -106,7 +106,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| BACK-01 | Phase 1 | Pending |
+| BACK-01 | Phase 1 | Complete |
 | BACK-02 | Phase 4 | Pending |
 | BACK-03 | Phase 4 | Pending |
 | BACK-04 | Phase 6 | Pending |
@@ -142,6 +142,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | AI-03 | Phase 6 | Pending |
 
 **Coverage:**
+
 - v1 requirements: 34 total
 - Mapped to phases: 34
 - Unmapped: 0
