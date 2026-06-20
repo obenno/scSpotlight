@@ -192,6 +192,62 @@ Implementation notes:
 - `R/mod_FindMarkers.R` owns the async DEG run and returns marker results reactively.
 - The DEG rail button now opens the full DEG analysis window rather than a table-only panel.
 
+## Runtime Contract Backbone
+
+This section is the developer-facing contract for the Analysis Mode backend seams and browser payload protocols. If metadata, reductions, expression, PCA summaries, metadata patches, or cached payload notifications change, update this section together with the manifest and paired tests.
+
+### Analysis Mode backend seams
+
+Analysis Mode uses the in-memory Seurat object plus BPCells-backed assay layers as its source of truth. Metadata, feature names, reduction names, reduction coordinates, expression vectors, and PCA summaries must flow through the backend helper seam instead of a duplicated query store:
+
+- `get_backend_metadata` reads Seurat metadata from `object[[]]` for Analysis Mode and bundle metadata for Explore Mode.
+- `get_backend_features` reads feature names from the selected Seurat assay layer or Explore bundle feature table.
+- `get_backend_reduction_names` and `get_backend_reduction` read dimensional reductions from Seurat `Reductions()` / `Embeddings()` or Explore bundle reduction files.
+- `get_backend_expr` reads the selected Analysis assay layer through Seurat/BPCells helpers or the Explore bundle expression query path.
+- `get_backend_pca_stdev` reads PCA standard deviations from the Seurat PCA reduction or the Explore bundle PCA summary.
+- `prepare_backend_metadata_transfer`, `prepare_backend_reduction_transfer`, `write_backend_pca_stdev_transfer`, and `prepare_backend_expression_transfer` prepare the browser-facing Arrow IPC transfer jobs.
+
+For Analysis Mode, do not reintroduce a mirrored DuckDB runtime for Analysis Mode. DuckDB remains appropriate for immutable Explore Parquet bundle scans, but Analysis metadata, reductions, features, PCA summaries, and expression must not be mirrored into a second DuckDB runtime source of truth.
+
+### Browser payload contracts
+
+The machine-readable payload contract is `inst/protocol/browser-payload-contracts.json`. The paired R producer test is `tests/testthat/test-browser-payload-contracts.R`, and the paired JS consumer test is `srcjs/index.test.js`.
+
+The manifest currently defines these browser message contracts:
+
+- `meta_ready`: full metadata Arrow IPC notification with `metaFile` and `metaVersion`.
+- `meta_patch_ready`: column-scoped metadata patch notification with `metaFile`, `metaVersion`, and `cols`.
+- `reduction_ready`: single-reduction Arrow IPC notification with `reductionFile`, `reductionName`, and `reductionVersion`.
+- `reductions_ready`: batched reduction prefetch notification with active reduction selection and versioned entries.
+- `pca_ready`: PCA standard deviation Arrow IPC notification with `stdevFile` and `reductionVersion`.
+- `expr_ready`: feature-expression Arrow IPC notification with `exprFile`, `geneName`, `assay`, and `exprVersion`.
+- `reduction_cached`: request to rehydrate an already-cached reduction payload for the current `reductionVersion`.
+- `expr_cached`: request to rehydrate an already-cached expression payload for the current `exprVersion`.
+
+Browser payload file fields are resource basenames, not local paths. The browser fetches them through `/data/meta/`, `/data/reduction/`, or `/data/expr/`; payloads must not expose producer-local `filePath`, `output_file`, or `matrix_dir` fields.
+
+### Payload change checklist
+
+Any payload contract change must be committed with all of the following updates:
+
+1. Update `inst/protocol/browser-payload-contracts.json` with the message fields, IPC columns, cache family, and browser path policy.
+2. Update the paired R producer test in `tests/testthat/test-browser-payload-contracts.R` so R payloads and Arrow IPC columns satisfy the manifest.
+3. Update the paired JS consumer test in `srcjs/index.test.js` so every handler, resource URL shape, cache miss signal, and stale-version behavior remains covered.
+4. Preserve cache-version behavior for `reduction_cached`, `expr_cached`, `updateReduction-cachedReductionKeys`, and `inputFeatures-cachedExprKeys`; current cache keys use the `::` delimiter and clear older-family entries on newer versions.
+5. Update `DEVELOPMENT.md` when behavior contracts, validation rules, or architecture decisions change.
+6. Run the targeted verification commands before merging:
+   - `pixi run Rscript -e "devtools::test(filter = 'analysis-backend-contract')"`
+   - `pixi run Rscript -e "devtools::test(filter = 'browser-payload-contracts|analysis-backend-contract')"`
+   - `pixi run Rscript -e "devtools::test(filter = 'development-contract-docs|browser-payload-contracts|analysis-backend-contract')"`
+   - `pixi run npm test -- srcjs/index.test.js srcjs/modules/arrowReader.test.js srcjs/modules/scatter/scatterModel.test.js`
+
+### Runtime source-of-truth boundaries
+
+- Analysis Mode source of truth: Seurat v5 object state and BPCells-backed assay layers. Analysis futures should use path-based BPCells work where needed and must not receive live Seurat/BPCells objects for large expression extraction.
+- Explore Mode source of truth: validated, read-only Explore Parquet bundle files with DuckDB query plans and Arrow IPC writers. Explore Mode stays immutable during app runtime.
+- Browser source of truth: versioned Arrow IPC payloads and compact decoded TypedArrays/category encodings. The browser may keep cold IPC buffers for reduction/expression caches, but should not receive raw matrices, full datasets, local filesystem paths, or secrets.
+- LLM/assistant boundary: only capped summary data may leave the server; raw metadata, reductions, expression matrices, local paths, credentials, and arbitrary file contents stay out of assistant payloads.
+
 ## Important Behavior Rules
 
 These rules should be preserved unless intentionally changed.
