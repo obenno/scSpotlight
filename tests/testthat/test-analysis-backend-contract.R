@@ -228,3 +228,48 @@ test_that("Analysis Mode transfer adapters write Arrow IPC without mirrored Duck
   expect_equal(expression_payload$geneName, "GeneC")
   expect_equal(as.numeric(expression_table$expr), c(2, 0, 5, 1))
 })
+
+test_that("Analysis Mode source guards keep futures path-based and DuckDB-free", {
+  adapter_path <- test_path("..", "..", "R", "fct_backend_transfer_adapter.R")
+  input_feature_path <- test_path("..", "..", "R", "mod_InputFeature.R")
+  skip_if_not(file.exists(adapter_path))
+  skip_if_not(file.exists(input_feature_path))
+
+  adapter_source <- readLines(adapter_path, warn = FALSE)
+  input_feature_source <- readLines(input_feature_path, warn = FALSE)
+
+  expect_false(any(grepl(
+    "DBI::dbConnect|duckdb::duckdb|query_duck",
+    adapter_source
+  )))
+  expect_false(any(grepl(
+    "DBI::dbConnect|duckdb::duckdb|query_duck",
+    input_feature_source
+  )))
+
+  process_start <- grep(
+    "process_next_expression_transfer <- function",
+    input_feature_source,
+    fixed = TRUE
+  )[[1]]
+  invoke_start <- grep(
+    "invoke_expression_transfer <- function",
+    input_feature_source,
+    fixed = TRUE
+  )[[1]]
+  promise_body_source <- input_feature_source[seq(process_start, invoke_start - 1L)]
+  invoke_source <- input_feature_source[seq(invoke_start, length(input_feature_source))]
+
+  expect_true(any(grepl("future_promise", promise_body_source, fixed = TRUE)))
+  expect_false(any(grepl("seuratObj\\(\\)", promise_body_source)))
+  expect_false(any(grepl(
+    "prepare_backend_expression_transfer",
+    promise_body_source,
+    fixed = TRUE
+  )))
+  expect_true(any(grepl(
+    "prepare_backend_expression_transfer",
+    invoke_source,
+    fixed = TRUE
+  )))
+})
