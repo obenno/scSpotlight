@@ -223,8 +223,42 @@ The manifest currently defines these browser message contracts:
 - `expr_ready`: feature-expression Arrow IPC notification with `exprFile`, `geneName`, `assay`, and `exprVersion`.
 - `reduction_cached`: request to rehydrate an already-cached reduction payload for the current `reductionVersion`.
 - `expr_cached`: request to rehydrate an already-cached expression payload for the current `exprVersion`.
+- `transfer_error`: sanitized transfer failure notification with `payloadType`, `reasonCode`, `version`, and scoped context fields such as `reductionName`, `activeReduction`, `geneName`, `assay`, or `cols`.
 
 Browser payload file fields are resource basenames, not local paths. The browser fetches them through `/data/meta/`, `/data/reduction/`, or `/data/expr/`; payloads must not expose producer-local `filePath`, `output_file`, or `matrix_dir` fields.
+
+### Phase 02 transfer reliability
+
+The metadata, reduction, batched reduction, and PCA transfer path now uses the
+manifest-backed `transfer_error` contract for visible transfer failures. R
+producer failures call `make_transfer_error_payload()` before crossing the
+Shiny/browser boundary, and browser handlers in `srcjs/index.js` format those
+payloads into path-free user copy with `textContent`, `role="alert"`, and
+`aria-live="assertive"`.
+
+User-facing failure copy is intentionally stable:
+
+- `Metadata could not load` for full metadata and metadata patch transfer failures.
+- `Reduction could not load` for a selected single-reduction transfer failure.
+- `Scatter could not initialize` when no current active batched reduction renders.
+- `PCA summary unavailable` for PCA standard deviation transfer failures; this updates only the ElbowPlot status and does not block the main scatter.
+
+The client treats stale payloads as no-ops. Metadata and reduction handlers record
+the active version/request before asynchronous Arrow fetch/decode work and check it
+again immediately before mutating scatter state. Stale successes and stale
+`transfer_error` messages must not clear the current plot, overwrite current typed
+arrays, or show stale warnings.
+
+The active-reduction readiness rule is: `initialPlotReady` is reported only after
+one current active reduction renders successfully, or after the current transfer
+visibly fails and settles the waiter. Batched `reductions_ready` must prefer the
+server-provided `activeReduction` over a stale DOM selection.
+
+For payload behavior changes, update these files together: the manifest
+(`inst/protocol/browser-payload-contracts.json`), R producer tests
+(`tests/testthat/test-browser-payload-contracts.R`), JS consumer/cache tests
+(`srcjs/index.test.js`), producer/consumer code, generated bundle artifacts, and
+this `DEVELOPMENT.md` section.
 
 ### Payload change checklist
 
