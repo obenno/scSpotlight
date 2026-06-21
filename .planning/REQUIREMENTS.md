@@ -16,8 +16,8 @@ Requirements for the current roadmap. Each requirement maps to exactly one roadm
 
 ### Data Transfer Contracts
 
-- [ ] **XFER-01**: User can load a dataset and receive metadata as a versioned Arrow IPC payload with visible error handling on fetch/decode/write failure.
-- [ ] **XFER-02**: User can load or switch reductions through versioned Arrow IPC payloads and the app renders one real active reduction before reporting readiness.
+- [x] **XFER-01**: User can load a dataset and receive metadata as a versioned Arrow IPC payload with visible error handling on fetch/decode/write failure.
+- [x] **XFER-02**: User can load or switch reductions through versioned Arrow IPC payloads and the app renders one real active reduction before reporting readiness.
 - [ ] **XFER-03**: User can query individual feature expression through queued, chunked, versioned Arrow IPC payloads without overlapping large BPCells/DuckDB memory peaks.
 - [ ] **XFER-04**: User can receive column-scoped metadata updates through `meta_patch_ready` without forcing full metadata reloads for every mutation.
 - [x] **XFER-05**: Developer can change metadata, reduction, expression, PCA, or patch message payloads only with paired R producer tests, JS consumer tests, cache-version behavior, and `DEVELOPMENT.md` documentation.
@@ -28,7 +28,7 @@ Requirements for the current roadmap. Each requirement maps to exactly one roadm
 - [ ] **SCAT-02**: User can group and split cells by categorical metadata while legends, labels, panel titles, and adaptive split-panel geometry remain correct.
 - [ ] **SCAT-03**: User can lasso cells across every panel in a multi-panel scatter layout and see synchronized highlights plus persistent total/selected cell counts.
 - [ ] **SCAT-04**: User can inspect expression in the main scatter using the first selected gene only, with the selected gene reflected in legend and sparkline state.
-- [ ] **SCAT-05**: User can recover from failed metadata or reduction transfers through visible in-plot errors rather than a silent blank plot or stuck waiter.
+- [x] **SCAT-05**: User can recover from failed metadata or reduction transfers through visible in-plot errors rather than a silent blank plot or stuck waiter.
 
 ### Analysis Workflows
 
@@ -110,8 +110,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | BACK-02 | Phase 4 | Pending |
 | BACK-03 | Phase 4 | Pending |
 | BACK-04 | Phase 6 | Pending |
-| XFER-01 | Phase 2 | Pending |
-| XFER-02 | Phase 2 | Pending |
+| XFER-01 | Phase 2 | Complete |
+| XFER-02 | Phase 2 | Complete |
 | XFER-03 | Phase 2 | Pending |
 | XFER-04 | Phase 2 | Pending |
 | XFER-05 | Phase 1 | Complete |
@@ -119,7 +119,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SCAT-02 | Phase 2 | Pending |
 | SCAT-03 | Phase 2 | Pending |
 | SCAT-04 | Phase 2 | Pending |
-| SCAT-05 | Phase 2 | Pending |
+| SCAT-05 | Phase 2 | Complete |
 | ANAL-01 | Phase 3 | Pending |
 | ANAL-02 | Phase 3 | Pending |
 | ANAL-03 | Phase 3 | Pending |

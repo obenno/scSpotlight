@@ -63,11 +63,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. User can lasso cells across every scatter panel and see synchronized highlights plus persistent total and selected cell counts.
   5. User can receive column-scoped metadata patches without forcing full metadata reloads for every mutation.
 
-**Plans:** 4 plans
+**Plans:** 1/4 plans executed
 
 **Wave 1**
 
-- [ ] 02-01-PLAN.md — Make metadata and active-reduction Arrow transfers visible, current, and recoverable.
+- [x] 02-01-PLAN.md — Make metadata and active-reduction Arrow transfers visible, current, and recoverable.
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -199,7 +199,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Runtime Contract Backbone | 3/3 | Complete    | 2026-06-20 |
-| 2. Arrow Transfer & Main Scatter Reliability | 0/4 | Not started | - |
+| 2. Arrow Transfer & Main Scatter Reliability | 1/4 | In Progress|  |
 | 3. Analysis Mode Processing & Mutation Safety | 0/TBD | Not started | - |
 | 4. Portable Artifacts & Explore Mode End-to-end | 0/TBD | Not started | - |
 | 5. Floating Analysis Panels & DEG Workflows | 0/TBD | Not started | - |
