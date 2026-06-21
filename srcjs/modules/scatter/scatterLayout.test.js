@@ -4,9 +4,16 @@ import { computePanelGrid, computePanelLayout, resolveMinPanelSize } from "./sca
 describe("computePanelLayout", () => {
   it("shrinks min panel size for very high panel counts", () => {
     expect(resolveMinPanelSize(1)).toBe(400);
+    expect(resolveMinPanelSize(11)).toBe(400);
+    expect(resolveMinPanelSize(12)).toBe(320);
+    expect(resolveMinPanelSize(23)).toBe(320);
     expect(resolveMinPanelSize(24)).toBe(280);
-    expect(resolveMinPanelSize(60)).toBe(240);
-    expect(resolveMinPanelSize(80)).toBe(200);
+    expect(resolveMinPanelSize(47)).toBe(280);
+    expect(resolveMinPanelSize(48)).toBe(240);
+    expect(resolveMinPanelSize(71)).toBe(240);
+    expect(resolveMinPanelSize(72)).toBe(200);
+    expect(resolveMinPanelSize(95)).toBe(200);
+    expect(resolveMinPanelSize(96)).toBe(180);
   });
 
   it("uses a balanced multi-column grid for many panels", () => {
@@ -103,5 +110,19 @@ describe("computePanelLayout", () => {
     expect(layout.panelWidth).toBeLessThan(280);
     expect(layout.contentWidth).toBeLessThan(3000);
     expect(layout.contentHeight).toBeLessThan(3000);
+  });
+
+  it("uses scrollable content instead of shrinking below the adaptive minimum", () => {
+    const layout = computePanelLayout({
+      nPanels: 24,
+      containerWidth: 500,
+      containerHeight: 500,
+      gap: 4,
+    });
+
+    expect(layout.panelWidth).toBe(resolveMinPanelSize(24));
+    expect(layout.panelHeight).toBe(resolveMinPanelSize(24));
+    expect(layout.contentWidth).toBeGreaterThan(500);
+    expect(layout.contentHeight).toBeGreaterThan(500);
   });
 });

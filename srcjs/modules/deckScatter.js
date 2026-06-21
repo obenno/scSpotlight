@@ -1239,6 +1239,9 @@ export class reglScatterCanvas {
     if (panel.pickable) {
       return true;
     }
+    if (panel.nPoints >= 2000000) {
+      return false;
+    }
     // For very large datasets, re-enable picking only when zoomed in enough
     // that the estimated visible points are manageable.
     const estimatedVisible = this.estimateVisiblePointCount(panel.nPoints, viewId);
@@ -1475,8 +1478,31 @@ export class reglScatterCanvas {
   }
 
   setSelectedCells(selectedCells = [], { source = null } = {}) {
-    const normalizedCells = [...new Set((selectedCells || []).filter((value) => value !== undefined))];
+    const requestedCells = [...new Set((selectedCells || []).filter((value) => value !== undefined))];
     this.selectionSource = source;
+
+    if (requestedCells.length === 0) {
+      this.plotData.selectedCells = [];
+      this.clearHighlight();
+      this.updateCellCount({ selectedCount: 0 });
+      return;
+    }
+
+    const selectedCellSet = new Set(requestedCells);
+    const visibleSelectedCells = new Set();
+    const highlightByPanel = this.panelBuffers.map((_, i) => {
+      const cells = this.plotData.cells[i] || [];
+      const matched = [];
+      for (let cellIdx = 0; cellIdx < cells.length; cellIdx++) {
+        if (selectedCellSet.has(cells[cellIdx])) {
+          matched.push(cellIdx);
+          visibleSelectedCells.add(cells[cellIdx]);
+        }
+      }
+      return matched;
+    });
+
+    const normalizedCells = requestedCells.filter((value) => visibleSelectedCells.has(value));
     this.plotData.selectedCells = normalizedCells;
 
     if (normalizedCells.length === 0) {
@@ -1485,17 +1511,7 @@ export class reglScatterCanvas {
       return;
     }
 
-    const selectedCellSet = new Set(normalizedCells);
-    this.highlightByPanel = this.panelBuffers.map((_, i) => {
-      const cells = this.plotData.cells[i] || [];
-      const matched = [];
-      for (let cellIdx = 0; cellIdx < cells.length; cellIdx++) {
-        if (selectedCellSet.has(cells[cellIdx])) {
-          matched.push(cellIdx);
-        }
-      }
-      return matched;
-    });
+    this.highlightByPanel = highlightByPanel;
     this.applyHighlight();
     this.updateCellCount({ selectedCount: normalizedCells.length });
   }
@@ -1705,7 +1721,9 @@ export const splitArrByMeta = (Arr, meta) => {
   // Arr could also be "group_by" stringArray
   let splitOut = {};
   if (Arr != null && Arr.length == meta.length) {
-    let meta_levels = [...new Set(meta)].sort(sortStringArray);
+    let meta_levels = [...new Set(meta)]
+      .filter((value) => !isMissingMetaLevel(value))
+      .sort(sortStringArray);
     // split meta to object
     // for loop is faster than forEach(), reduce()
     for (const element of meta_levels) {
@@ -1730,11 +1748,13 @@ export const splitArrByMeta = (Arr, meta) => {
 export const convert_stringArr_to_integer = (stringArray) => {
   let factorLevel = {};
   let uniqueArr = new Set(stringArray);
-  let sortedUniqueArr = Array.from(uniqueArr).sort(sortStringArray);
+  let sortedUniqueArr = Array.from(uniqueArr)
+    .filter((value) => !isMissingMetaLevel(value))
+    .sort(sortStringArray);
   sortedUniqueArr.forEach((e, i) => {
     factorLevel[e] = i;
   });
-  let integerArray = stringArray.map((e) => factorLevel[e]);
+  let integerArray = stringArray.map((e) => factorLevel[e] ?? -1);
   return new Int16Array(integerArray);
 };
 
@@ -1775,6 +1795,10 @@ export const sortStringArray = (a, b) => {
     return a.localeCompare(b);
   }
 };
+
+export const isMissingMetaLevel = (value) => (
+  value == null || String(value).trim() === "" || String(value) === "undefined"
+);
 
 // Copyright 2021, Observable Inc.
 // Released under the ISC license.
@@ -2048,7 +2072,9 @@ export const getMetaLevels = (metaList) => {
   }
 
   const expanded = expandMeta(metaList) || [];
-  const levels = [...new Set(expanded)].filter((value) => value != null).sort(sortStringArray);
+  const levels = [...new Set(expanded)]
+    .filter((value) => !isMissingMetaLevel(value))
+    .sort(sortStringArray);
   metaLevelsCache.set(metaList, levels);
   return levels;
 };

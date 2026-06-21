@@ -8,13 +8,19 @@ function makeUtils() {
     return [];
   };
 
+  const isMissingLevel = (value) => (
+    value == null || String(value).trim() === "" || String(value) === "undefined"
+  );
   const sortStringArray = (a, b) => String(a).localeCompare(String(b));
-  const getMetaLevels = (x) => [...new Set(expandMeta(x))].sort(sortStringArray);
+  const getMetaLevels = (x) => [...new Set(expandMeta(x))]
+    .filter((value) => !isMissingLevel(value))
+    .sort(sortStringArray);
 
   const splitArrByMeta = (arr, by) => {
     const out = {};
     for (let i = 0; i < by.length; i++) {
       const key = by[i];
+      if (isMissingLevel(key)) continue;
       if (!out[key]) out[key] = [];
       out[key].push(arr[i]);
     }
@@ -22,9 +28,9 @@ function makeUtils() {
   };
 
   const convert_stringArr_to_integer = (arr) => {
-    const levels = [...new Set(arr)].sort(sortStringArray);
+    const levels = [...new Set(arr)].filter((value) => !isMissingLevel(value)).sort(sortStringArray);
     const map = new Map(levels.map((x, i) => [x, i]));
-    return Int16Array.from(arr.map((x) => map.get(x)));
+    return Int16Array.from(arr.map((x) => map.get(x) ?? -1));
   };
 
   const hue_pal = (n) => {
@@ -80,6 +86,12 @@ function createFixture() {
       },
       split3: {
         value: ["s1", "s1", "s2", "s2", "s3", "s3", "s3", "s3"],
+      },
+      splitMissing: {
+        value: ["s1", "", "s2", undefined, "undefined", null, "s1", "s2"],
+      },
+      groupMissing: {
+        value: ["A", "", "B", undefined, "undefined", null, "A", "B"],
       },
     },
     expressionData: {
@@ -185,6 +197,14 @@ describe("ScatterModel mode derivation", () => {
     const meta = model.derivePlotMetaData("group", "split3", false);
     expect(meta.mode).toBe("cluster+expr+multiSplit");
     expect(meta.nPanels).toBe(3);
+  });
+
+  it("ignores missing split levels when deriving mode and panel count", () => {
+    const model = buildModel();
+    model.setConfig({ selectedFeatures: ["GeneA"], moduleScore: false });
+    const meta = model.derivePlotMetaData("group", "splitMissing", false);
+    expect(meta.mode).toBe("cluster+expr+twoSplit");
+    expect(meta.nPanels).toBe(4);
   });
 
   it("uses the first selected feature when multiple features are present", () => {
@@ -303,6 +323,44 @@ describe("ScatterModel panel data assembly", () => {
     expect(zS3[0]).toBeLessThan(zS3[1]);
     expect(zS3[1]).toBeLessThan(zS3[2]);
     expect(zS3[2]).toBeLessThan(zS3[3]);
+  });
+
+  it("filters missing category and split levels from titles, labels, and cell subsets", () => {
+    const model = buildModel();
+    model.setConfig({ selectedFeatures: ["GeneA"], moduleScore: false });
+    model.derivePlotMetaData("groupMissing", "splitMissing", false);
+    const plot = model.buildPlotData();
+
+    expect(plot.panelTitles).toEqual([
+      "s1 : groupMissing",
+      "s1 : GeneA",
+      "s2 : groupMissing",
+      "s2 : GeneA",
+    ]);
+    expect(plot.cells[0]).toEqual(["c1", "c7"]);
+    expect(plot.cells[1]).toEqual(plot.cells[0]);
+    expect(plot.cells[2]).toEqual(["c3", "c8"]);
+    expect(plot.cells[3]).toEqual(plot.cells[2]);
+    expect(plot.zType).toEqual(["category", "expr", "category", "expr"]);
+
+    const categoryLabels = plot.catLabelCoordinates
+      .flatMap((coords) => coords || [])
+      .map((coord) => coord.label)
+      .sort();
+    expect(categoryLabels).toEqual(["A", "B"]);
+    expect(plot.catLabelCoordinates[1]).toBeUndefined();
+    expect(plot.catLabelCoordinates[3]).toBeUndefined();
+  });
+
+  it("uses first selected gene for multi-split expression panels", () => {
+    const model = buildModel();
+    model.setConfig({ selectedFeatures: ["GeneA", "GeneB"], moduleScore: false });
+    model.derivePlotMetaData("group", "split3", false);
+    const plot = model.buildPlotData();
+
+    expect(plot.plotFeature).toBe("GeneA");
+    expect(plot.zType).toEqual(["expr", "expr", "expr"]);
+    expect(plot.catLabelCoordinates).toEqual([]);
   });
 
   it("maps constant expression values to low-end color scale", () => {

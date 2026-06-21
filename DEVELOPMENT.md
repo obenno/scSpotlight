@@ -382,6 +382,7 @@ These changes were implemented with the repo's large-dataset constraints in mind
 - Cache expanded categorical metadata and unique sorted levels per column object on the client. `srcjs/modules/deckScatter.js` now memoizes both expanded arrays and level lists so plot-mode derivation, legends, category selection, and rename-cluster filtering do not rebuild the same metadata repeatedly.
 - Keep rename-cluster category filtering on the client. `srcjs/index.js` now computes rename selections directly from cached metadata and only sends the final selected cells to R on assign.
 - Use adaptive split-panel grids for very high-cardinality `split.by` layouts. `srcjs/modules/scatter/scatterLayout.js` now balances columns/rows and shrinks minimum panel sizes as panel counts rise so the deck surface does not become excessively large.
+- Keep main scatter rendering deck.gl-only with typed binary attributes. `srcjs/modules/deckScatter.js` builds `ScatterplotLayer` inputs from `Float32Array` positions and `Uint8Array` colors, applies the AGENTS.md point-size/opacity/pickability thresholds, and keeps base hover picking disabled at 2M+ points while lasso selection remains available through client-side geometry.
 
 ## Validation Performed
 
@@ -753,9 +754,30 @@ Why:
 Implementation notes:
 
 - `srcjs/modules/lasso.js` now tests lasso polygons against canvas-relative projected coordinates so non-origin panels can be selected correctly.
-- `srcjs/modules/deckScatter.js` now centralizes selection through `setSelectedCells()` and mirrors repeated selected cells across every panel.
-- `srcjs/modules/scatter/scatterLayout.js` now computes balanced panel grids and adaptive minimum panel sizes for high-cardinality split layouts.
+- `srcjs/modules/deckScatter.js` now centralizes selection through `setSelectedCells()`, reconciles requested selections to the currently visible cell IDs, and mirrors repeated selected cells across every panel.
+- `srcjs/modules/scatter/scatterLayout.js` now computes balanced panel grids and adaptive minimum panel sizes for high-cardinality split layouts: 400px for 1-11 panels, 320px for 12-23, 280px for 24-47, 240px for 48-71, 200px for 72-95, and 180px for 96+.
 - `srcjs/modules/scatter/scatterRelayout.js` now measures panel rectangles relative to the deck container instead of relying only on offsets.
+- `srcjs/modules/deckScatter.js` treats null, empty, and literal `undefined` metadata levels as missing so they do not appear as category legends, split panel titles, or selectable category IDs.
+
+### 20a. Main scatter uses adaptive deck.gl binary layers
+
+Decision:
+
+- The main scatter remains a deck.gl `ScatterplotLayer` renderer with binary TypedArray attributes.
+- Point size, opacity, and base pickability follow the AGENTS.md thresholds exactly, including disabled base picking at 2M+ cells.
+- Lasso selection remains available for 2M+ cells even when hover/picking is disabled.
+
+Why:
+
+- The app must remain responsive for 1M+ cell reductions without canvas/SVG fallback paths or per-point object arrays.
+- Hover picking is expensive at extreme scale, but explicit lasso hit-testing can still run from panel-local geometry after the user completes a gesture.
+
+Implementation notes:
+
+- `srcjs/modules/deckScatter.js` builds panel buffers as `Float32Array` positions and `Uint8Array` RGBA colors before creating deck.gl layers.
+- `getPointOptions()` encodes the AGENTS.md thresholds: `<15K` uses size 4/opacity 0.8/pickable, `15K-50K` size 3/opacity 0.7/pickable, `50K-500K` size 2/opacity 0.6/pickable, `500K-1M` size 1/opacity 0.5/pickable, `1M-2M` size 0.5/opacity 0.4/pickable, and `2M+` size 0.2/opacity 0.2/non-pickable.
+- `shouldEnablePicking()` does not re-enable base picking for `nPoints >= 2000000`, even when zoomed.
+- `srcjs/modules/scatter/scatterModel.js` keeps main scatter expression mode first-selected-gene only. Category + expression with exactly two split levels creates paired `{split} : {group_by}` and `{split} : {gene}` panels; expression multi-split uses one expression panel per non-missing split level.
 
 ### 21. Category sidebar stays hybrid, but metadata expansion is cached on the client
 
@@ -814,7 +836,8 @@ Why:
 Implementation notes:
 
 - `srcjs/modules/scatter/scatterUI.js` now creates and updates a `Total | Selected` badge.
-- `srcjs/modules/deckScatter.js` updates that badge whenever lasso or category selection changes.
+- `srcjs/modules/deckScatter.js` updates that badge whenever lasso or category selection changes, with counts formatted by `Intl.NumberFormat`.
+- `setSelectedCells()` reconciles selected IDs against current panel cell IDs so valid redraws preserve visible selections and ambiguous context changes immediately clear stale IDs to `Selected 0`.
 
 ### 24. Category legends and rename selectors must ignore null / missing category levels
 

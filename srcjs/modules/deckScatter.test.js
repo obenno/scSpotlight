@@ -1,9 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
+import { ScatterplotLayer } from "@deck.gl/layers";
 import {
   reglScatterCanvas,
+  convert_stringArr_to_integer,
   expandMeta,
   getMetaLevels,
   invalidateMetaCache,
+  splitArrByMeta,
 } from "./deckScatter.js";
 
 describe("metadata cache helpers", () => {
@@ -29,6 +32,87 @@ describe("metadata cache helpers", () => {
     invalidateMetaCache(meta);
 
     expect(getMetaLevels(meta)).toEqual(["A", "B", "C"]);
+  });
+
+  it("ignores nullish and empty category levels", () => {
+    const meta = {
+      type: "category",
+      value: {
+        B: [1],
+        "": [2],
+        A: [0, 5],
+        undefined: [3],
+      },
+    };
+
+    expect(getMetaLevels(meta)).toEqual(["A", "B"]);
+
+    const encoded = convert_stringArr_to_integer(["B", "", "A", null, undefined, "A"]);
+    expect(Array.from(encoded)).toEqual([1, -1, 0, -1, -1, 0]);
+
+    const split = splitArrByMeta(new Float32Array([10, 20, 30, 40, 50]), ["s2", "", "s1", null, "s2"]);
+    expect(Object.keys(split)).toEqual(["s1", "s2"]);
+    expect(Array.from(split.s1)).toEqual([30]);
+    expect(Array.from(split.s2)).toEqual([10, 50]);
+  });
+});
+
+describe("reglScatterCanvas adaptive deck.gl rendering", () => {
+  it("uses the normative adaptive point thresholds", () => {
+    const canvas = Object.create(reglScatterCanvas.prototype);
+
+    expect(canvas.getPointOptions(14999)).toEqual({ opacity: 0.8, pointSize: 4, pickable: true });
+    expect(canvas.getPointOptions(15000)).toEqual({ opacity: 0.7, pointSize: 3, pickable: true });
+    expect(canvas.getPointOptions(49999)).toEqual({ opacity: 0.7, pointSize: 3, pickable: true });
+    expect(canvas.getPointOptions(50000)).toEqual({ opacity: 0.6, pointSize: 2, pickable: true });
+    expect(canvas.getPointOptions(499999)).toEqual({ opacity: 0.6, pointSize: 2, pickable: true });
+    expect(canvas.getPointOptions(500000)).toEqual({ opacity: 0.5, pointSize: 1, pickable: true });
+    expect(canvas.getPointOptions(999999)).toEqual({ opacity: 0.5, pointSize: 1, pickable: true });
+    expect(canvas.getPointOptions(1000000)).toEqual({ opacity: 0.4, pointSize: 0.5, pickable: true });
+    expect(canvas.getPointOptions(1999999)).toEqual({ opacity: 0.4, pointSize: 0.5, pickable: true });
+    expect(canvas.getPointOptions(2000000)).toEqual({ opacity: 0.2, pointSize: 0.2, pickable: false });
+  });
+
+  it("does not re-enable base picking for 2M+ point panels when zoomed", () => {
+    const canvas = Object.create(reglScatterCanvas.prototype);
+    canvas.viewStates = { panel_0: { zoom: 8 } };
+    canvas.baseZoomByView = { panel_0: 0 };
+
+    expect(canvas.shouldEnablePicking({ nPoints: 2000000, pickable: false }, "panel_0")).toBe(false);
+    expect(canvas.shouldEnablePicking({ nPoints: 2500000, pickable: false }, "panel_0")).toBe(false);
+    expect(canvas.shouldEnablePicking({ nPoints: 1000000, pickable: true }, "panel_0")).toBe(true);
+  });
+
+  it("creates ScatterplotLayer base layers with typed binary attributes", () => {
+    const canvas = Object.create(reglScatterCanvas.prototype);
+    canvas.viewStates = {};
+    canvas.baseZoomByView = {};
+    canvas.highlightByPanel = null;
+    canvas.hoveredPoint = null;
+    canvas.plotData = {
+      pointsData: [
+        {
+          x: new Float32Array([0, 1]),
+          y: new Float32Array([2, 3]),
+          z: new Int16Array([0, 1]),
+        },
+      ],
+      zType: ["category"],
+      colorData: [["#ff0000", "#00ff00"]],
+    };
+    canvas.panelBuffers = canvas.buildPanelBuffers();
+
+    const layers = canvas.createAllLayers();
+    const baseLayer = layers[0];
+
+    expect(baseLayer).toBeInstanceOf(ScatterplotLayer);
+    expect(baseLayer.props.panelViewId).toBe("panel_0");
+    expect(Array.isArray(baseLayer.props.data)).toBe(false);
+    expect(baseLayer.props.data.length).toBe(2);
+    expect(baseLayer.props.data.attributes.getPosition.value).toBeInstanceOf(Float32Array);
+    expect(baseLayer.props.data.attributes.getFillColor.value).toBeInstanceOf(Uint8Array);
+    expect(baseLayer.props.data.attributes.getPosition.value).toBe(canvas.panelBuffers[0].positions);
+    expect(baseLayer.props.data.attributes.getFillColor.value).toBe(canvas.panelBuffers[0].colors);
   });
 });
 
@@ -124,6 +208,49 @@ describe("reglScatterCanvas lasso selection", () => {
 
     expect(canvas.plotData.selectedCells).toEqual(["c1", "c3"]);
     expect(canvas.highlightByPanel).toEqual([[0, 2], [0, 2]]);
+  });
+
+  it("reconciles requested selections to currently visible cells", () => {
+    const canvas = Object.create(reglScatterCanvas.prototype);
+    canvas.plotData = {
+      cells: [["c1", "c2"], ["c2", "c3"]],
+      selectedCells: [],
+    };
+    canvas.panelBuffers = [{}, {}];
+    canvas.highlightByPanel = null;
+    canvas.applyHighlight = vi.fn();
+    canvas.clearHighlight = vi.fn();
+    canvas.updateCellCount = vi.fn();
+
+    canvas.setSelectedCells(["missing", "c2", "c2"], { source: "lasso" });
+
+    expect(canvas.plotData.selectedCells).toEqual(["c2"]);
+    expect(canvas.highlightByPanel).toEqual([[1], [0]]);
+    expect(canvas.applyHighlight).toHaveBeenCalledTimes(1);
+    expect(canvas.updateCellCount).toHaveBeenCalledWith({ selectedCount: 1 });
+
+    canvas.setSelectedCells(["missing"], { source: "lasso" });
+
+    expect(canvas.plotData.selectedCells).toEqual([]);
+    expect(canvas.clearHighlight).toHaveBeenCalledTimes(1);
+    expect(canvas.updateCellCount).toHaveBeenLastCalledWith({ selectedCount: 0 });
+  });
+
+  it("updates the persistent count badge with thousands separators", () => {
+    const canvas = Object.create(reglScatterCanvas.prototype);
+    const plotEl = document.createElement("div");
+    plotEl.innerHTML = `
+      <div id="cellCount">
+        <span class="cell-count-total">0</span>
+        <span class="cell-count-selected">0</span>
+      </div>
+    `;
+    canvas.plotEl = plotEl;
+
+    canvas.updateCellCount({ totalCount: 12345, selectedCount: 6789 });
+
+    expect(plotEl.querySelector(".cell-count-total").textContent).toBe("12,345");
+    expect(plotEl.querySelector(".cell-count-selected").textContent).toBe("6,789");
   });
 });
 
