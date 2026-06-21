@@ -101,6 +101,8 @@ vi.mock("./modules/deckScatter.js", () => {
       this.expLegendEl = document.createElement("div");
       this.selectionSource = null;
       this.interactions = { clearLasso: vi.fn() };
+      this.updateCellMetaDataPatchCalls = [];
+      this.updateExpressionDataCalls = [];
       testState.reglInstance = this;
     }
 
@@ -149,6 +151,20 @@ vi.mock("./modules/deckScatter.js", () => {
     }
 
     updateCellMetaDataPatch(cellMetaDataPatch) {
+      const existingMeta = this.origData.cellMetaData || {};
+      const expectedLength = existingMeta.cells ? expandMeta(existingMeta.cells).length : null;
+      Object.entries(cellMetaDataPatch).forEach(([key, value]) => {
+        if (!value || value.type === undefined || value.value === undefined) {
+          throw new Error(`Invalid metadata patch payload for column ${key}`);
+        }
+        if (expectedLength !== null && expandMeta(value).length !== expectedLength) {
+          throw new Error(`Metadata patch length mismatch for ${key}`);
+        }
+        if (existingMeta[key]?.type !== undefined && existingMeta[key].type !== value.type) {
+          throw new Error(`Metadata patch type mismatch for ${key}`);
+        }
+      });
+      this.updateCellMetaDataPatchCalls.push(cellMetaDataPatch);
       this.origData.cellMetaData = {
         ...this.origData.cellMetaData,
         ...cellMetaDataPatch,
@@ -156,6 +172,7 @@ vi.mock("./modules/deckScatter.js", () => {
     }
 
     updateExpressionData(expressionData) {
+      this.updateExpressionDataCalls.push(expressionData);
       Object.entries(expressionData).forEach(([feature, values]) => {
         this.origData.expressionData[feature] = new Float32Array(values);
       });
@@ -275,6 +292,8 @@ const resetReglInstance = () => {
   testState.reglInstance.selectionSource = null;
   testState.reglInstance.selectionHandlers = null;
   testState.reglInstance.interactions = { clearLasso: vi.fn() };
+  testState.reglInstance.updateCellMetaDataPatchCalls = [];
+  testState.reglInstance.updateExpressionDataCalls = [];
   testState.reglInstance.createRenderReplacement = Object.getPrototypeOf(
     testState.reglInstance,
   ).createRenderReplacement;
@@ -322,6 +341,26 @@ const latestInputValue = (name) => {
 const encodeLabelBuffer = (label) => new TextEncoder().encode(label).buffer;
 
 const decodeLabelBuffer = (buffer) => new TextDecoder().decode(buffer);
+
+const addFeatureSparkLine = (feature) => {
+  const container = document.createElement("span");
+  container.className = "featureSparkLine";
+  const label = document.createElement("span");
+  label.className = "feature-gene-symbol";
+  label.textContent = feature;
+  container.appendChild(label);
+  const sparkLine = document.createElement("span");
+  sparkLine.className = "sparkLine";
+  const progress = document.createElement("span");
+  sparkLine.appendChild(progress);
+  container.appendChild(sparkLine);
+  const icon = document.createElement("span");
+  icon.className = "icon-container";
+  icon.appendChild(document.createElement("span"));
+  container.appendChild(icon);
+  document.getElementById("featureSparkLine").appendChild(container);
+  return container;
+};
 
 const resetArrowReaderMocks = async () => {
   const arrowReader = await import("./modules/arrowReader.js");
@@ -868,6 +907,123 @@ describe("rename cluster client selection", () => {
     });
   });
 
+  it("meta_patch_ready applies only scoped columns and skips main scatter refresh for unrelated cols", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    const existingCluster = { type: "category", value: { old: [0, 1, 2] } };
+    testState.reglInstance.origData.cellMetaData = {
+      cells: { type: "category", value: { Cell1: [0], Cell2: [1], Cell3: [2] } },
+      cluster: existingCluster,
+      batch: { type: "category", value: { A: [0], B: [1, 2] } },
+      score: { type: "number", value: new Float32Array([1, 2, 3]) },
+    };
+    testState.reglInstance.plotMetaData.group_by = "cluster";
+    testState.reglInstance.plotMetaData.selectedMeta = "meta:score";
+    const parsedPatch = {
+      cells: { type: "category", value: { Cell1: [0], Cell2: [1], Cell3: [2] } },
+      cluster: { type: "category", value: { stale: [0, 1, 2] } },
+      batch: { type: "category", value: { A: [0, 2], B: [1] } },
+    };
+    arrowReader.readArrowIPC.mockResolvedValue({ table: "patch" });
+    arrowReader.parseMetaFromArrow.mockReturnValue(parsedPatch);
+
+    testState.handlers.meta_patch_ready({
+      metaFile: "meta-patch-batch-ipc",
+      metaVersion: 410,
+      cols: ["batch"],
+    });
+
+    await vi.waitFor(() => {
+      expect(testState.reglInstance.updateCellMetaDataPatchCalls).toHaveLength(1);
+      expect(Object.keys(testState.reglInstance.updateCellMetaDataPatchCalls[0])).toEqual([
+        "batch",
+      ]);
+      expect(testState.reglInstance.origData.cellMetaData.batch).toBe(parsedPatch.batch);
+      expect(testState.reglInstance.origData.cellMetaData.cluster).toBe(existingCluster);
+      expect(latestInputValue("metaPatchProcessed")).toEqual({
+        cols: ["batch"],
+        refreshMainPlot: false,
+        timestamp: expect.any(Number),
+      });
+      expect(latestInputValue("metaProcessed")).toBeUndefined();
+    });
+  });
+
+  it("meta_patch_ready rejects malformed patches before mutating metadata", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    const existingBatch = { type: "category", value: { A: [0], B: [1, 2] } };
+    testState.reglInstance.origData.cellMetaData = {
+      cells: { type: "category", value: { Cell1: [0], Cell2: [1], Cell3: [2] } },
+      batch: existingBatch,
+    };
+    arrowReader.readArrowIPC.mockResolvedValue({ table: "bad-patch" });
+    arrowReader.parseMetaFromArrow.mockReturnValue({
+      batch: { type: "category", value: { A: [0], B: [1] } },
+    });
+
+    testState.handlers.meta_patch_ready({
+      metaFile: "bad-meta-patch-ipc",
+      metaVersion: 411,
+      cols: ["batch"],
+    });
+
+    await vi.waitFor(() => {
+      expect(testState.reglInstance.updateCellMetaDataPatchCalls).toHaveLength(0);
+      expect(testState.reglInstance.origData.cellMetaData.batch).toBe(existingBatch);
+      const overlay = getPlotTransferError();
+      expect(overlay).toBeTruthy();
+      expect(overlay.textContent).toContain("Metadata update could not apply");
+      expect(overlay.textContent).toContain("batch");
+      expect(overlay.textContent).toContain("Existing metadata is still shown");
+      expect(latestInputValue("metaPatchProcessed")).toBeUndefined();
+    });
+  });
+
+  it("delayed stale meta_patch_ready results are ignored after fetch", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    const staleRead = createDeferred();
+    testState.reglInstance.origData.cellMetaData = {
+      cells: { type: "category", value: { Cell1: [0], Cell2: [1], Cell3: [2] } },
+      cluster: { type: "category", value: { old: [0, 1, 2] } },
+    };
+    testState.reglInstance.plotMetaData.group_by = "cluster";
+    arrowReader.readArrowIPC
+      .mockImplementationOnce(() => staleRead.promise)
+      .mockResolvedValueOnce({ table: "current" });
+    arrowReader.parseMetaFromArrow.mockImplementation((table) => ({
+      cluster: {
+        type: "category",
+        value: table.table === "current" ? { current: [0, 1, 2] } : { stale: [0, 1, 2] },
+      },
+    }));
+
+    testState.handlers.meta_patch_ready({
+      metaFile: "stale-meta-patch-ipc",
+      metaVersion: 420,
+      cols: ["cluster"],
+    });
+    testState.handlers.meta_patch_ready({
+      metaFile: "current-meta-patch-ipc",
+      metaVersion: 421,
+      cols: ["cluster"],
+    });
+
+    await vi.waitFor(() => {
+      expect(testState.reglInstance.origData.cellMetaData.cluster.value).toEqual({
+        current: [0, 1, 2],
+      });
+    });
+
+    staleRead.resolve({ table: "stale" });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(testState.reglInstance.updateCellMetaDataPatchCalls).toHaveLength(1);
+    expect(testState.reglInstance.origData.cellMetaData.cluster.value).toEqual({
+      current: [0, 1, 2],
+    });
+    expect(getPlotTransferError()).toBeNull();
+  });
+
   it("pca_ready stores Float32Array stdev data and clears on null stdevFile", async () => {
     const arrowReader = await resetArrowReaderMocks();
     const stdev = new Float32Array([4.5, 2.25, 1.125]);
@@ -1055,5 +1211,107 @@ describe("rename cluster client selection", () => {
     await vi.waitFor(() => {
       expect(latestInputValue("inputFeatures-cacheMissFeature")).toBe("MissingGene");
     });
+  });
+
+  it("delayed stale expr_ready results are ignored after fetch before cache or scatter mutation", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    const staleFetch = createDeferred();
+    addFeatureSparkLine("GeneA");
+    addFeatureSparkLine("GeneB");
+    arrowReader.fetchArrowIPCBuffer
+      .mockImplementationOnce(() => staleFetch.promise)
+      .mockResolvedValueOnce(encodeLabelBuffer("gene-b-v501"));
+    arrowReader.decodeArrowIPC.mockImplementation((buffer) => ({
+      label: decodeLabelBuffer(buffer),
+    }));
+    arrowReader.getFloat32Column.mockImplementation((table) => {
+      const value = table.label.includes("gene-b") ? 501 : 500;
+      return new Float32Array([value, value + 1]);
+    });
+
+    testState.handlers.expr_ready({
+      exprFile: "gene-a-v500",
+      geneName: "GeneA",
+      assay: "RNA",
+      exprVersion: 500,
+    });
+    testState.handlers.expr_ready({
+      exprFile: "gene-b-v501",
+      geneName: "GeneB",
+      assay: "RNA",
+      exprVersion: 501,
+    });
+
+    await vi.waitFor(() => {
+      expect(Array.from(testState.reglInstance.origData.expressionData.GeneB)).toEqual([
+        501,
+        502,
+      ]);
+      expect(latestInputValue("inputFeatures-cachedExprKeys")).toEqual([
+        "501::RNA::GeneB",
+      ]);
+    });
+
+    staleFetch.resolve(encodeLabelBuffer("gene-a-v500"));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(testState.reglInstance.origData.expressionData.GeneA).toBeUndefined();
+    expect(testState.reglInstance.updateExpressionDataCalls).toHaveLength(1);
+    expect(latestInputValue("inputFeatures-cachedExprKeys")).toEqual([
+      "501::RNA::GeneB",
+    ]);
+  });
+
+  it("expr_ready failures show scoped expression copy and preserve category metadata", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    addFeatureSparkLine("GeneFail");
+    const existingMeta = {
+      cells: { type: "category", value: { Cell1: [0], Cell2: [1], Cell3: [2] } },
+      cluster: { type: "category", value: { A: [0, 1], B: [2] } },
+    };
+    testState.reglInstance.origData.cellMetaData = existingMeta;
+    arrowReader.fetchArrowIPCBuffer.mockRejectedValue(new Error("boom"));
+
+    testState.handlers.expr_ready({
+      exprFile: "gene-fail-v510",
+      geneName: "GeneFail",
+      assay: "RNA",
+      exprVersion: 510,
+    });
+
+    await vi.waitFor(() => {
+      const overlay = getPlotTransferError();
+      expect(overlay).toBeTruthy();
+      expect(overlay.textContent).toContain("Expression could not load");
+      expect(overlay.textContent).toContain("GeneFail");
+      expect(overlay.textContent).toContain("RNA");
+      expect(overlay.textContent).toContain("category scatter remains available");
+      expect(testState.reglInstance.origData.cellMetaData).toBe(existingMeta);
+      expect(testState.reglInstance.origData.expressionData.GeneFail).toBeUndefined();
+    });
+  });
+
+  it("transfer_error uses scoped expression and metadata patch failure copy", () => {
+    testState.handlers.transfer_error({
+      payloadType: "expression",
+      reasonCode: "write_failed",
+      version: 520,
+      geneName: "GeneErr",
+      assay: "RNA",
+    });
+
+    expect(getPlotTransferError().textContent).toContain("Expression could not load");
+    expect(getPlotTransferError().textContent).toContain("GeneErr");
+
+    testState.handlers.transfer_error({
+      payloadType: "metadata_patch",
+      reasonCode: "write_failed",
+      version: 521,
+      cols: ["Phase", "S.Score"],
+    });
+
+    expect(getPlotTransferError().textContent).toContain("Metadata update could not apply");
+    expect(getPlotTransferError().textContent).toContain("Phase, S.Score");
   });
 });

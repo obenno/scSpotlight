@@ -65,8 +65,10 @@ test_that("DEVELOPMENT documents Phase 02 transfer reliability", {
     "stale payloads",
     "active-reduction readiness",
     "Metadata could not load",
+    "Metadata update could not apply",
     "Reduction could not load",
     "Scatter could not initialize",
+    "Expression could not load",
     "PCA summary unavailable"
   ))
 
@@ -78,6 +80,13 @@ test_that("DEVELOPMENT documents Phase 02 transfer reliability", {
     "Arrow IPC numeric `expr` vectors",
     "basename-only expression payloads",
     "Browser-side stale expression application",
-    "first-selected-gene main scatter behavior"
+    "`{exprVersion}::{assay}::{geneName}`",
+    "`inputFeatures-cacheMissFeature`",
+    "Metadata patches remain column-scoped",
+    "patch shape, length, and type before merge",
+    "Main scatter expression rendering remains first-selected-gene only",
+    "selectedFeatures[0]",
+    "sparkline primary state",
+    "only the first selected gene receives semibold/`aria-current` primary emphasis"
   ))
 })

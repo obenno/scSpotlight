@@ -238,9 +238,11 @@ payloads into path-free user copy with `textContent`, `role="alert"`, and
 
 User-facing failure copy is intentionally stable:
 
-- `Metadata could not load` for full metadata and metadata patch transfer failures.
+- `Metadata could not load` for full metadata transfer failures.
+- `Metadata update could not apply` for column-scoped metadata patch failures.
 - `Reduction could not load` for a selected single-reduction transfer failure.
 - `Scatter could not initialize` when no current active batched reduction renders.
+- `Expression could not load` for expression transfer failures; the category scatter remains available.
 - `PCA summary unavailable` for PCA standard deviation transfer failures; this updates only the ElbowPlot status and does not block the main scatter.
 
 The client treats stale payloads as no-ops. Metadata and reduction handlers record
@@ -265,11 +267,31 @@ into the writer. Both branches write Arrow IPC numeric `expr` vectors and expose
 only basename-only expression payloads: `exprFile`, `geneName`, `assay`, and
 `exprVersion`.
 
-Browser-side stale expression application, targeted expression cache-miss UI
-handling, sparkline synchronization, and first-selected-gene main scatter behavior
-are completed in the dependent Phase 02 browser-state slice. Until then, do not
-widen expression payloads to JSON arrays, dense matrices, local paths, DBI
-connections, live Seurat/BPCells objects, or live Explore bundle objects.
+Browser-side stale expression application is guarded after every asynchronous
+step: `expr_ready` and `expr_cached` re-check `exprVersion`, `assay`, and the
+requested `geneName` before writing the expression cache, decoding/applying the
+typed `expr` vector, or updating sparkline state. Expression cache keys remain
+`{exprVersion}::{assay}::{geneName}`. Cache misses send only the targeted
+`inputFeatures-cacheMissFeature` request for the missing gene, not a full
+metadata or dataset reload.
+
+Metadata patches remain column-scoped. `meta_patch_ready` must include `cols`,
+the browser applies only those decoded columns, and `ScatterModel` validates
+patch shape, length, and type before merge. Malformed or stale patches do not
+mutate existing metadata. Valid patches refresh the main scatter only when
+patched columns affect active metadata-backed plot state such as `group.by`,
+`split.by`, or selected VlnPlot metadata.
+
+Main scatter expression rendering remains first-selected-gene only. The main
+scatter model, expression legend, panel title, and sparkline primary state all
+read `selectedFeatures[0]`; additional selected genes stay available to floating
+plots but never create multi-gene main-scatter coloring. The sparkline list keeps
+checked state separate from primary state: checked non-first genes remain checked,
+only the first selected gene receives semibold/`aria-current` primary emphasis,
+and removing the first gene promotes the next checked gene.
+
+Do not widen expression payloads to JSON arrays, dense matrices, local paths,
+DBI connections, live Seurat/BPCells objects, or live Explore bundle objects.
 
 For payload behavior changes, update these files together: the manifest
 (`inst/protocol/browser-payload-contracts.json`), R producer tests

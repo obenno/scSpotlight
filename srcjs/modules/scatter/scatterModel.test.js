@@ -84,6 +84,7 @@ function createFixture() {
     },
     expressionData: {
       GeneA: [0.1, 0.2, 0.3, 0.4, 3.1, 3.2, 3.3, 3.4],
+      GeneB: [9, 8, 7, 6, 5, 4, 3, 2],
     },
     pcaStdev: [4.2, 2.8, 1.6, 1.1],
   };
@@ -192,6 +193,15 @@ describe("ScatterModel mode derivation", () => {
     const meta = model.derivePlotMetaData("group", null, false);
     expect(meta.mode).toBe("cluster+expr+noSplit");
     expect(meta.nPanels).toBe(2);
+    const plot = model.buildPlotData();
+    expect(plot.plotFeature).toBe("GeneA");
+    expect(plot.panelTitles[1]).toBe("GeneA");
+    expect(Array.from(plot.pointsData[1].z)).toEqual(
+      Array.from(model.scaleDataZ(model.origData.expressionData.GeneA)),
+    );
+    expect(Array.from(plot.pointsData[1].z)).not.toEqual(
+      Array.from(model.scaleDataZ(model.origData.expressionData.GeneB)),
+    );
   });
 });
 

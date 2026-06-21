@@ -15,9 +15,13 @@ const syncSelectedFeatureLabelStyles = (reglElementData) => {
   const firstSelectedFeature = currentReglElementData.plotMetaData.selectedFeatures?.[0] || null;
   document.querySelectorAll(".featureSparkLine").forEach((containerEl) => {
     const geneLabel = containerEl.querySelector(".feature-gene-symbol");
-  if (!geneLabel) return;
+    if (!geneLabel) return;
 
-    geneLabel.style.fontWeight = geneLabel.textContent === firstSelectedFeature ? "700" : "400";
+    const isPrimary = geneLabel.textContent === firstSelectedFeature;
+    containerEl.classList.toggle("featureSparkLine-primary", isPrimary);
+    containerEl.setAttribute("aria-current", isPrimary ? "true" : "false");
+    geneLabel.style.fontWeight = isPrimary ? "600" : "400";
+    geneLabel.setAttribute("data-primary", isPrimary ? "true" : "false");
   });
 };
 
@@ -30,6 +34,10 @@ export const createSparkLine = (feature) => {
   containerEl.classList.add("mb-1");
   containerEl.style.justifyContent = "space-around";
   containerEl.setAttribute("data-status", "initial");
+  containerEl.setAttribute("role", "button");
+  containerEl.setAttribute("tabindex", "0");
+  containerEl.setAttribute("aria-pressed", "false");
+  containerEl.setAttribute("aria-current", "false");
 
 
   const geneSymbol = document.createElement("span");
@@ -37,7 +45,7 @@ export const createSparkLine = (feature) => {
   geneSymbol.classList.add("d-flex");
   geneSymbol.classList.add("align-items-center");
   geneSymbol.style.flexShrink = 0;
-  geneSymbol.innerHTML = feature;
+  geneSymbol.textContent = feature;
   containerEl.appendChild(geneSymbol);
 
   const sparkLineEl = document.createElement("span");
@@ -102,24 +110,26 @@ export const updateSparkLine = (containerEl, reglElementData) => {
   <path d="m8.354 10.354 7-7a.5.5 0 0 0-.708-.708L8 9.293 5.354 6.646a.5.5 0 1 0-.708.708l3 3a.5.5 0 0 0 .708 0"/>
 </svg>`;
 
-  containerEl.setAttribute("data-status", "ready");
+  const feature = containerEl.querySelector(".feature-gene-symbol").textContent;
+  const isChecked = (currentReglElementData.plotMetaData.selectedFeatures || []).includes(feature);
+  containerEl.setAttribute("data-status", isChecked ? "checked" : "ready");
+  containerEl.setAttribute("aria-pressed", isChecked ? "true" : "false");
   // remove spinner
   const iconDiv = containerEl.querySelector(".icon-container");
-  iconDiv.querySelector("span").remove();
+  iconDiv.querySelector("span")?.remove();
 
   // add square
   iconDiv.innerHTML = "";
-  iconDiv.innerHTML = square;
+  iconDiv.innerHTML = isChecked ? check2square : square;
 
   // update sparkline
   const sparkLineEl = containerEl.querySelector(".sparkLine");
   // firstly remove progress bar
-  sparkLineEl.querySelector("span").remove();
+  sparkLineEl.querySelector("span")?.remove();
   const sparkLineSpan = document.createElement("span");
   sparkLineSpan.id = randomId();
   sparkLineSpan.innerHTML = "Loading...";
   sparkLineEl.appendChild(sparkLineSpan);
-  const feature = containerEl.querySelector("span").innerHTML;
   const expressionData = currentReglElementData.origData.expressionData[feature];
   const binExprCount = binArrCount(expressionData, 20);
   // generate sparkline
@@ -133,24 +143,25 @@ export const updateSparkLine = (containerEl, reglElementData) => {
                });
   sparkLineSpan.querySelector("canvas").style.width="100%";
 
-  containerEl.addEventListener('click', function() {
+  const toggleFeatureSelection = function() {
     const currentReglElementData = resolveReglElementData(reglElementData);
     const selectedFeatures = currentReglElementData.plotMetaData.selectedFeatures ||= [];
     let currentStatus = this.getAttribute('data-status');
     // Update the status based on current value
     let newStatus;
-    const feature = this.querySelector("span").innerHTML;
+    const feature = this.querySelector(".feature-gene-symbol").textContent;
     switch(currentStatus) {
       case 'ready':
         newStatus = 'checked';
         if (!selectedFeatures.includes(feature)) {
           selectedFeatures.push(feature);
         }
+          this.setAttribute("aria-pressed", "true");
         iconDiv.innerHTML = "";
         iconDiv.innerHTML = check2square;
         // send selected features to server
         Shiny.setInputValue("selectedFeatures",
-                             selectedFeatures,
+                             [...selectedFeatures],
                              {priority: "event"});
         console.log("selectedFeatures: ", selectedFeatures);
         syncSelectedFeatureLabelStyles(currentReglElementData);
@@ -162,11 +173,12 @@ export const updateSparkLine = (containerEl, reglElementData) => {
         if (index !== -1) {
           selectedFeatures.splice(index, 1);
         }
+          this.setAttribute("aria-pressed", "false");
         iconDiv.innerHTML = "";
         iconDiv.innerHTML = square;
         // send selected features to server
         Shiny.setInputValue("selectedFeatures",
-                             selectedFeatures,
+                             [...selectedFeatures],
                              {priority: "event"});
         console.log("selectedFeatures: ", selectedFeatures);
         syncSelectedFeatureLabelStyles(currentReglElementData);
@@ -178,7 +190,14 @@ export const updateSparkLine = (containerEl, reglElementData) => {
 
     // Set the new status
     this.setAttribute('data-status', newStatus);
-  });
+  };
+
+  containerEl.onclick = toggleFeatureSelection;
+  containerEl.onkeydown = function(event) {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    toggleFeatureSelection.call(this);
+  };
 
   syncSelectedFeatureLabelStyles(reglElementData);
 };

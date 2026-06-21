@@ -147,6 +147,7 @@ const ipcCache = {
   expr: new Map(),
   reductionVersion: null,
   exprVersion: null,
+  exprAssay: null,
 };
 
 const REDUCTION_CACHE_LIMIT = 5;
@@ -205,25 +206,56 @@ const ensureReductionCacheVersion = (version) => {
   return true;
 };
 
-const ensureExprCacheVersion = (version) => {
+const ensureExprCacheVersion = (version, assay = null) => {
   if (ipcCache.exprVersion !== null && Number(version) < Number(ipcCache.exprVersion)) {
     return false;
   }
 
-  if (ipcCache.exprVersion !== version) {
+  if (ipcCache.exprVersion !== version || ipcCache.exprAssay !== assay) {
     ipcCache.expr.clear();
     ipcCache.exprVersion = version;
+    ipcCache.exprAssay = assay;
     updateExprCacheKeys();
   }
 
   return true;
 };
 
+const isCurrentExprCacheIdentity = (version, assay) => (
+  ipcCache.exprVersion === version && ipcCache.exprAssay === assay
+);
+
 const makeReductionCacheKey = (version, reductionName) =>
   `${version}${CACHE_KEY_DELIMITER}${reductionName}`;
 
 const makeExprCacheKey = (version, assay, geneName) =>
   `${version}${CACHE_KEY_DELIMITER}${assay}${CACHE_KEY_DELIMITER}${geneName}`;
+
+const getFeatureSparkLineGene = (containerEl) => (
+  containerEl?.querySelector(".feature-gene-symbol")?.textContent ||
+  containerEl?.querySelector("span")?.textContent ||
+  ""
+);
+
+const getFeatureSparkLineElements = () => [
+  ...(document.getElementById("featureSparkLine")?.querySelectorAll(".featureSparkLine") || []),
+];
+
+const isExpressionFeatureActive = (geneName) => {
+  if (!geneName) {
+    return true;
+  }
+  const sparkLines = getFeatureSparkLineElements();
+  if (sparkLines.length === 0) {
+    return true;
+  }
+  return sparkLines.some((sparkLine) => getFeatureSparkLineGene(sparkLine) === geneName);
+};
+
+const isCurrentExpressionPayload = (msg) => (
+  isCurrentExprCacheIdentity(msg.exprVersion, msg.assay) &&
+  isExpressionFeatureActive(msg.geneName)
+);
 
 const getCurrentReductionName = () => {
   const el = document.getElementById("updateReduction-reduction");
@@ -312,10 +344,28 @@ const isCurrentReductionVersion = (version) => (
 
 const formatPlotTransferError = (payload = {}) => {
   const payloadType = payload.payloadType || payload.type;
-  if (payloadType === "metadata" || payloadType === "metadata_patch") {
+  if (payloadType === "metadata_patch") {
+    const cols = normalizeChangedMetaCols(payload.cols);
+    const colLabel = cols.length > 0 ? cols.join(", ") : "the requested columns";
+    return {
+      heading: "Metadata update could not apply",
+      body: `The update for \`${colLabel}\` could not be applied. Existing metadata is still shown. Retry the action or reload the dataset.`,
+    };
+  }
+
+  if (payloadType === "metadata") {
     return {
       heading: "Metadata could not load",
       body: "Could not load metadata for this dataset. Retry transfer, or reload the dataset.",
+    };
+  }
+
+  if (payloadType === "expression") {
+    const geneName = payload.geneName || "the selected gene";
+    const assay = payload.assay || "the selected assay";
+    return {
+      heading: "Expression could not load",
+      body: `Could not load expression for \`${geneName}\` in \`${assay}\`. The category scatter remains available. Retry transfer or choose another gene.`,
     };
   }
 
@@ -951,6 +1001,19 @@ Shiny.addCustomMessageHandler("transfer_error", (msg) => {
     return;
   }
 
+  if (payloadType === "expression") {
+    const staleVersion = ipcCache.exprVersion !== null && Number(version) < Number(ipcCache.exprVersion);
+    const staleAssay =
+      ipcCache.exprVersion !== null &&
+      Number(version) === Number(ipcCache.exprVersion) &&
+      ipcCache.exprAssay !== null &&
+      Boolean(payload.assay) &&
+      payload.assay !== ipcCache.exprAssay;
+    if (staleVersion || staleAssay || !isExpressionFeatureActive(payload.geneName)) {
+      return;
+    }
+  }
+
   if (
     (payloadType === "metadata" || payloadType === "metadata_patch") &&
     !isCurrentMetaVersion(version)
@@ -1357,9 +1420,15 @@ Shiny.addCustomMessageHandler("meta_patch_ready", (msg) => {
   const isCurrentPatchRequest = () =>
     patchVersion == null || isCurrentMetaRequest(transferRequest);
   try {
+    if (!isCurrentPatchRequest()) {
+      return;
+    }
+    const changedCols = normalizeChangedMetaCols(msg.cols);
+    if (changedCols.length === 0) {
+      throw new Error("Metadata patch did not include column scope");
+    }
     const metaURL = window.location.origin + "/data/meta/" + msg.metaFile;
     (async () => {
-      const changedCols = normalizeChangedMetaCols(msg.cols);
       const refreshMainPlot = metaColsAffectMainPlot(changedCols);
 
       if (refreshMainPlot && mainPlotSpinner.style.display === "none") {
@@ -1367,12 +1436,19 @@ Shiny.addCustomMessageHandler("meta_patch_ready", (msg) => {
       }
 
       const table = await readArrowIPC(metaURL);
-      const out = parseMetaFromArrow(table);
       if (!isCurrentPatchRequest()) {
         return;
       }
+      const out = parseMetaFromArrow(table);
+      const patch = {};
+      changedCols.forEach((col) => {
+        if (!out[col]) {
+          throw new Error(`Metadata patch payload is missing column ${col}`);
+        }
+        patch[col] = out[col];
+      });
       console.log("metaPatch", out);
-      reglElementData.updateCellMetaDataPatch(out);
+      reglElementData.updateCellMetaDataPatch(patch);
       const syncResult = syncMetaUiAfterUpdate({
         fullTransfer: false,
         changedCols,
@@ -1387,24 +1463,22 @@ Shiny.addCustomMessageHandler("meta_patch_ready", (msg) => {
       }
       console.error("There was a problem:", error);
       mainPlotSpinner.style.display = "none";
-      if (metaColsAffectMainPlot(normalizeChangedMetaCols(msg.cols))) {
-        showPlotTransferError({
-          payloadType: "metadata_patch",
-          reasonCode: "fetch_failed",
-          version: patchVersion,
-          cols: msg.cols,
-        });
-      }
-    });
-  } catch (error) {
-    console.error("There was a problem:", error);
-    mainPlotSpinner.style.display = "none";
-    if (isCurrentPatchRequest() && metaColsAffectMainPlot(normalizeChangedMetaCols(msg.cols))) {
       showPlotTransferError({
         payloadType: "metadata_patch",
         reasonCode: "fetch_failed",
         version: patchVersion,
-        cols: msg.cols,
+        cols: changedCols,
+      });
+    });
+  } catch (error) {
+    console.error("There was a problem:", error);
+    mainPlotSpinner.style.display = "none";
+    if (isCurrentPatchRequest()) {
+      showPlotTransferError({
+        payloadType: "metadata_patch",
+        reasonCode: "fetch_failed",
+        version: patchVersion,
+        cols: normalizeChangedMetaCols(msg.cols),
       });
     }
   }
@@ -1414,26 +1488,32 @@ Shiny.addCustomMessageHandler("expr_ready", (msg) => {
   try {
     const exprURL = window.location.origin + "/data/expr/" + msg.exprFile;
     (async () => {
-      if (!ensureExprCacheVersion(msg.exprVersion)) {
+      if (!ensureExprCacheVersion(msg.exprVersion, msg.assay)) {
         return;
       }
       const cacheKey = makeExprCacheKey(msg.exprVersion, msg.assay, msg.geneName);
       const buffer = await fetchArrowIPCBuffer(exprURL);
+      if (!isCurrentExpressionPayload(msg)) {
+        return;
+      }
       setCacheEntry(ipcCache.expr, cacheKey, buffer, EXPR_CACHE_LIMIT);
       updateExprCacheKeys();
 
       const table = decodeArrowIPC(buffer);
+      if (!isCurrentExpressionPayload(msg)) {
+        return;
+      }
       const expr = {};
       expr[msg.geneName] = getFloat32Column(table, "expr");
+      if (!isCurrentExpressionPayload(msg)) {
+        return;
+      }
       reglElementData.updateExpressionData(expr);
       console.log("exprData", reglElementData.origData.expressionData);
       const feature = Object.keys(expr)[0];
-      const sparkLine = document
-        .getElementById("featureSparkLine")
-        .querySelectorAll(".featureSparkLine");
-      const sparkLineArray = [...sparkLine];
+      const sparkLineArray = getFeatureSparkLineElements();
       sparkLineArray.forEach((e) => {
-        if (e.querySelector("span").innerHTML == feature) {
+        if (getFeatureSparkLineGene(e) == feature) {
           updateSparkLine(e, () => reglElementData);
         }
       });
@@ -1447,19 +1527,40 @@ Shiny.addCustomMessageHandler("expr_ready", (msg) => {
       ]);
     })().catch((error) => {
       console.error("There was a problem:", error);
+      if (isCurrentExpressionPayload(msg)) {
+        showPlotTransferError({
+          payloadType: "expression",
+          reasonCode: "fetch_failed",
+          version: msg.exprVersion,
+          geneName: msg.geneName,
+          assay: msg.assay,
+        });
+      }
     });
   } catch (error) {
     console.error("There was a problem:", error);
+    if (isCurrentExpressionPayload(msg)) {
+      showPlotTransferError({
+        payloadType: "expression",
+        reasonCode: "fetch_failed",
+        version: msg.exprVersion,
+        geneName: msg.geneName,
+        assay: msg.assay,
+      });
+    }
   }
 });
 
 Shiny.addCustomMessageHandler("expr_cached", (msg) => {
   try {
     (async () => {
-      if (!ensureExprCacheVersion(msg.exprVersion)) {
+      if (!ensureExprCacheVersion(msg.exprVersion, msg.assay)) {
         return;
       }
       const cacheKey = makeExprCacheKey(msg.exprVersion, msg.assay, msg.geneName);
+      if (!isExpressionFeatureActive(msg.geneName)) {
+        return;
+      }
       const buffer = touchCacheEntry(ipcCache.expr, cacheKey);
       if (!buffer) {
         updateExprCacheKeys();
@@ -1470,17 +1571,20 @@ Shiny.addCustomMessageHandler("expr_cached", (msg) => {
       }
 
       const table = decodeArrowIPC(buffer);
+      if (!isCurrentExpressionPayload(msg)) {
+        return;
+      }
       const expr = {};
       expr[msg.geneName] = getFloat32Column(table, "expr");
+      if (!isCurrentExpressionPayload(msg)) {
+        return;
+      }
       reglElementData.updateExpressionData(expr);
       console.log("exprData", reglElementData.origData.expressionData);
       const feature = Object.keys(expr)[0];
-      const sparkLine = document
-        .getElementById("featureSparkLine")
-        .querySelectorAll(".featureSparkLine");
-      const sparkLineArray = [...sparkLine];
+      const sparkLineArray = getFeatureSparkLineElements();
       sparkLineArray.forEach((e) => {
-        if (e.querySelector("span").innerHTML == feature) {
+        if (getFeatureSparkLineGene(e) == feature) {
           updateSparkLine(e, () => reglElementData);
         }
       });
@@ -1494,9 +1598,27 @@ Shiny.addCustomMessageHandler("expr_cached", (msg) => {
       ]);
     })().catch((error) => {
       console.error("There was a problem:", error);
+      if (isCurrentExpressionPayload(msg)) {
+        showPlotTransferError({
+          payloadType: "expression",
+          reasonCode: "decode_failed",
+          version: msg.exprVersion,
+          geneName: msg.geneName,
+          assay: msg.assay,
+        });
+      }
     });
   } catch (error) {
     console.error("There was a problem:", error);
+    if (isCurrentExpressionPayload(msg)) {
+      showPlotTransferError({
+        payloadType: "expression",
+        reasonCode: "decode_failed",
+        version: msg.exprVersion,
+        geneName: msg.geneName,
+        assay: msg.assay,
+      });
+    }
   }
 });
 
