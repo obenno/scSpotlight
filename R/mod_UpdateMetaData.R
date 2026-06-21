@@ -94,8 +94,17 @@ mod_UpdateMetaData_server <- function(
             result$value
           }) %...!%
           (function(error) {
+            message("Metadata export failed during IPC write.")
+            session$sendCustomMessage(
+              type = "transfer_error",
+              message = make_transfer_error_payload(
+                "metadata",
+                "write_failed",
+                metaVersion
+              )
+            )
             showNotification(
-              ui = paste("Metadata export failed:", conditionMessage(error)),
+              ui = "Metadata export failed. Retry transfer or reload the dataset.",
               action = NULL,
               duration = 6,
               closeButton = TRUE,
@@ -172,11 +181,18 @@ mod_UpdateMetaData_server <- function(
             result$value
           }) %...!%
           (function(error) {
+            message("Metadata patch export failed during IPC write.")
+            session$sendCustomMessage(
+              type = "transfer_error",
+              message = make_transfer_error_payload(
+                "metadata_patch",
+                "write_failed",
+                patch_version,
+                list(cols = patch_cols)
+              )
+            )
             showNotification(
-              ui = paste(
-                "Metadata patch export failed:",
-                conditionMessage(error)
-              ),
+              ui = "Metadata patch export failed. Retry the metadata update.",
               action = NULL,
               duration = 6,
               closeButton = TRUE,

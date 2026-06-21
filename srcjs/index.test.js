@@ -521,7 +521,7 @@ describe("rename cluster client selection", () => {
         { priority: "event" },
       ]);
       expect(document.getElementById("plot-transfer-error")?.textContent).toMatch(
-        /Reduction data failed to load/,
+        /Reduction could not load/,
       );
     });
   });
@@ -654,13 +654,13 @@ describe("rename cluster client selection", () => {
     currentReduction.resolve(encodeLabelBuffer("current"));
 
     await vi.waitFor(() => {
-      expect(Array.from(testState.reglInstance.origData.reductionData.X)).toEqual([10]);
+      expect(Array.from(testState.reglInstance.origData.reductionData.X)).toEqual([406]);
     });
 
     staleReduction.resolve(encodeLabelBuffer("stale"));
     await Promise.resolve();
     await Promise.resolve();
-    expect(Array.from(testState.reglInstance.origData.reductionData.X)).toEqual([10]);
+    expect(Array.from(testState.reglInstance.origData.reductionData.X)).toEqual([406]);
   });
 
   it("routes PCA failures to the ElbowPlot status without settling main scatter readiness", async () => {

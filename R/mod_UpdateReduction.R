@@ -66,22 +66,46 @@ mod_UpdateReduction_server <- function(
         )
 
         reductionVersion <- reductionUpdateIndicator()
-        pca_result <- capture_warnings(
-          write_backend_pca_stdev_transfer(
-            seuratObj(),
-            dir_path = file.path(session$userData$tempDir, "reduction"),
-            reduction_version = reductionVersion
+        pca_result <- tryCatch(
+          capture_warnings(
+            write_backend_pca_stdev_transfer(
+              seuratObj(),
+              dir_path = file.path(session$userData$tempDir, "reduction"),
+              reduction_version = reductionVersion
+            )
+          ),
+          error = function(error) {
+            message("PCA stdev export failed during IPC write.")
+            session$sendCustomMessage(
+              type = "transfer_error",
+              message = make_transfer_error_payload(
+                "pca",
+                "write_failed",
+                reductionVersion
+              )
+            )
+            showNotification(
+              ui = "PCA summary export failed. The main scatter can still load.",
+              action = NULL,
+              duration = 6,
+              closeButton = TRUE,
+              type = "error",
+              session = session
+            )
+            NULL
+          }
+        )
+        if (!is.null(pca_result)) {
+          show_captured_warnings(
+            pca_result$warnings,
+            title = "PCA stdev export completed with warnings",
+            session = session
           )
-        )
-        show_captured_warnings(
-          pca_result$warnings,
-          title = "PCA stdev export completed with warnings",
-          session = session
-        )
-        session$sendCustomMessage(
-          type = "pca_ready",
-          message = pca_result$value
-        )
+          session$sendCustomMessage(
+            type = "pca_ready",
+            message = pca_result$value
+          )
+        }
 
         prefetch_limit <- if (get_backend_cell_count(seuratObj()) >= 250000L) {
           1L
@@ -154,8 +178,18 @@ mod_UpdateReduction_server <- function(
           result$value
         }) %...!%
         (function(error) {
+          message("Reduction export failed during IPC write.")
+          session$sendCustomMessage(
+            type = "transfer_error",
+            message = make_transfer_error_payload(
+              "reduction",
+              "write_failed",
+              reductionVersion,
+              list(reductionName = reduction_name)
+            )
+          )
           showNotification(
-            ui = paste("Reduction export failed:", conditionMessage(error)),
+            ui = "Reduction export failed. Try switching reductions or retry transfer.",
             action = NULL,
             duration = 6,
             closeButton = TRUE,
@@ -238,8 +272,18 @@ mod_UpdateReduction_server <- function(
           result$value
         }) %...!%
         (function(error) {
+          message("Reduction prefetch failed during IPC write.")
+          session$sendCustomMessage(
+            type = "transfer_error",
+            message = make_transfer_error_payload(
+              "reductions",
+              "write_failed",
+              reductionVersion,
+              list(activeReduction = active_reduction_name)
+            )
+          )
           showNotification(
-            ui = paste("Reduction export failed:", conditionMessage(error)),
+            ui = "Reduction prefetch failed. Try switching reductions or retry transfer.",
             action = NULL,
             duration = 6,
             closeButton = TRUE,

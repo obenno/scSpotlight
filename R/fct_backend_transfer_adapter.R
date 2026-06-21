@@ -2,6 +2,76 @@
 #'
 #' @noRd
 
+transfer_error_payload_types <- c(
+  "metadata",
+  "metadata_patch",
+  "reduction",
+  "reductions",
+  "pca",
+  "expression"
+)
+
+transfer_error_context_fields <- list(
+  metadata = character(0),
+  metadata_patch = "cols",
+  reduction = c("reductionName", "activeReduction"),
+  reductions = c("reductionName", "activeReduction"),
+  pca = character(0),
+  expression = c("geneName", "assay")
+)
+
+sanitize_transfer_error_value <- function(value) {
+  value <- as.character(value)
+  value <- vapply(value, function(item) {
+    if (is.na(item) || !nzchar(item)) {
+      return(NA_character_)
+    }
+
+    if (grepl("[/\\\\]", item)) {
+      item <- basename(item)
+    }
+
+    item
+  }, character(1), USE.NAMES = FALSE)
+
+  value[!is.na(value) & nzchar(value)]
+}
+
+make_transfer_error_payload <- function(
+  payload_type,
+  reason_code,
+  version,
+  context = list()
+) {
+  payload_type <- as.character(payload_type)[[1]]
+  if (!payload_type %in% transfer_error_payload_types) {
+    stop("Unsupported transfer error payload type: ", payload_type)
+  }
+
+  payload <- list(
+    payloadType = payload_type,
+    reasonCode = as.character(reason_code)[[1]],
+    version = version
+  )
+
+  fields <- transfer_error_context_fields[[payload_type]]
+  for (field in fields) {
+    value <- context[[field]]
+    if (is.null(value)) {
+      next
+    }
+
+    value <- sanitize_transfer_error_value(value)
+    if (!length(value)) {
+      next
+    }
+
+    payload[[field]] <- if (identical(field, "cols")) value else value[[1]]
+  }
+
+  payload
+}
+
 prepare_backend_metadata_transfer <- function(
   object,
   dir_path,

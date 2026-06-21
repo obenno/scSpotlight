@@ -107,6 +107,13 @@ let mainPlotSpinner;
 let initialPlotRequestSeq = 0;
 let pendingInitialPlotRequestId = 0;
 let renderedInitialPlotRequestId = 0;
+let activeMetaRequestSeq = 0;
+let activeMetaRequest = null;
+let activeMetaVersion = null;
+let activeReductionRequestSeq = 0;
+let activeReductionRequest = null;
+let activeReductionVersion = null;
+let pcaTransferFailed = false;
 
 const notifyInitialPlotReady = (requestId) => {
   if (
@@ -239,14 +246,116 @@ const resolveActiveReduction = (reductions, activeReductionName) => {
   );
 };
 
-const showPlotTransferError = (message) => {
+const startMetaRequest = (version) => {
+  if (
+    activeMetaVersion != null &&
+    version != null &&
+    Number(version) < Number(activeMetaVersion)
+  ) {
+    return { stale: true, version };
+  }
+
+  activeMetaRequestSeq += 1;
+  activeMetaVersion = version;
+  activeMetaRequest = {
+    id: activeMetaRequestSeq,
+    version,
+  };
+  return activeMetaRequest;
+};
+
+const isCurrentMetaRequest = (request) => (
+  request &&
+  !request.stale &&
+  activeMetaRequest &&
+  request.id === activeMetaRequest.id &&
+  request.version === activeMetaRequest.version &&
+  request.version === activeMetaVersion
+);
+
+const isCurrentMetaVersion = (version) => (
+  activeMetaVersion == null || Number(version) >= Number(activeMetaVersion)
+);
+
+const startReductionRequest = (version, reductionName = null) => {
+  if (
+    activeReductionVersion != null &&
+    version != null &&
+    Number(version) < Number(activeReductionVersion)
+  ) {
+    return { stale: true, version, reductionName };
+  }
+
+  activeReductionRequestSeq += 1;
+  activeReductionVersion = version;
+  activeReductionRequest = {
+    id: activeReductionRequestSeq,
+    version,
+    reductionName,
+  };
+  return activeReductionRequest;
+};
+
+const isCurrentReductionRequest = (request) => (
+  request &&
+  !request.stale &&
+  activeReductionRequest &&
+  request.id === activeReductionRequest.id &&
+  request.version === activeReductionRequest.version &&
+  request.version === activeReductionVersion &&
+  request.reductionName === activeReductionRequest.reductionName
+);
+
+const isCurrentReductionVersion = (version) => (
+  activeReductionVersion == null || Number(version) >= Number(activeReductionVersion)
+);
+
+const formatPlotTransferError = (payload = {}) => {
+  const payloadType = payload.payloadType || payload.type;
+  if (payloadType === "metadata" || payloadType === "metadata_patch") {
+    return {
+      heading: "Metadata could not load",
+      body: "Could not load metadata for this dataset. Retry transfer, or reload the dataset.",
+    };
+  }
+
+  if (payloadType === "reductions") {
+    return {
+      heading: "Scatter could not initialize",
+      body: "No active reduction finished rendering. Retry transfer, or reload the dataset.",
+    };
+  }
+
+  if (payloadType === "reduction") {
+    const reductionName = payload.reductionName || payload.activeReduction;
+    return {
+      heading: "Reduction could not load",
+      body: reductionName
+        ? `Could not load \`${reductionName}\`. Try switching reductions, retry transfer, or reload the dataset.`
+        : "Could not load the selected reduction. Try switching reductions, retry transfer, or reload the dataset.",
+    };
+  }
+
+  return {
+    heading: "Scatter could not initialize",
+    body: "No active reduction finished rendering. Retry transfer, or reload the dataset.",
+  };
+};
+
+const showPlotTransferError = (payloadOrMessage) => {
   const parentDiv = document.getElementById(mainPlotElId);
   if (!parentDiv) return;
+
+  const formatted = typeof payloadOrMessage === "string"
+    ? { heading: payloadOrMessage, body: "" }
+    : formatPlotTransferError(payloadOrMessage);
 
   let errorEl = parentDiv.querySelector("#plot-transfer-error");
   if (!errorEl) {
     errorEl = document.createElement("div");
     errorEl.id = "plot-transfer-error";
+    errorEl.setAttribute("role", "alert");
+    errorEl.setAttribute("aria-live", "assertive");
     errorEl.style.position = "absolute";
     errorEl.style.inset = "1rem auto auto 1rem";
     errorEl.style.zIndex = "10";
@@ -259,19 +368,30 @@ const showPlotTransferError = (message) => {
     parentDiv.appendChild(errorEl);
   }
 
-  errorEl.textContent = message;
+  errorEl.textContent = formatted.body
+    ? `${formatted.heading}\n${formatted.body}`
+    : formatted.heading;
 };
 
 const clearPlotTransferError = () => {
   document.getElementById("plot-transfer-error")?.remove();
 };
 
-const handlePlotTransferError = (error, requestId, message) => {
+const showPcaTransferError = () => {
+  reglElementData.updatePcaStdev(null);
+  const statusEl = document.getElementById(elbowPlotStatusId);
+  if (statusEl) {
+    statusEl.textContent = "PCA summary unavailable. The main scatter can still load.";
+  }
+  requestFloatingPlotRefresh(["floatingElbowPlot"]);
+};
+
+const handlePlotTransferError = (error, requestId, payloadOrMessage) => {
   console.error("There was a problem:", error);
   if (mainPlotSpinner) {
     mainPlotSpinner.style.display = "none";
   }
-  showPlotTransferError(message);
+  showPlotTransferError(payloadOrMessage);
   if (requestId) {
     notifyInitialPlotSettled(requestId);
   }
@@ -285,9 +405,13 @@ const decodeReductionBuffer = (buffer) => {
   };
 };
 
-const plotReductionBuffer = (buffer) => {
+const plotReductionBuffer = (buffer, shouldMutate = () => true) => {
+  const reductionData = decodeReductionBuffer(buffer);
+  if (!shouldMutate()) {
+    return;
+  }
   clearPlotTransferError();
-  reglElementData.updateReductionData(decodeReductionBuffer(buffer));
+  reglElementData.updateReductionData(reductionData);
   Shiny.setInputValue("reductionProcessed", true, { priority: "event" });
 };
 
@@ -573,6 +697,10 @@ Shiny.addCustomMessageHandler("await_initial_plot_ready", (_msg) => {
 
 Shiny.addCustomMessageHandler("reduction_ready", (msg) => {
   const requestId = pendingInitialPlotRequestId;
+  const transferRequest = startReductionRequest(
+    msg.reductionVersion,
+    msg.reductionName,
+  );
   try {
     const reductionURL =
       window.location.origin + "/data/reduction/" + msg.reductionFile;
@@ -585,11 +713,17 @@ Shiny.addCustomMessageHandler("reduction_ready", (msg) => {
       if (!ensureReductionCacheVersion(msg.reductionVersion)) {
         return;
       }
+      if (!isCurrentReductionRequest(transferRequest)) {
+        return;
+      }
       const cacheKey = makeReductionCacheKey(
         msg.reductionVersion,
         msg.reductionName,
       );
       const buffer = await fetchArrowIPCBuffer(reductionURL);
+      if (!isCurrentReductionRequest(transferRequest)) {
+        return;
+      }
       setCacheEntry(
         ipcCache.reductions,
         cacheKey,
@@ -598,31 +732,54 @@ Shiny.addCustomMessageHandler("reduction_ready", (msg) => {
       );
       updateReductionCacheKeys();
 
-      plotReductionBuffer(buffer);
+      plotReductionBuffer(buffer, () => isCurrentReductionRequest(transferRequest));
       console.log("reduction", msg.reductionName);
 
       // do not hide the spinner, since it will trigger the reglScatter_plot immediately
     })().catch((error) => {
+      if (!isCurrentReductionRequest(transferRequest)) {
+        return;
+      }
       handlePlotTransferError(
         error,
         requestId,
-        "Reduction data failed to load. Try switching reductions or reloading the dataset.",
+        {
+          payloadType: "reduction",
+          reasonCode: "fetch_failed",
+          version: msg.reductionVersion,
+          reductionName: msg.reductionName,
+        },
       );
     });
   } catch (error) {
+    if (!isCurrentReductionRequest(transferRequest)) {
+      return;
+    }
     handlePlotTransferError(
       error,
       requestId,
-      "Reduction data failed to load. Try switching reductions or reloading the dataset.",
+      {
+        payloadType: "reduction",
+        reasonCode: "fetch_failed",
+        version: msg.reductionVersion,
+        reductionName: msg.reductionName,
+      },
     );
   }
 });
 
 Shiny.addCustomMessageHandler("reductions_ready", (msg) => {
   const requestId = pendingInitialPlotRequestId;
+  const transferRequest = startReductionRequest(
+    msg.reductionVersion,
+    msg.activeReduction || null,
+  );
   try {
     (async () => {
       if (!ensureReductionCacheVersion(msg.reductionVersion)) {
+        return;
+      }
+      if (!isCurrentReductionRequest(transferRequest)) {
         return;
       }
 
@@ -642,6 +799,9 @@ Shiny.addCustomMessageHandler("reductions_ready", (msg) => {
       const activeURL =
         window.location.origin + "/data/reduction/" + activeReduction.reductionFile;
       const activeBuffer = await fetchArrowIPCBuffer(activeURL);
+      if (!isCurrentReductionRequest(transferRequest)) {
+        return;
+      }
       setCacheEntry(
         ipcCache.reductions,
         makeReductionCacheKey(msg.reductionVersion, activeReduction.reductionName),
@@ -649,13 +809,19 @@ Shiny.addCustomMessageHandler("reductions_ready", (msg) => {
         REDUCTION_CACHE_LIMIT,
       );
       updateReductionCacheKeys();
-      plotReductionBuffer(activeBuffer);
+      plotReductionBuffer(activeBuffer, () => isCurrentReductionRequest(transferRequest));
 
       await Promise.all(
         inactiveReductions.map(async (reduction) => {
+          if (!isCurrentReductionRequest(transferRequest)) {
+            return;
+          }
           const reductionURL =
             window.location.origin + "/data/reduction/" + reduction.reductionFile;
           const buffer = await fetchArrowIPCBuffer(reductionURL);
+          if (!isCurrentReductionRequest(transferRequest)) {
+            return;
+          }
           setCacheEntry(
             ipcCache.reductions,
             makeReductionCacheKey(msg.reductionVersion, reduction.reductionName),
@@ -664,20 +830,39 @@ Shiny.addCustomMessageHandler("reductions_ready", (msg) => {
           );
         }),
       );
+      if (!isCurrentReductionRequest(transferRequest)) {
+        return;
+      }
       updateReductionCacheKeys();
     })().catch((error) => {
+      if (!isCurrentReductionRequest(transferRequest)) {
+        return;
+      }
       handlePlotTransferError(
         error,
         requestId,
-        "Reduction data failed to load. Try switching reductions or reloading the dataset.",
+        {
+          payloadType: "reductions",
+          reasonCode: "fetch_failed",
+          version: msg.reductionVersion,
+          activeReduction: msg.activeReduction,
+        },
       );
       Shiny.setInputValue("reductionProcessed", false, { priority: "event" });
     });
   } catch (error) {
+    if (!isCurrentReductionRequest(transferRequest)) {
+      return;
+    }
     handlePlotTransferError(
       error,
       requestId,
-      "Reduction data failed to load. Try switching reductions or reloading the dataset.",
+      {
+        payloadType: "reductions",
+        reasonCode: "fetch_failed",
+        version: msg.reductionVersion,
+        activeReduction: msg.activeReduction,
+      },
     );
   }
 });
@@ -729,6 +914,7 @@ Shiny.addCustomMessageHandler("pca_ready", (msg) => {
   try {
     (async () => {
       if (!msg?.stdevFile) {
+        pcaTransferFailed = false;
         reglElementData.updatePcaStdev(null);
         syncElbowPlotPanelState();
         requestFloatingPlotRefresh(["floatingElbowPlot"]);
@@ -738,14 +924,66 @@ Shiny.addCustomMessageHandler("pca_ready", (msg) => {
       const stdevURL = `${window.location.origin}/data/reduction/${msg.stdevFile}`;
       const table = await readArrowIPC(stdevURL);
       const stdevArray = getFloat32Column(table, "stdev");
+      pcaTransferFailed = false;
       reglElementData.updatePcaStdev(stdevArray);
       syncElbowPlotPanelState();
       requestFloatingPlotRefresh(["floatingElbowPlot"]);
     })().catch((error) => {
       console.error("There was a problem:", error);
+      pcaTransferFailed = true;
+      showPcaTransferError();
     });
   } catch (error) {
     console.error("There was a problem:", error);
+    pcaTransferFailed = true;
+    showPcaTransferError();
+  }
+});
+
+Shiny.addCustomMessageHandler("transfer_error", (msg) => {
+  const payload = msg || {};
+  const payloadType = payload.payloadType;
+  const version = payload.version;
+
+  if (payloadType === "pca") {
+    pcaTransferFailed = true;
+    showPcaTransferError();
+    return;
+  }
+
+  if (
+    (payloadType === "metadata" || payloadType === "metadata_patch") &&
+    !isCurrentMetaVersion(version)
+  ) {
+    return;
+  }
+  if (payloadType === "metadata" || payloadType === "metadata_patch") {
+    activeMetaVersion = version;
+    activeMetaRequest = null;
+  }
+
+  if (
+    (payloadType === "reduction" || payloadType === "reductions") &&
+    !isCurrentReductionVersion(version)
+  ) {
+    return;
+  }
+  if (payloadType === "reduction" || payloadType === "reductions") {
+    activeReductionVersion = version;
+    activeReductionRequest = null;
+  }
+
+  if (mainPlotSpinner) {
+    mainPlotSpinner.style.display = "none";
+  }
+  showPlotTransferError(payload);
+  if (
+    payloadType === "metadata" ||
+    payloadType === "metadata_patch" ||
+    payloadType === "reduction" ||
+    payloadType === "reductions"
+  ) {
+    notifyInitialPlotSettled(pendingInitialPlotRequestId);
   }
 });
 
@@ -1064,6 +1302,7 @@ const syncMetaUiAfterUpdate = ({
 
 Shiny.addCustomMessageHandler("meta_ready", (msg) => {
   const requestId = pendingInitialPlotRequestId;
+  const transferRequest = startMetaRequest(msg.metaVersion);
   try {
     const metaURL = window.location.origin + "/data/meta/" + msg.metaFile;
     (async () => {
@@ -1073,6 +1312,9 @@ Shiny.addCustomMessageHandler("meta_ready", (msg) => {
       }
       const table = await readArrowIPC(metaURL);
       const out = parseMetaFromArrow(table);
+      if (!isCurrentMetaRequest(transferRequest)) {
+        return;
+      }
       console.log("metaData", out);
       clearPlotTransferError();
       reglElementData.updateCellMetaData(out);
@@ -1080,22 +1322,40 @@ Shiny.addCustomMessageHandler("meta_ready", (msg) => {
 
       // do not hide the spinner, since it will trigger the reglScatter_plot immediately
     })().catch((error) => {
+      if (!isCurrentMetaRequest(transferRequest)) {
+        return;
+      }
       handlePlotTransferError(
         error,
         requestId,
-        "Metadata failed to load. Reload the dataset or check the server logs.",
+        {
+          payloadType: "metadata",
+          reasonCode: "fetch_failed",
+          version: msg.metaVersion,
+        },
       );
     });
   } catch (error) {
+    if (!isCurrentMetaRequest(transferRequest)) {
+      return;
+    }
     handlePlotTransferError(
       error,
       requestId,
-      "Metadata failed to load. Reload the dataset or check the server logs.",
+      {
+        payloadType: "metadata",
+        reasonCode: "fetch_failed",
+        version: msg.metaVersion,
+      },
     );
   }
 });
 
 Shiny.addCustomMessageHandler("meta_patch_ready", (msg) => {
+  const patchVersion = msg.metaVersion || msg.version;
+  const transferRequest = patchVersion == null ? null : startMetaRequest(patchVersion);
+  const isCurrentPatchRequest = () =>
+    patchVersion == null || isCurrentMetaRequest(transferRequest);
   try {
     const metaURL = window.location.origin + "/data/meta/" + msg.metaFile;
     (async () => {
@@ -1108,6 +1368,9 @@ Shiny.addCustomMessageHandler("meta_patch_ready", (msg) => {
 
       const table = await readArrowIPC(metaURL);
       const out = parseMetaFromArrow(table);
+      if (!isCurrentPatchRequest()) {
+        return;
+      }
       console.log("metaPatch", out);
       reglElementData.updateCellMetaDataPatch(out);
       const syncResult = syncMetaUiAfterUpdate({
@@ -1119,12 +1382,31 @@ Shiny.addCustomMessageHandler("meta_patch_ready", (msg) => {
         mainPlotSpinner.style.display = "none";
       }
     })().catch((error) => {
+      if (!isCurrentPatchRequest()) {
+        return;
+      }
       console.error("There was a problem:", error);
       mainPlotSpinner.style.display = "none";
+      if (metaColsAffectMainPlot(normalizeChangedMetaCols(msg.cols))) {
+        showPlotTransferError({
+          payloadType: "metadata_patch",
+          reasonCode: "fetch_failed",
+          version: patchVersion,
+          cols: msg.cols,
+        });
+      }
     });
   } catch (error) {
     console.error("There was a problem:", error);
     mainPlotSpinner.style.display = "none";
+    if (isCurrentPatchRequest() && metaColsAffectMainPlot(normalizeChangedMetaCols(msg.cols))) {
+      showPlotTransferError({
+        payloadType: "metadata_patch",
+        reasonCode: "fetch_failed",
+        version: patchVersion,
+        cols: msg.cols,
+      });
+    }
   }
 });
 
@@ -1645,11 +1927,17 @@ const syncElbowPlotPanelState = () => {
   if (!statusEl) return;
 
   const stdev = reglElementData.origData.pcaStdev;
+  if (pcaTransferFailed) {
+    statusEl.textContent = "PCA summary unavailable. The main scatter can still load.";
+    return;
+  }
+
   if (!stdev || stdev.length === 0) {
     statusEl.textContent = "No PCA standard deviation data available.";
     return;
   }
 
+  pcaTransferFailed = false;
   statusEl.textContent = `PCA standard deviations | ${stdev.length} PCs`;
 };
 
