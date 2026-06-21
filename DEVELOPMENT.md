@@ -254,6 +254,23 @@ one current active reduction renders successfully, or after the current transfer
 visibly fails and settles the waiter. Batched `reductions_ready` must prefer the
 server-provided `activeReduction` over a stale DOM selection.
 
+Expression transfers are scoped backend jobs. `R/mod_InputFeature.R` keeps
+queued one-active expression jobs per session and uses duplicate scoped key suppression
+for `{exprVersion, assay, geneName}` so BPCells and DuckDB reads do not overlap
+for the same requested expression payload. Analysis Mode uses
+path-based BPCells expression transfers prepared outside the promise body, and
+Explore Mode uses DuckDB/Explore query-plan expression transfers with only the
+selected `block_path`, `feature_idx`, `cell_count`, and output file path carried
+into the writer. Both branches write Arrow IPC numeric `expr` vectors and expose
+only basename-only expression payloads: `exprFile`, `geneName`, `assay`, and
+`exprVersion`.
+
+Browser-side stale expression application, targeted expression cache-miss UI
+handling, sparkline synchronization, and first-selected-gene main scatter behavior
+are completed in the dependent Phase 02 browser-state slice. Until then, do not
+widen expression payloads to JSON arrays, dense matrices, local paths, DBI
+connections, live Seurat/BPCells objects, or live Explore bundle objects.
+
 For payload behavior changes, update these files together: the manifest
 (`inst/protocol/browser-payload-contracts.json`), R producer tests
 (`tests/testthat/test-browser-payload-contracts.R`), JS consumer/cache tests

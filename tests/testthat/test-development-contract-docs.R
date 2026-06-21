@@ -69,4 +69,15 @@ test_that("DEVELOPMENT documents Phase 02 transfer reliability", {
     "Scatter could not initialize",
     "PCA summary unavailable"
   ))
+
+  expect_development_doc_contains(doc_text, c(
+    "queued one-active expression jobs",
+    "duplicate scoped key suppression",
+    "path-based BPCells expression transfers",
+    "DuckDB/Explore query-plan expression transfers",
+    "Arrow IPC numeric `expr` vectors",
+    "basename-only expression payloads",
+    "Browser-side stale expression application",
+    "first-selected-gene main scatter behavior"
+  ))
 })

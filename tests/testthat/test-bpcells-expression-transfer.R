@@ -61,7 +61,32 @@ test_that("BPCells expression transfer writes chunked Arrow IPC", {
   )
 
   expression_table <- arrow::read_ipc_stream(output_file)
+  expect_identical(names(expression_table), "expr")
   expect_equal(as.numeric(expression_table$expr), as.numeric(counts["g2", ]))
+})
+
+test_that("BPCells expression IPC writer keeps chunked float32 contract", {
+  bpcells_backend_path <- test_path("..", "..", "R", "fct_bpcells_backend.R")
+  skip_if_not(file.exists(bpcells_backend_path))
+
+  bpcells_backend_source <- readLines(bpcells_backend_path, warn = FALSE)
+  extract_start <- grep(
+    "extract_bpcells_expr_to_ipc <- function",
+    bpcells_backend_source,
+    fixed = TRUE
+  )[[1]]
+  next_symbol <- grep(
+    "^bp_write_cached_matrix <- function",
+    bpcells_backend_source
+  )[[1]]
+  extract_source <- bpcells_backend_source[seq(extract_start, next_symbol - 1L)]
+
+  expect_true(any(grepl("BPCells::open_matrix_dir(matrix_dir)", extract_source, fixed = TRUE)))
+  expect_true(any(grepl("RecordBatchStreamWriter", extract_source, fixed = TRUE)))
+  expect_true(any(grepl("arrow::schema(expr = arrow::float32())", extract_source, fixed = TRUE)))
+  expect_true(any(grepl("while (chunk_start <= cell_count)", extract_source, fixed = TRUE)))
+  expect_true(any(grepl("extract_expr_slice", extract_source, fixed = TRUE)))
+  expect_false(any(grepl("as.matrix", extract_source, fixed = TRUE)))
 })
 
 test_that("InputFeature expression exports use path-based futures", {
@@ -81,8 +106,21 @@ test_that("InputFeature expression exports use path-based futures", {
   expression_export_source <- mod_input_feature_source[
     seq(process_start, invoke_start - 1L)
   ]
+  invoke_source <- mod_input_feature_source[seq(invoke_start, length(mod_input_feature_source))]
 
+  expect_true(any(grepl("expression_queue <- list()", mod_input_feature_source, fixed = TRUE)))
+  expect_true(any(grepl("expression_active <- FALSE", mod_input_feature_source, fixed = TRUE)))
+  expect_true(any(grepl("queued_expression_keys <- character()", mod_input_feature_source, fixed = TRUE)))
+  expect_true(any(grepl("expression_active || !length(expression_queue)", expression_export_source, fixed = TRUE)))
   expect_true(any(grepl("future_promise", expression_export_source)))
+  expect_true(any(grepl("write_backend_expression_transfer(job$transfer)", expression_export_source, fixed = TRUE)))
+  expect_true(any(grepl("make_transfer_error_payload", expression_export_source, fixed = TRUE)))
+  expect_true(any(grepl("payload_type = \"expression\"", expression_export_source, fixed = TRUE)))
   expect_false(any(grepl("seuratObj\\(\\)", expression_export_source)))
   expect_false(any(grepl("prepare_backend_expression_transfer", expression_export_source)))
+  expect_true(any(grepl("cacheKey %in% queued_expression_keys", invoke_source, fixed = TRUE)))
+  expect_true(any(grepl("expression_queue <<- c(expression_queue", invoke_source, fixed = TRUE)))
+  expect_true(any(grepl("queued_expression_keys <<- unique", invoke_source, fixed = TRUE)))
+  expect_true(any(grepl("input$cacheMissFeature", invoke_source, fixed = TRUE)))
+  expect_true(any(grepl("create_sparkline = FALSE", invoke_source, fixed = TRUE)))
 })

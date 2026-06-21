@@ -242,6 +242,18 @@ mod_InputFeature_server <- function(
           result$value
         }) %...!%
         (function(error) {
+          session$sendCustomMessage(
+            type = "transfer_error",
+            message = make_transfer_error_payload(
+              payload_type = "expression",
+              reason_code = "write_failed",
+              version = job$transfer$payload$exprVersion,
+              context = list(
+                geneName = job$transfer$payload$geneName %||% job$transfer$feature,
+                assay = job$transfer$payload$assay %||% job$transfer$assay
+              )
+            )
+          )
           showNotification(
             ui = paste("Expression export failed:", conditionMessage(error)),
             action = NULL,

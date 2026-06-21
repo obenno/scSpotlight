@@ -417,14 +417,44 @@ test_that("backend transfer adapter writes Explore bundle IPC payloads", {
     expr_version = 1L
   )
   expect_equal(expression_transfer$backend, "explore_bundle")
-  expect_null(expression_transfer$bundle)
-  expect_null(expression_transfer$data)
+  expect_setequal(
+    names(expression_transfer),
+    c(
+      "backend",
+      "feature",
+      "assay",
+      "block_path",
+      "feature_idx",
+      "cell_count",
+      "output_file",
+      "payload"
+    )
+  )
+  expect_false(any(c(
+    "bundle",
+    "data",
+    "connection",
+    "con",
+    "dbi",
+    "block_paths",
+    "expression_blocks",
+    "expr",
+    "vector"
+  ) %in% names(expression_transfer)))
   expect_true(file.exists(expression_transfer$block_path))
   expect_equal(expression_transfer$feature_idx, 1L)
   expect_equal(expression_transfer$cell_count, 3L)
+  expect_identical(
+    names(expression_transfer$payload),
+    c("geneName", "assay", "exprVersion", "exprFile")
+  )
+  expect_equal(expression_transfer$payload$exprFile, basename(expression_transfer$output_file))
+  expect_false(any(grepl("/", unlist(expression_transfer$payload), fixed = TRUE)))
   expression_payload <- write_backend_expression_transfer(expression_transfer)
   expression_table <- arrow::read_ipc_stream(expression_transfer$output_file)
+  expect_identical(names(expression_payload), c("geneName", "assay", "exprVersion", "exprFile"))
   expect_equal(expression_payload$geneName, "g2")
+  expect_identical(names(expression_table), "expr")
   expect_equal(as.numeric(expression_table$expr), c(0, 2, 1))
 
   chunked_expression_file <- file.path(transfer_dir, "expr", "chunked_expr")
@@ -437,6 +467,47 @@ test_that("backend transfer adapter writes Explore bundle IPC payloads", {
   )
   chunked_expression_table <- arrow::read_ipc_stream(chunked_expression_file)
   expect_equal(as.numeric(chunked_expression_table$expr), c(0, 2, 1))
+})
+
+test_that("Explore expression transfer resources are scoped and closed", {
+  explore_bundle_path <- test_path("..", "..", "R", "fct_explore_bundle.R")
+  adapter_path <- test_path("..", "..", "R", "fct_backend_transfer_adapter.R")
+  skip_if_not(file.exists(explore_bundle_path))
+  skip_if_not(file.exists(adapter_path))
+
+  explore_source <- readLines(explore_bundle_path, warn = FALSE)
+  extract_start <- grep(
+    "extract_explore_query_expr_to_ipc <- function",
+    explore_source,
+    fixed = TRUE
+  )[[1]]
+  next_symbol <- grep(
+    "^extract_explore_bundle_expr_to_ipc <- function",
+    explore_source
+  )[[1]]
+  extract_source <- explore_source[seq(extract_start, next_symbol - 1L)]
+
+  expect_true(any(grepl("DBI::dbConnect(duckdb::duckdb(), dbdir = \":memory:\")", extract_source, fixed = TRUE)))
+  expect_true(any(grepl("DBI::dbDisconnect(con, shutdown = TRUE)", extract_source, fixed = TRUE)))
+  expect_true(any(grepl("DBI::dbClearResult", extract_source, fixed = TRUE)))
+  expect_true(any(grepl("WHERE feature_idx", extract_source, fixed = TRUE)))
+  expect_true(any(grepl("arrow::schema(expr = arrow::float32())", extract_source, fixed = TRUE)))
+  expect_false(any(grepl("explore_bundle_expr_vector", extract_source, fixed = TRUE)))
+
+  adapter_source <- readLines(adapter_path, warn = FALSE)
+  prepare_start <- grep(
+    "prepare_backend_expression_transfer <- function",
+    adapter_source,
+    fixed = TRUE
+  )[[1]]
+  write_start <- grep(
+    "write_backend_expression_transfer <- function",
+    adapter_source,
+    fixed = TRUE
+  )[[1]]
+  prepare_source <- adapter_source[seq(prepare_start, write_start - 1L)]
+  expect_true(any(grepl("explore_bundle_expression_query_plan", prepare_source, fixed = TRUE)))
+  expect_false(any(grepl("extract_explore_bundle_expr_to_ipc", prepare_source, fixed = TRUE)))
 })
 
 test_that("Explore expression transfer streams dense chunks from sparse rows", {

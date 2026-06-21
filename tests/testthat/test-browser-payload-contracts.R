@@ -216,6 +216,12 @@ test_that("transfer error payload helper satisfies the browser path policy", {
       "write_failed",
       104L,
       raw_context
+    ),
+    make_transfer_error_payload(
+      "expression",
+      "write_failed",
+      105L,
+      raw_context
     )
   )
 
@@ -226,7 +232,8 @@ test_that("transfer error payload helper satisfies the browser path policy", {
       "metadata_patch",
       "reduction",
       "reductions",
-      "pca"
+      "pca",
+      "expression"
     ))
     expect_equal(payload$reasonCode, as.character(payload$reasonCode))
     expect_false(any(payload_leaf_names(payload) %in% c(
@@ -248,6 +255,9 @@ test_that("transfer error payload helper satisfies the browser path policy", {
   expect_equal(payloads[[1]]$payloadType, "metadata")
   expect_equal(payloads[[2]]$reductionName, "umap")
   expect_equal(payloads[[5]]$cols, c("cluster", "batch"))
+  expect_equal(payloads[[6]]$payloadType, "expression")
+  expect_equal(payloads[[6]]$geneName, "GeneA")
+  expect_equal(payloads[[6]]$assay, "RNA")
 })
 
 test_that("R browser payload producers satisfy the contract manifest", {
@@ -376,6 +386,10 @@ test_that("R browser payload producers satisfy the contract manifest", {
   )
   expression_payload <- write_backend_expression_transfer(expression_transfer)
   expect_payload_satisfies_contract(contract, "expr_ready", expression_payload)
+  expect_identical(
+    names(expression_payload),
+    c("geneName", "assay", "exprVersion", "exprFile")
+  )
   expression_table <- arrow::read_ipc_stream(expression_transfer$output_file)
   expect_true(all(contract$ipc_columns$expr_ready$required %in% names(expression_table)))
   expect_identical(names(expression_table), "expr")
