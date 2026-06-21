@@ -51,6 +51,17 @@
       "required_fields": ["geneName", "assay", "exprVersion"],
       "version_field": "exprVersion",
       "cache_family": "expression"
+    },
+    "transfer_error": {
+      "required_fields": ["payloadType", "reasonCode", "version"],
+      "optional_fields": [
+        "reductionName",
+        "activeReduction",
+        "geneName",
+        "assay",
+        "cols"
+      ],
+      "version_field": "version"
     }
   },
   "ipc_columns": {
@@ -94,7 +105,16 @@
   "browser_path_policy": {
     "allow_absolute_paths": false,
     "file_fields": ["metaFile", "reductionFile", "stdevFile", "exprFile"],
-    "forbidden_payload_fields": ["filePath", "output_file", "matrix_dir"],
+    "forbidden_payload_fields": [
+      "filePath",
+      "output_file",
+      "matrix_dir",
+      "path",
+      "trace",
+      "stack",
+      "message",
+      "conditionMessage"
+    ],
     "allowed_path_shape": "resource_basename_only"
   }
 }

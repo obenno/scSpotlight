@@ -14,7 +14,8 @@ browser_payload_messages <- c(
   "pca_ready",
   "expr_ready",
   "reduction_cached",
-  "expr_cached"
+  "expr_cached",
+  "transfer_error"
 )
 
 read_browser_payload_contract <- function() {
@@ -159,9 +160,94 @@ test_that("browser payload manifest enumerates XFER-05 message contracts", {
   )
   expect_false(contract$browser_path_policy$allow_absolute_paths)
   expect_true(all(
-    c("filePath", "output_file", "matrix_dir") %in%
+    c(
+      "filePath",
+      "output_file",
+      "matrix_dir",
+      "path",
+      "trace",
+      "stack",
+      "message",
+      "conditionMessage"
+    ) %in%
       contract$browser_path_policy$forbidden_payload_fields
   ))
+
+  expect_equal(
+    unlist(contract$messages$transfer_error$required_fields, use.names = FALSE),
+    c("payloadType", "reasonCode", "version")
+  )
+  expect_true(all(
+    c("reductionName", "activeReduction", "geneName", "assay", "cols") %in%
+      unlist(contract$messages$transfer_error$optional_fields, use.names = FALSE)
+  ))
+})
+
+test_that("transfer error payload helper satisfies the browser path policy", {
+  contract <- read_browser_payload_contract()
+  make_transfer_error_payload <- getFromNamespace(
+    "make_transfer_error_payload",
+    "scSpotlight"
+  )
+
+  raw_context <- list(
+    filePath = "/tmp/scspotlight/meta.arrow",
+    output_file = "/tmp/scspotlight/out.arrow",
+    matrix_dir = "/tmp/scspotlight/matrix",
+    path = "/tmp/scspotlight/raw-path",
+    trace = "trace mentions /tmp/scspotlight/raw-path",
+    stack = "stack mentions secret-frame",
+    message = "raw condition message with /tmp/scspotlight/meta.arrow",
+    conditionMessage = "raw condition text should not be exposed",
+    reductionName = "/tmp/scspotlight/umap",
+    activeReduction = "pca",
+    geneName = "GeneA",
+    assay = "RNA",
+    cols = c("cluster", "/tmp/scspotlight/batch")
+  )
+
+  payloads <- list(
+    make_transfer_error_payload("metadata", "write_failed", 100L, raw_context),
+    make_transfer_error_payload("reduction", "decode_failed", 101L, raw_context),
+    make_transfer_error_payload("reductions", "fetch_failed", 102L, raw_context),
+    make_transfer_error_payload("pca", "write_failed", 103L, raw_context),
+    make_transfer_error_payload(
+      "metadata_patch",
+      "write_failed",
+      104L,
+      raw_context
+    )
+  )
+
+  for (payload in payloads) {
+    expect_payload_satisfies_contract(contract, "transfer_error", payload)
+    expect_true(payload$payloadType %in% c(
+      "metadata",
+      "metadata_patch",
+      "reduction",
+      "reductions",
+      "pca"
+    ))
+    expect_equal(payload$reasonCode, as.character(payload$reasonCode))
+    expect_false(any(payload_leaf_names(payload) %in% c(
+      "filePath",
+      "output_file",
+      "matrix_dir",
+      "path",
+      "trace",
+      "stack",
+      "message",
+      "conditionMessage"
+    )))
+
+    flattened <- unname(flatten_payload_fields(payload))
+    character_values <- flattened[vapply(flattened, is.character, logical(1))]
+    expect_false(any(grepl("raw condition|secret-frame|/tmp/scspotlight", character_values)))
+  }
+
+  expect_equal(payloads[[1]]$payloadType, "metadata")
+  expect_equal(payloads[[2]]$reductionName, "umap")
+  expect_equal(payloads[[5]]$cols, c("cluster", "batch"))
 })
 
 test_that("R browser payload producers satisfy the contract manifest", {

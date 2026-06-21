@@ -54,3 +54,19 @@ test_that("DEVELOPMENT documents runtime contract backbone", {
     "do not reintroduce a mirrored DuckDB runtime for Analysis Mode"
   ))
 })
+
+test_that("DEVELOPMENT documents Phase 02 transfer reliability", {
+  doc_text <- read_development_doc()
+
+  expect_development_doc_contains(doc_text, c(
+    "### Phase 02 transfer reliability",
+    "`transfer_error`",
+    "visible transfer failures",
+    "stale payloads",
+    "active-reduction readiness",
+    "Metadata could not load",
+    "Reduction could not load",
+    "Scatter could not initialize",
+    "PCA summary unavailable"
+  ))
+})

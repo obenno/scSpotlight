@@ -9,6 +9,7 @@ const testState = vi.hoisted(() => ({
   handlers: {},
   inputs: [],
   reglInstance: null,
+  spinners: {},
 }));
 
 vi.mock("shiny", () => ({}), { virtual: true });
@@ -16,9 +17,10 @@ vi.mock("shiny", () => ({}), { virtual: true });
 vi.mock("./modules/spinner.js", () => ({
   initFullScreenSpinner: () => document.createElement("div"),
   removeFullScreenSpinner: vi.fn(),
-  addOverlaySpinner: () => {
+  addOverlaySpinner: (id) => {
     const el = document.createElement("div");
     el.style.display = "none";
+    testState.spinners[id] = el;
     return el;
   },
 }));
@@ -210,6 +212,10 @@ const buildDom = () => {
     <button id="renameCluster-assign"></button>
     <select id="updateReduction-reduction"><option value="umap" selected>umap</option></select>
     <div id="floatingVlnPlot"></div>
+    <div id="floatingElbowPlot">
+      <div id="floatingElbowPlotStatus"></div>
+      <canvas id="elbowPlotCanvas"></canvas>
+    </div>
     <div id="floatingFeaturePlot">
       <button id="floatingFeaturePlotAction"><i class="bi bi-play-circle"></i></button>
       <div id="floatingFeaturePlotStatus"></div>
@@ -305,6 +311,7 @@ const browserContractMessageNames = [
   "expr_ready",
   "reduction_cached",
   "expr_cached",
+  "transfer_error",
 ];
 
 const latestInputValue = (name) => {
@@ -336,6 +343,27 @@ const numericValueFromResourceUrl = (url) => {
   return match ? Number(match[1]) : 0;
 };
 
+const createDeferred = () => {
+  let resolve;
+  let reject;
+  const promise = new Promise((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, resolve, reject };
+};
+
+const getPlotTransferError = () => document.getElementById("plot-transfer-error");
+
+const expectPlotTransferError = ({ heading, body }) => {
+  const overlay = getPlotTransferError();
+  expect(overlay).toBeTruthy();
+  expect(overlay.getAttribute("role")).toBe("alert");
+  expect(overlay.getAttribute("aria-live")).toBe("assertive");
+  expect(overlay.textContent).toContain(heading);
+  expect(overlay.textContent).toContain(body);
+};
+
 describe("rename cluster client selection", () => {
   beforeAll(async () => {
     console.profile = console.profile || vi.fn();
@@ -352,6 +380,7 @@ describe("rename cluster client selection", () => {
 
   beforeEach(() => {
     testState.inputs = [];
+    testState.spinners = {};
     buildDom();
     resetReglInstance();
     document.dispatchEvent(new Event("DOMContentLoaded"));
@@ -495,6 +524,167 @@ describe("rename cluster client selection", () => {
         /Reduction data failed to load/,
       );
     });
+  });
+
+  it("shows accessible metadata transfer failures and preserves prior scatter state", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    const previousReductionData = testState.reglInstance.origData.reductionData;
+    arrowReader.readArrowIPC.mockRejectedValueOnce(new Error("fetch /tmp/meta.arrow failed"));
+
+    testState.handlers.await_initial_plot_ready({});
+    testState.handlers.meta_ready({ metaFile: "meta-v4", metaVersion: 4 });
+
+    await vi.waitFor(() => {
+      expectPlotTransferError({
+        heading: "Metadata could not load",
+        body: "Could not load metadata for this dataset. Retry transfer, or reload the dataset.",
+      });
+      expect(testState.spinners["mainClusterPlot-clusterPlot"].style.display).toBe("none");
+      expect(testState.reglInstance.origData.reductionData).toBe(previousReductionData);
+      expect(latestInputValue("initialPlotReady")).toEqual(expect.any(Number));
+    });
+  });
+
+  it("shows reduction-specific transfer failures without clearing previous scatter", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    const previousReductionData = { X: new Float32Array([99]), Y: new Float32Array([100]) };
+    testState.reglInstance.origData.reductionData = previousReductionData;
+    arrowReader.fetchArrowIPCBuffer.mockResolvedValueOnce(encodeLabelBuffer("umap-v401"));
+    arrowReader.decodeArrowIPC.mockImplementation(() => {
+      throw new Error("decode failed");
+    });
+
+    testState.handlers.await_initial_plot_ready({});
+    testState.handlers.reduction_ready({
+      reductionFile: "umap-v5",
+      reductionName: "umap",
+      reductionVersion: 5,
+    });
+
+    await vi.waitFor(() => {
+      expectPlotTransferError({
+        heading: "Reduction could not load",
+        body: "Could not load `umap`. Try switching reductions, retry transfer, or reload the dataset.",
+      });
+      expect(testState.reglInstance.origData.reductionData).toBe(previousReductionData);
+      expect(latestInputValue("initialPlotReady")).toEqual(expect.any(Number));
+    });
+  });
+
+  it("shows scatter initialization copy when no active batched reduction renders", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    const previousReductionData = { X: new Float32Array([42]), Y: new Float32Array([43]) };
+    testState.reglInstance.origData.reductionData = previousReductionData;
+    arrowReader.fetchArrowIPCBuffer.mockRejectedValueOnce(new Error("network failed"));
+
+    testState.handlers.await_initial_plot_ready({});
+    testState.handlers.reductions_ready({
+      reductionVersion: 6,
+      activeReduction: "umap",
+      reductions: [
+        { reductionFile: "umap-v6", reductionName: "umap", reductionVersion: 6 },
+      ],
+    });
+
+    await vi.waitFor(() => {
+      expectPlotTransferError({
+        heading: "Scatter could not initialize",
+        body: "No active reduction finished rendering. Retry transfer, or reload the dataset.",
+      });
+      expect(testState.reglInstance.origData.reductionData).toBe(previousReductionData);
+      expect(latestInputValue("initialPlotReady")).toEqual(expect.any(Number));
+    });
+  });
+
+  it("ignores stale metadata and reduction results after asynchronous work completes", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    const staleMeta = createDeferred();
+    const currentMeta = createDeferred();
+    const staleReduction = createDeferred();
+    const currentReduction = createDeferred();
+
+    arrowReader.readArrowIPC.mockImplementation((url) => {
+      if (url.includes("meta-v7")) return staleMeta.promise;
+      if (url.includes("meta-v8")) return currentMeta.promise;
+      throw new Error(`Unexpected metadata URL ${url}`);
+    });
+    arrowReader.parseMetaFromArrow.mockImplementation((table) => table);
+
+    testState.handlers.meta_ready({ metaFile: "meta-v7", metaVersion: 7 });
+    testState.handlers.meta_ready({ metaFile: "meta-v8", metaVersion: 8 });
+    currentMeta.resolve({ cells: { type: "number", value: new Int32Array([0, 1]) } });
+
+    await vi.waitFor(() => {
+      expect(testState.reglInstance.origData.cellMetaData.cells.value).toEqual(
+        new Int32Array([0, 1]),
+      );
+    });
+
+    staleMeta.resolve({ cells: { type: "number", value: new Int32Array([9, 9]) } });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(testState.reglInstance.origData.cellMetaData.cells.value).toEqual(
+      new Int32Array([0, 1]),
+    );
+
+    arrowReader.readArrowIPC.mockReset();
+    arrowReader.fetchArrowIPCBuffer.mockImplementation((url) => {
+      if (url.includes("umap-v9")) return staleReduction.promise;
+      if (url.includes("pca-v10")) return currentReduction.promise;
+      throw new Error(`Unexpected reduction URL ${url}`);
+    });
+    arrowReader.decodeArrowIPC.mockImplementation((buffer) => ({
+      label: decodeLabelBuffer(buffer),
+    }));
+    arrowReader.getFloat32Column.mockImplementation((table, colName) => {
+      const value = table.label.includes("stale") ? 405 : 406;
+      return new Float32Array([colName === "X" ? value : value + 0.5]);
+    });
+
+    testState.handlers.reduction_ready({
+      reductionFile: "umap-v9",
+      reductionName: "umap",
+      reductionVersion: 9,
+    });
+    testState.handlers.reduction_ready({
+      reductionFile: "pca-v10",
+      reductionName: "pca",
+      reductionVersion: 10,
+    });
+    currentReduction.resolve(encodeLabelBuffer("current"));
+
+    await vi.waitFor(() => {
+      expect(Array.from(testState.reglInstance.origData.reductionData.X)).toEqual([10]);
+    });
+
+    staleReduction.resolve(encodeLabelBuffer("stale"));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(Array.from(testState.reglInstance.origData.reductionData.X)).toEqual([10]);
+  });
+
+  it("routes PCA failures to the ElbowPlot status without settling main scatter readiness", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    arrowReader.readArrowIPC.mockRejectedValueOnce(new Error("pca /tmp/stdev.arrow failed"));
+
+    testState.handlers.pca_ready({ stdevFile: "pca-v11", reductionVersion: 11 });
+
+    await vi.waitFor(() => {
+      expect(document.getElementById("floatingElbowPlotStatus").textContent).toContain(
+        "PCA summary unavailable",
+      );
+    });
+    expect(testState.inputs.filter(([name]) => name === "initialPlotReady")).toHaveLength(0);
+
+    testState.handlers.transfer_error({
+      payloadType: "pca",
+      reasonCode: "write_failed",
+      version: 12,
+    });
+    expect(document.getElementById("floatingElbowPlotStatus").textContent).toContain(
+      "PCA summary unavailable",
+    );
+    expect(getPlotTransferError()).toBeNull();
   });
 
   it("ignores stale initial plot failures after a newer render wait starts", async () => {
