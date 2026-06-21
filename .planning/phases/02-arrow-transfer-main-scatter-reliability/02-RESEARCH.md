@@ -499,27 +499,27 @@ pixi run build-js
 |---|-------|---------|---------------|
 | — | No `[ASSUMED]` claims were used; codebase facts were verified from repository files and external library facts were cited from official docs or registry/tool probes. | All sections | No user confirmation needed for assumed factual claims. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Should Phase 02 implement an actual `Retry transfer` button or only payload-specific recovery text?**
-   - What we know: The UI spec reserves copy and target-size rules for `Retry transfer` if implemented. [VERIFIED: 02-UI-SPEC.md]
-   - What's unclear: The context leaves exact helper extraction and implementation location to the planner. [VERIFIED: 02-CONTEXT.md]
-   - Recommendation: Plan visible errors first; add a retry button only where a targeted cache-miss/server regeneration path already exists.
+    - What we know: The UI spec reserves copy and target-size rules for `Retry transfer` if implemented. [VERIFIED: 02-UI-SPEC.md]
+    - What's unclear: The context leaves exact helper extraction and implementation location to the planner. [VERIFIED: 02-CONTEXT.md]
+    - RESOLVED: Implement visible payload-specific recovery copy everywhere a transfer/render failure can be surfaced. Implement an actual `Retry transfer` control only for payloads with an existing or planned targeted cache-miss/server regeneration path; otherwise show a reload/change-input hint rather than a non-functional retry button.
 
 2. **How strict should >2M non-pickable behavior be when zoomed in?**
-   - What we know: AGENTS and UI spec say >2M cells should be non-pickable at the threshold table level. [VERIFIED: AGENTS.md; VERIFIED: 02-UI-SPEC.md]
-   - What's unclear: Existing `shouldEnablePicking()` can re-enable picking when estimated visible points fall below 250K. [VERIFIED: srcjs/modules/deckScatter.js]
-   - Recommendation: Treat this as a planner decision/checkpoint and write tests that lock the chosen behavior.
+    - What we know: AGENTS and UI spec say >2M cells should be non-pickable at the threshold table level. [VERIFIED: AGENTS.md; VERIFIED: 02-UI-SPEC.md]
+    - What's unclear: Existing `shouldEnablePicking()` can re-enable picking when estimated visible points fall below 250K. [VERIFIED: srcjs/modules/deckScatter.js]
+    - RESOLVED: Preserve the existing viewport-aware optimization only if tests prove the global >2M default is non-pickable and picking is re-enabled solely when estimated visible points are below the existing safe threshold. Do not add a blanket always-pickable override for >2M datasets.
 
 3. **Are representative 100K/1M+ fixtures available locally for manual profiling?**
-   - What we know: Project checklist requires testing with 1K, 100K, and 1M+ datasets when feasible. [VERIFIED: AGENTS.md]
-   - What's unclear: This research did not locate or validate a local large fixture. [VERIFIED: repository search]
-   - Recommendation: Add a manual validation task with fallback synthetic/fixture guidance if real 1M+ data is unavailable.
+    - What we know: Project checklist requires testing with 1K, 100K, and 1M+ datasets when feasible. [VERIFIED: AGENTS.md]
+    - What's unclear: This research did not locate or validate a local large fixture. [VERIFIED: repository search]
+    - RESOLVED: Plans must include automated small-fixture contract tests plus a manual validation checklist for 100K and 1M+ datasets. If real local fixtures are unavailable, record that limitation in SUMMARY/VERIFICATION and use synthetic or representative generated fixtures where feasible; absence of local large data is a validation caveat, not a reason to skip large-data acceptance criteria.
 
 4. **Should PCA summary failures be surfaced in the main plot overlay or only the ElbowPlot panel?**
-   - What we know: UI spec says PCA-only failures should be shown in the ElbowPlot floating panel status area and should not block the main scatter. [VERIFIED: 02-UI-SPEC.md]
-   - What's unclear: Existing `pca_ready` failure handling is console-only. [VERIFIED: srcjs/index.js]
-   - Recommendation: Plan a small PCA panel status path and test it separately from main scatter readiness.
+    - What we know: UI spec says PCA-only failures should be shown in the ElbowPlot floating panel status area and should not block the main scatter. [VERIFIED: 02-UI-SPEC.md]
+    - What's unclear: Existing `pca_ready` failure handling is console-only. [VERIFIED: srcjs/index.js]
+    - RESOLVED: Surface PCA-summary-only failures in the ElbowPlot/PCA status area and keep main scatter readiness unblocked. If a payload affects both scatter and PCA, the scatter-visible error path applies only to the scatter-critical portion; PCA copy remains panel-scoped.
 
 ## Environment Availability
 
