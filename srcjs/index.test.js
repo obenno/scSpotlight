@@ -1053,6 +1053,84 @@ describe("rename cluster client selection", () => {
     });
   });
 
+  it("ignores stale PCA success and error payloads", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    const stalePca = createDeferred();
+    const currentPca = createDeferred();
+    arrowReader.readArrowIPC.mockImplementation((url) => {
+      if (url.includes("pca-v104")) return stalePca.promise;
+      if (url.includes("pca-v105")) return currentPca.promise;
+      throw new Error(`Unexpected PCA URL ${url}`);
+    });
+    arrowReader.getFloat32Column.mockImplementation((table) => table.stdev);
+
+    testState.handlers.pca_ready({ stdevFile: "pca-v104", reductionVersion: 104 });
+    testState.handlers.pca_ready({ stdevFile: "pca-v105", reductionVersion: 105 });
+    currentPca.resolve({ stdev: new Float32Array([10, 5]) });
+
+    await vi.waitFor(() => {
+      expect(Array.from(testState.reglInstance.origData.pcaStdev)).toEqual([10, 5]);
+    });
+
+    stalePca.resolve({ stdev: new Float32Array([1, 1]) });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(Array.from(testState.reglInstance.origData.pcaStdev)).toEqual([10, 5]);
+
+    testState.handlers.transfer_error({
+      payloadType: "pca",
+      reasonCode: "write_failed",
+      version: 104,
+    });
+    expect(Array.from(testState.reglInstance.origData.pcaStdev)).toEqual([10, 5]);
+
+    testState.handlers.transfer_error({
+      payloadType: "pca",
+      reasonCode: "write_failed",
+      version: 106,
+    });
+    expect(testState.reglInstance.origData.pcaStdev).toBeNull();
+  });
+
+  it("reports stored feature identities as text rather than escaped HTML", async () => {
+    const { createSparkLine } = await import("./modules/featureSparkLine.js");
+    createSparkLine.mockImplementationOnce((feature) => {
+      const container = document.createElement("span");
+      container.className = "featureSparkLine";
+      const label = document.createElement("span");
+      label.className = "feature-gene-symbol";
+      label.textContent = feature;
+      container.appendChild(label);
+      return container;
+    });
+
+    testState.handlers.createSparkLine("Gene<A&B>");
+
+    expect(document.querySelector(".feature-gene-symbol").innerHTML).toBe(
+      "Gene&lt;A&amp;B&gt;",
+    );
+    expect(latestInputValue("inputFeatures-storedFeatures")).toEqual([
+      "Gene<A&B>",
+    ]);
+  });
+
+  it("renders VlnPlot dropdown labels as text nodes", () => {
+    const maliciousLabel = '<img src=x onerror="window.__xss = true">';
+    testState.reglInstance.origData.cellMetaData = {
+      cells: { type: "category", value: { c1: [0] } },
+      [maliciousLabel]: { type: "number", value: new Float32Array([1]) },
+    };
+
+    window.dispatchEvent(new CustomEvent("scspotlight:featurePlotSelectionChanged"));
+
+    const menu = document.querySelector("#vlnDropDown .dropdown-menu");
+    const item = menu.querySelector(".dropdown-item");
+    expect(menu.querySelector("img")).toBeNull();
+    expect(item.childNodes[0].nodeType).toBe(Node.TEXT_NODE);
+    expect(item.textContent).toContain(maliciousLabel);
+    expect(item.textContent).toContain("(meta)");
+  });
+
   it("reduction_ready, reductions_ready, and reduction_cached honor versioned cache keys", async () => {
     const arrowReader = await resetArrowReaderMocks();
     arrowReader.fetchArrowIPCBuffer.mockImplementation((url) =>

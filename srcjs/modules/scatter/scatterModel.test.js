@@ -90,6 +90,9 @@ function createFixture() {
       splitMissing: {
         value: ["s1", "", "s2", undefined, "undefined", null, "s1", "s2"],
       },
+      split3Missing: {
+        value: ["s1", "", "s2", undefined, "s3", null, "s1", "s3"],
+      },
       groupMissing: {
         value: ["A", "", "B", undefined, "undefined", null, "A", "B"],
       },
@@ -350,6 +353,25 @@ describe("ScatterModel panel data assembly", () => {
     expect(categoryLabels).toEqual(["A", "B"]);
     expect(plot.catLabelCoordinates[1]).toBeUndefined();
     expect(plot.catLabelCoordinates[3]).toBeUndefined();
+  });
+
+  it("filters missing split levels from multi-split expression panels", () => {
+    const model = buildModel();
+    model.setConfig({ selectedFeatures: ["GeneA"], moduleScore: false });
+    const meta = model.derivePlotMetaData("group", "split3Missing", false);
+    const plot = model.buildPlotData();
+
+    expect(meta.mode).toBe("cluster+expr+multiSplit");
+    expect(meta.nPanels).toBe(3);
+    expect(plot.pointsData).toHaveLength(3);
+    expect(plot.panelTitles).toEqual(["s1", "s2", "s3"]);
+    expect(plot.cells).toEqual([
+      ["c1", "c7"],
+      ["c3"],
+      ["c5", "c8"],
+    ]);
+    expect(plot.pointsData.map((panel) => panel.x.length)).toEqual([2, 1, 2]);
+    expect(plot.pointsData.map((panel) => panel.z.length)).toEqual([2, 1, 2]);
   });
 
   it("uses first selected gene for multi-split expression panels", () => {

@@ -14,7 +14,7 @@ This MVP roadmap hardens scSpotlight around its core wedge: large single-cell da
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Runtime Contract Backbone** - Lock Analysis backend seams and browser protocol change rules before higher-level workflows depend on them. (completed 2026-06-20)
-- [ ] **Phase 2: Arrow Transfer & Main Scatter Reliability** - Make metadata, reductions, expression, patches, and the main deck.gl scatter dependable at large scale.
+- [x] **Phase 2: Arrow Transfer & Main Scatter Reliability** - Make metadata, reductions, expression, patches, and the main deck.gl scatter dependable at large scale. (completed 2026-06-22)
 - [ ] **Phase 3: Analysis Mode Processing & Mutation Safety** - Preserve low-memory Analysis Mode loading, processing, mutation, annotation, subsetting, and restore behavior.
 - [ ] **Phase 4: Portable Artifacts & Explore Mode End-to-end** - Deliver portable exports and validated read-only Explore artifact inspection without mode leakage.
 - [ ] **Phase 5: Floating Analysis Panels & DEG Workflows** - Stabilize explicit-action floating visualizations and bounded DEG/marker inspection.
@@ -63,7 +63,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. User can lasso cells across every scatter panel and see synchronized highlights plus persistent total and selected cell counts.
   5. User can receive column-scoped metadata patches without forcing full metadata reloads for every mutation.
 
-**Plans:** 1/4 plans executed
+**Plans:** 4/4 plans complete
 
 **Wave 1**
 
@@ -71,15 +71,15 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 02-02-PLAN.md — Harden queued BPCells and DuckDB/Explore expression transfer contracts.
+- [x] 02-02-PLAN.md — Harden queued BPCells and DuckDB/Explore expression transfer contracts.
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 02-03-PLAN.md — Harden browser expression state, column-scoped metadata patches, and first-gene sparkline behavior.
+- [x] 02-03-PLAN.md — Harden browser expression state, column-scoped metadata patches, and first-gene sparkline behavior.
 
 **Wave 4** *(blocked on Waves 1–3 completion)*
 
-- [ ] 02-04-PLAN.md — Lock deck.gl scatter rendering, split-panel geometry, lasso, highlights, and counts.
+- [x] 02-04-PLAN.md — Lock deck.gl scatter rendering, split-panel geometry, lasso, highlights, and counts.
 
 **UI hint**: yes
 
@@ -199,7 +199,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Runtime Contract Backbone | 3/3 | Complete    | 2026-06-20 |
-| 2. Arrow Transfer & Main Scatter Reliability | 1/4 | In Progress|  |
+| 2. Arrow Transfer & Main Scatter Reliability | 4/4 | Complete    | 2026-06-22 |
 | 3. Analysis Mode Processing & Mutation Safety | 0/TBD | Not started | - |
 | 4. Portable Artifacts & Explore Mode End-to-end | 0/TBD | Not started | - |
 | 5. Floating Analysis Panels & DEG Workflows | 0/TBD | Not started | - |

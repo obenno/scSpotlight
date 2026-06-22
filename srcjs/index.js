@@ -113,6 +113,9 @@ let activeMetaVersion = null;
 let activeReductionRequestSeq = 0;
 let activeReductionRequest = null;
 let activeReductionVersion = null;
+let activePcaRequestSeq = 0;
+let activePcaRequest = null;
+let activePcaVersion = null;
 let pcaTransferFailed = false;
 
 const notifyInitialPlotReady = (requestId) => {
@@ -340,6 +343,37 @@ const isCurrentReductionRequest = (request) => (
 
 const isCurrentReductionVersion = (version) => (
   activeReductionVersion == null || Number(version) >= Number(activeReductionVersion)
+);
+
+const startPcaRequest = (version) => {
+  if (
+    activePcaVersion != null &&
+    version != null &&
+    Number(version) < Number(activePcaVersion)
+  ) {
+    return { stale: true, version };
+  }
+
+  activePcaRequestSeq += 1;
+  activePcaVersion = version;
+  activePcaRequest = {
+    id: activePcaRequestSeq,
+    version,
+  };
+  return activePcaRequest;
+};
+
+const isCurrentPcaRequest = (request) => (
+  request &&
+  !request.stale &&
+  activePcaRequest &&
+  request.id === activePcaRequest.id &&
+  request.version === activePcaRequest.version &&
+  request.version === activePcaVersion
+);
+
+const isCurrentPcaVersion = (version) => (
+  version == null || activePcaVersion == null || Number(version) >= Number(activePcaVersion)
 );
 
 const formatPlotTransferError = (payload = {}) => {
@@ -730,10 +764,7 @@ Shiny.addCustomMessageHandler("createSparkLine", (feature) => {
   ];
   // notify server that gene expression stored has been changed
   // set the value when start transferring data
-  const storedFeatures = sparkLineArray.map((e) => {
-    // select the first span element
-    return e.querySelector("span").innerHTML;
-  });
+  const storedFeatures = sparkLineArray.map((e) => getFeatureSparkLineGene(e));
   // remember to add shiny module id as prefix
   Shiny.setInputValue("inputFeatures-storedFeatures", storedFeatures);
 });
@@ -961,8 +992,13 @@ Shiny.addCustomMessageHandler("reduction_cached", (msg) => {
 });
 
 Shiny.addCustomMessageHandler("pca_ready", (msg) => {
+  const transferRequest = startPcaRequest(msg.reductionVersion);
   try {
     (async () => {
+      if (!isCurrentPcaRequest(transferRequest)) {
+        return;
+      }
+
       if (!msg?.stdevFile) {
         pcaTransferFailed = false;
         reglElementData.updatePcaStdev(null);
@@ -973,17 +1009,29 @@ Shiny.addCustomMessageHandler("pca_ready", (msg) => {
 
       const stdevURL = `${window.location.origin}/data/reduction/${msg.stdevFile}`;
       const table = await readArrowIPC(stdevURL);
+      if (!isCurrentPcaRequest(transferRequest)) {
+        return;
+      }
       const stdevArray = getFloat32Column(table, "stdev");
+      if (!isCurrentPcaRequest(transferRequest)) {
+        return;
+      }
       pcaTransferFailed = false;
       reglElementData.updatePcaStdev(stdevArray);
       syncElbowPlotPanelState();
       requestFloatingPlotRefresh(["floatingElbowPlot"]);
     })().catch((error) => {
+      if (!isCurrentPcaRequest(transferRequest)) {
+        return;
+      }
       console.error("There was a problem:", error);
       pcaTransferFailed = true;
       showPcaTransferError();
     });
   } catch (error) {
+    if (!isCurrentPcaRequest(transferRequest)) {
+      return;
+    }
     console.error("There was a problem:", error);
     pcaTransferFailed = true;
     showPcaTransferError();
@@ -996,6 +1044,13 @@ Shiny.addCustomMessageHandler("transfer_error", (msg) => {
   const version = payload.version;
 
   if (payloadType === "pca") {
+    if (!isCurrentPcaVersion(version)) {
+      return;
+    }
+    if (version != null) {
+      activePcaVersion = version;
+    }
+    activePcaRequest = null;
     pcaTransferFailed = true;
     showPcaTransferError();
     return;
@@ -2868,7 +2923,10 @@ const updateDropOptions = (btId) => {
     a.setAttribute("href", "#");
     a.dataset.optionId = option.id;
     a.style.fontSize = "0.9rem";
-    a.innerHTML = `${option.label} <span class="text-muted">(${option.type})</span>`;
+    const typeLabel = document.createElement("span");
+    typeLabel.classList.add("text-muted");
+    typeLabel.textContent = ` (${option.type})`;
+    a.replaceChildren(document.createTextNode(option.label), typeLabel);
     item.appendChild(a);
     menu.appendChild(item);
   });

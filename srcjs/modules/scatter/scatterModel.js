@@ -275,7 +275,7 @@ export class ScatterModel {
     const expandMeta = this.utils.expandMeta;
     const splitArrByMeta = this.utils.splitArrByMeta;
     const convert_stringArr_to_integer = this.utils.convert_stringArr_to_integer;
-    const sortStringArray = this.utils.sortStringArray;
+    const getMetaLevels = this.utils.getMetaLevels;
     const rgbToHex = this.utils.rgbToHex;
 
     const zData = {
@@ -353,7 +353,7 @@ export class ScatterModel {
         const splitByArray = expandMeta(metaData[split_by]);
         const groupByInt = convert_stringArr_to_integer(groupByArray);
         const cellsArray = expandMeta(metaData.cells);
-        const splitLevels = [...new Set(splitByArray)].sort(sortStringArray);
+        const splitLevels = getMetaLevels(metaData[split_by]);
 
         for (let i = 0; i < splitLevels.length; i++) {
           const level = splitLevels[i];
@@ -378,7 +378,7 @@ export class ScatterModel {
       case "cluster+expr+multiSplit": {
         const splitByArray = expandMeta(metaData[split_by]);
         const cellsArray = expandMeta(metaData.cells);
-        const splitLevels = [...new Set(splitByArray)].sort(sortStringArray);
+        const splitLevels = getMetaLevels(metaData[split_by]);
         for (let i = 0; i < splitLevels.length; i++) {
           const level = splitLevels[i];
           const exprSplit = [];
@@ -404,7 +404,7 @@ export class ScatterModel {
   prepareXYData(reductionData, metaData, mode, nPanels, split_by) {
     const expandMeta = this.utils.expandMeta;
     const splitArrByMeta = this.utils.splitArrByMeta;
-    const sortStringArray = this.utils.sortStringArray;
+    const getMetaLevels = this.utils.getMetaLevels;
 
     const pointXY = [];
     const reductionConverted = this.scaleDataXY(reductionData);
@@ -455,7 +455,7 @@ export class ScatterModel {
       case "cluster+multiSplit":
       case "cluster+expr+multiSplit": {
         const splitByArray = expandMeta(metaData[split_by]);
-        const splitLevels = [...new Set(splitByArray)].sort(sortStringArray);
+        const splitLevels = getMetaLevels(metaData[split_by]);
         for (let i = 0; i < splitLevels.length; i++) {
           const level = splitLevels[i];
           const xSplit = [];
