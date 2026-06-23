@@ -75,3 +75,45 @@ test_that("filter cell QC helper recomputes percent.mt when assay changes", {
   object <- ensure_filter_cell_qc_metadata(object, assay = "ADT")
   expect_equal(unname(object[[]][, "percent.mt"]), c(0, 5 / 6 * 100))
 })
+
+test_that("safe subset helper rejects stale filter selections before empty Seurat subsets", {
+  skip_if_not_installed("Seurat")
+
+  safe_subset_seurat_object <- getFromNamespace(
+    "safe_subset_seurat_object",
+    "scSpotlight"
+  )
+
+  counts <- methods::as(
+    Matrix::Matrix(matrix(c(1, 0, 2, 3, 4, 0), nrow = 2), sparse = TRUE),
+    "dgCMatrix"
+  )
+  rownames(counts) <- c("GeneA", "GeneB")
+  colnames(counts) <- c("cell1", "cell2", "cell3")
+
+  object <- Seurat::CreateSeuratObject(counts = counts)
+  SeuratObject::LayerData(object, assay = "RNA", layer = "scale.data") <- matrix(
+    0,
+    nrow = nrow(object),
+    ncol = ncol(object),
+    dimnames = list(rownames(object), colnames(object))
+  )
+
+  filtered <- safe_subset_seurat_object(
+    object,
+    cells = c("cell3", "stale", "cell1"),
+    input_label = "Filter selection"
+  )
+
+  expect_identical(colnames(filtered), c("cell1", "cell3"))
+  expect_false("scale.data" %in% SeuratObject::Layers(filtered[["RNA"]]))
+  expect_error(
+    safe_subset_seurat_object(
+      object,
+      cells = c("stale", "missing"),
+      input_label = "Filter selection"
+    ),
+    "Filter selection did not match any cells",
+    fixed = TRUE
+  )
+})

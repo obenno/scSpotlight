@@ -114,3 +114,25 @@ test_that("DEVELOPMENT documents Phase 03 Analysis loading and processing safety
     "`transfer_error`"
   ))
 })
+
+test_that("DEVELOPMENT documents Phase 03 Analysis mutation safety", {
+  doc_text <- read_development_doc()
+
+  expect_development_doc_contains(doc_text, c(
+    "filter, cluster, and cell-cycle mutation safety",
+    "validated selected-cell sets",
+    "safe_subset_seurat_object",
+    "preserve source-object cell order",
+    "reject stale selections before mutating app state",
+    "filtering and clustering must drop final dense `scale.data`",
+    "Update All refreshes metadata and reductions",
+    "Update nDim Only refreshes metadata and reductions",
+    "Update Res Only reuses an existing graph and refreshes metadata without a reduction transfer",
+    "Cell-cycle scoring first tries Seurat::CellCycleScoring()",
+    "falls back to CellCycleScoring_2()",
+    "reuse the existing `meta_patch_ready` path",
+    "`S.Score`, `G2M.Score`, and `Phase`",
+    "do not trigger a full metadata reload for cell-cycle scoring",
+    "browser-visible mutation errors must be path-free"
+  ))
+})
