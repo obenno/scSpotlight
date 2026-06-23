@@ -25,6 +25,58 @@ mod_CellCycling_ui <- function(id) {
 #' @importFrom Seurat CellCycleScoring
 #'
 #' @noRd
+cell_cycle_patch_cols <- c("S.Score", "G2M.Score", "Phase")
+
+#' @noRd
+score_cell_cycle_safely <- function(
+  object,
+  s.features,
+  g2m.features,
+  ctrl = NULL,
+  set.ident = FALSE,
+  primary_scoring = Seurat::CellCycleScoring,
+  fallback_scoring = CellCycleScoring_2,
+  ...
+) {
+  scored <- tryCatch(
+    primary_scoring(
+      object = object,
+      s.features = s.features,
+      g2m.features = g2m.features,
+      ctrl = ctrl,
+      set.ident = set.ident,
+      ...
+    ),
+    error = function(error) {
+      message(
+        "Primary cell-cycle scoring failed; trying fallback scoring. ",
+        conditionMessage(error)
+      )
+      fallback_scoring(
+        object = object,
+        s.features = s.features,
+        g2m.features = g2m.features,
+        ctrl = ctrl,
+        set.ident = set.ident,
+        ...
+      )
+    }
+  )
+
+  if (!inherits(scored, "Seurat")) {
+    stop("Cell-cycle scoring did not produce a valid Seurat object.", call. = FALSE)
+  }
+  missing_cols <- setdiff(cell_cycle_patch_cols, colnames(scored[[]]))
+  if (length(missing_cols)) {
+    stop("Cell-cycle scoring did not produce required metadata columns.", call. = FALSE)
+  }
+
+  scored <- drop_dense_scale_data(scored)
+  assert_no_dense_scale_data(scored)
+  scored
+}
+
+#' @noRd
 mod_CellCycling_server <- function(
   id,
   seuratObj,
@@ -57,13 +109,16 @@ mod_CellCycling_server <- function(
         )
       } else {
         obj <- seuratObj()
+        selected_assay <- assay()
+        if (isTruthy(selected_assay) && selected_assay %in% Assays(obj)) {
+          DefaultAssay(obj) <- selected_assay
+        }
 
-        ## use the seurat original CellCycling function for now
         withProgress(
           message = "Calculating Cell Cycling Score...",
           tryCatch(
             {
-              obj <- CellCycleScoring(
+              obj <- score_cell_cycle_safely(
                 obj,
                 s.features = s.genes,
                 g2m.features = g2m.genes,
@@ -78,7 +133,7 @@ mod_CellCycling_server <- function(
                 version = nextPatchVersion
               ))
               showNotification(
-                ui = "Successfully Added!",
+                ui = "Successfully added cell-cycle metadata.",
                 action = NULL,
                 duration = 3,
                 closeButton = TRUE,
@@ -87,12 +142,17 @@ mod_CellCycling_server <- function(
               )
             },
             error = function(cond) {
+              message("Cell-cycle scoring failed: ", conditionMessage(cond))
               showNotification(
-                ui = paste0("CellCycleScoring failed: ", cond),
+                ui = paste(
+                  "Cell-cycle scoring could not be completed.",
+                  "Check that the active assay has normalized expression and",
+                  "enough matching cell-cycle features."
+                ),
                 action = NULL,
-                duration = 3,
+                duration = 6,
                 closeButton = TRUE,
-                type = "default",
+                type = "warning",
                 session = session
               )
             }

@@ -215,6 +215,50 @@ assert_no_dense_scale_data <- function(object, assays = NULL) {
 }
 
 #' @noRd
+safe_subset_seurat_object <- function(
+  object,
+  cells,
+  backend_root = NULL,
+  input_label = "Selected cells"
+) {
+  if (!inherits(object, "Seurat")) {
+    stop("Expected a Seurat object for subsetting.", call. = FALSE)
+  }
+
+  object_cells <- colnames(object)
+  requested_cells <- as.character(cells %||% character(0))
+  requested_cells <- requested_cells[!is.na(requested_cells) & nzchar(requested_cells)]
+  requested_cells <- unique(requested_cells)
+
+  valid_cells <- object_cells[object_cells %in% requested_cells]
+  if (!length(valid_cells)) {
+    stop(
+      input_label,
+      " did not match any cells in the current object.",
+      call. = FALSE
+    )
+  }
+
+  was_bpcells_backed <- is_seurat_bpcells(object)
+  subset_object <- subset(object, cells = valid_cells)
+  subset_object <- drop_dense_scale_data(subset_object)
+
+  should_ensure_backing <- isTruthy(backend_root) || isTRUE(was_bpcells_backed)
+  if (isTRUE(should_ensure_backing) && bpcells_available()) {
+    backing_root <- backend_root %||% tempfile("scspotlight_subset_layers_")
+    subset_object <- ensure_bpcells_backing(
+      subset_object,
+      root_dir = backing_root,
+      layers = NULL
+    )
+    subset_object <- drop_dense_scale_data(subset_object)
+  }
+
+  assert_no_dense_scale_data(subset_object)
+  subset_object
+}
+
+#' @noRd
 materialize_bpcells_layers <- function(object, assays = NULL) {
   assays <- assays %||% Assays(object)
 

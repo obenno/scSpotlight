@@ -141,14 +141,24 @@ mod_FilterCell_server <- function(
             percent.mt < input$percent.mt_max
           ) %>%
           rownames()
-        obj <- subset(obj, cells = selectedCells)
+        backend_root <- if (isTruthy(session$userData$backendDir)) {
+          file.path(session$userData$backendDir, "layers")
+        } else {
+          NULL
+        }
+        obj <- safe_subset_seurat_object(
+          obj,
+          cells = selectedCells,
+          backend_root = backend_root,
+          input_label = "Filter selection"
+        )
         obj <- standard_process_seurat(
           obj,
           normalization = FALSE,
           hvg_method = hvgSelectMethod(),
           ndims = clusterDims(),
           res = clusterResolution(),
-          backend_root = file.path(session$userData$backendDir, "layers")
+          backend_root = backend_root
         )
         seuratObj(obj)
       })

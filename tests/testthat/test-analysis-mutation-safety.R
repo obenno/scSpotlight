@@ -303,10 +303,16 @@ test_that("cell-cycle module requests one exact metadata patch for scoring colum
     }
   )
 
-  expect_equal(patch_version(), 1L)
-  expect_equal(patch_request()$version, 1L)
-  expect_identical(patch_request()$cols, c("S.Score", "G2M.Score", "Phase"))
-  expect_true(all(c("S.Score", "G2M.Score", "Phase") %in% colnames(seurat_value()[[]])))
+  expect_equal(shiny::isolate(patch_version()), 1L)
+  expect_equal(shiny::isolate(patch_request())$version, 1L)
+  expect_identical(
+    shiny::isolate(patch_request())$cols,
+    c("S.Score", "G2M.Score", "Phase")
+  )
+  expect_true(all(
+    c("S.Score", "G2M.Score", "Phase") %in%
+      colnames(shiny::isolate(seurat_value())[[]])
+  ))
   expect_false(any(grepl("CellCycleScoring failed|/tmp|private", notifications)))
 })
 
@@ -345,8 +351,8 @@ test_that("cell-cycle module surfaces generic path-free errors", {
     }
   )
 
-  expect_null(patch_request())
-  expect_equal(patch_version(), 0L)
+  expect_null(shiny::isolate(patch_request()))
+  expect_equal(shiny::isolate(patch_version()), 0L)
   expect_true(any(grepl("Cell-cycle scoring could not be completed", notifications, fixed = TRUE)))
   expect_false(any(grepl("/tmp|private|object.rds|raw failure", notifications)))
 })
