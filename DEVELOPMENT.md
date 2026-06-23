@@ -268,6 +268,22 @@ and `transfer_error`; do not add JSON cell-level payloads, local file paths,
 mirrored Analysis DuckDB stores, or live Seurat/BPCells objects in background
 futures to work around loading or processing issues.
 
+The same section owns filter, cluster, and cell-cycle mutation safety. Filtering
+must route browser/reactive selections through validated selected-cell sets via
+`safe_subset_seurat_object`, preserve source-object cell order, reject stale selections before mutating app state, preserve BPCells backing where available,
+and finish with `drop_dense_scale_data()` / `assert_no_dense_scale_data()`.
+filtering and clustering must drop final dense `scale.data` before replacing the
+server-side Seurat object.
+
+Cluster update modes have intentionally different scopes and transfer indicators.
+Update All refreshes metadata and reductions after rerunning the full
+memory-conserving processing path. Update nDim Only refreshes metadata and reductions because neighbors, clusters, and UMAP can change when dimensions
+change. Update Res Only reuses an existing graph and refreshes metadata without a reduction transfer when only resolution-driven cluster metadata changes.
+
+Cell-cycle scoring first tries Seurat::CellCycleScoring() and falls back to CellCycleScoring_2() for small-gene/bin failures. It must reuse the existing `meta_patch_ready` path for the new `S.Score`, `G2M.Score`, and `Phase` columns,
+and do not trigger a full metadata reload for cell-cycle scoring. browser-visible mutation errors must be path-free and must not expose raw condition text,
+local paths, or stack traces.
+
 ### Browser payload contracts
 
 The machine-readable payload contract is `inst/protocol/browser-payload-contracts.json`. The paired R producer test is `tests/testthat/test-browser-payload-contracts.R`, and the paired JS consumer test is `srcjs/index.test.js`.
