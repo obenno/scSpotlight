@@ -49,8 +49,10 @@ Imports:
     waiter,
     zip
 Suggests: 
+    ellmer,
     presto,
     R.utils,
+    shinychat,
     testthat (>= 3.0.0),
     withr
 Config/testthat/edition: 3

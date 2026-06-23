@@ -355,9 +355,13 @@ mod_UpdateReduction_server <- function(
       priority = -500
     )
 
-    ##selectedReduction <- reactive({
-    ##  input$reduction
-    ##})
+    selectedReduction <- reactive({
+      input$reduction
+    })
+
+    list(
+      reduction = selectedReduction
+    )
   })
 }
 

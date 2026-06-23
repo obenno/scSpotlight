@@ -6,6 +6,9 @@ This file records recent frontend behavior changes for the main scatter plot, sp
 
 The recent work touched these areas:
 
+- optional LLM assistant design in `LLM_CHATBOX_PLAN.md`
+- optional LLM assistant module/server code in `R/mod_LLMChat.R`
+- LLM context and summary helpers in `R/fct_llm_context.R`
 - floating plot UI in `R/app_ui.R`
 - DEG analysis UI in `R/mod_DEG_Window.R`, `R/mod_FindMarkers.R`, and `R/mod_DEG_Table.R`
 - reduction transfer in `R/mod_UpdateReduction.R`
@@ -191,6 +194,34 @@ Implementation notes:
 - `R/mod_DEG_Window.R` composes DEG settings, marker table, and heatmap into one floating workflow.
 - `R/mod_FindMarkers.R` owns the async DEG run and returns marker results reactively.
 - The DEG rail button now opens the full DEG analysis window rather than a table-only panel.
+
+### 11. LLM assistant is optional, server-side, and summary-only
+
+Decision:
+
+- The AI Assistant runtime is disabled by default and is enabled only when `run_app(enableLLM = TRUE, ...)` is used.
+- No chat panel is currently inserted into `R/app_ui.R`; the visible UI remains identical to `dev` until a later explicit UI mounting decision.
+- The UI uses Posit's `shinychat` package, and model access uses `ellmer`.
+- The first supported provider is local Ollama via `ellmer::chat_ollama()`.
+- Provider credentials are never accepted through Shiny inputs or `run_app()` arguments.
+- Credentials are resolved only server-side by `ellmer`, for example through environment variables or provider-managed credentials.
+- MCP is explicitly deferred and is not implemented in this branch.
+
+Why:
+
+- LLM features require optional packages and provider setup, so normal app startup should not depend on them.
+- Single-cell analysis data can be large and sensitive; the LLM must not receive full metadata, reductions, expression matrices, or local file paths.
+- Internal read-only summary helpers are easier to test and can later be wrapped by MCP without changing the data-access logic.
+
+Implementation notes:
+
+- `run_app()` accepts non-secret options: `enableLLM`, `llmProvider`, `llmModel`, and `llmBaseUrl`.
+- `DESCRIPTION` lists `ellmer` and `shinychat` under `Suggests` so the feature remains optional.
+- `R/app_ui.R` is intentionally left matching `dev`; UI mounting for `mod_LLMChat_ui()` is deferred.
+- `R/app_server.R` builds a compact reactive analysis context and passes it to `mod_LLMChat_server()`.
+- `R/mod_LLMChat.R` creates one session-local `ellmer` chat object, uses non-blocking `ellmer` calls, and registers read-only tools. Ollama uses `chat_async()` to preserve tool calling despite current Ollama streaming/tool limitations; future providers that support tool streaming can use `stream_async(..., stream = "content")` for rich `shinychat` tool displays.
+- `R/fct_llm_context.R` owns the system prompt, context builder, provider factory, context truncation, group summaries, and DEG summaries.
+- `LLM_CHATBOX_PLAN.md` records the implementation plan, credential handling rules, and reserved future MCP design.
 
 ## Runtime Contract Backbone
 
@@ -388,18 +419,28 @@ These changes were implemented with the repo's large-dataset constraints in mind
 
 Recent validation included:
 
+- `pixi run Rscript -e "devtools::test(filter = 'llm-context')"`
+- `pixi run Rscript -e "devtools::test(filter = 'run-app-modes')"`
+- `pixi run Rscript -e "devtools::test()"`
+- `pixi run Rscript -e "devtools::load_all(); cat('loaded\\n')"`
+- parse validation for `R/fct_llm_context.R`, `R/mod_LLMChat.R`, `R/app_server.R`, and `R/app_ui.R`
 - `pixi run test-js`
 - `pixi run R -e 'devtools::document()'`
 - `pixi run build-js`
 - parse validation for `R/app_ui.R`
 
-At the time of writing, the JS test suite passed with 69 tests.
+At the time of writing, the R test suite passed with 173 tests. The JS test
+suite previously passed with 69 tests. `devtools::check()` failed during local
+`R CMD build` before package checks because the checkout's `.pixi` environment
+contains debug symlink targets that cannot be copied into the temporary build
+directory; this is a local build-copy issue rather than an LLM implementation
+test failure.
 
 ## Backend Migration Notes
 
 These notes capture the recent backend reconstruction from a DuckDB-centered runtime to a Seurat v5 + BPCells runtime.
 
-### 11. BPCells is now the primary assay backend
+### 12. BPCells is now the primary assay backend
 
 Decision:
 
@@ -421,7 +462,7 @@ Implementation notes:
 - `R/mod_dataInput.R` converts loaded Seurat objects to BPCells-backed assay layers through `ensure_bpcells_backing()`.
 - Metadata, reduction, and expression transfers now read directly from the Seurat object rather than querying DuckDB.
 
-### 12. Client data exports should remain low-memory
+### 13. Client data exports should remain low-memory
 
 Decision:
 
@@ -440,7 +481,7 @@ Implementation notes:
 - `R/mod_UpdateMetaData.R` and `R/mod_UpdateReduction.R` fetch Seurat/BPCells data in-process, then wrap Arrow IPC writing in background promises before notifying the browser on completion.
 - `R/mod_InputFeature.R` queues expression transfers and writes each selected feature through the BPCells/Explore chunked IPC writer in the main R process before notifying the browser.
 
-### 13. Metadata and reductions are exported directly from Seurat
+### 14. Metadata and reductions are exported directly from Seurat
 
 Decision:
 
@@ -456,7 +497,7 @@ Implementation notes:
 - `R/mod_UpdateMetaData.R` now builds full and partial metadata payloads from `get_backend_metadata()`.
 - `R/mod_UpdateReduction.R` now builds reduction payloads from `get_backend_reduction()` and sends PCA standard deviations directly from the Seurat object.
 
-### 14. Expression queries now use Seurat/BPCells layer access
+### 15. Expression queries now use Seurat/BPCells layer access
 
 Decision:
 
@@ -473,7 +514,7 @@ Implementation notes:
 - `R/fct_bpcells_backend.R` chooses the preferred layer via `preferred_expr_layer()` and extracts feature vectors from the active BPCells or in-memory layer.
 - Analysis Mode feature expression transfers use `prepare_backend_expression_transfer()` plus `extract_bpcells_expr_to_ipc()` so only one feature vector chunk is in memory at a time.
 
-### 15. Processing mode should prefer BPCells-compatible code paths
+### 16. Processing mode should prefer BPCells-compatible code paths
 
 Decision:
 
@@ -491,7 +532,7 @@ Implementation notes:
 - BPCells-backed PCA uses BPCells matrix stats and truncated SVD when available.
 - BPCells bundle export removes `scale.data` before saving to avoid shipping large dense matrices in portable archives.
 
-### 15a. Seurat `ScaleData()` on BPCells supports scaling but not regression
+### 16a. Seurat `ScaleData()` on BPCells supports scaling but not regression
 
 Decision:
 
@@ -510,7 +551,7 @@ Implementation notes:
 - The current Seurat implementation uses `BPCells::matrix_stats()` and row-wise transforms for scaling, but does not run regression in the `IterableMatrix` method.
 - `R/fct_bpcells_backend.R` avoids this gap in the main processing route by using `run_bpcells_pca()` / `run_memory_conserving_pca()` instead of relying on `ScaleData()` for BPCells-backed objects.
 
-### 16. BPCells layer types are optimized for storage
+### 17. BPCells layer types are optimized for storage
 
 Decision:
 
@@ -527,7 +568,7 @@ Implementation notes:
 - `R/fct_bpcells_backend.R` uses `optimize_bpcells_matrix_type()` before `write_matrix_dir()`.
 - `R/mod_dataInput.R` applies the same optimization in `BPCells_Read10X()`.
 
-### 16a. Portable bundles should not preserve Seurat graph state
+### 17a. Portable bundles should not preserve Seurat graph state
 
 Decision:
 
@@ -544,7 +585,7 @@ Implementation notes:
 - `R/fct_bpcells_backend.R` removes graphs and neighbors through SeuratObject accessors in `prepare_bundle_object()` after BPCells layer paths are made portable.
 - Large reduction prefetch is limited to the selected reduction to avoid copying several 500K+ cell coordinate payloads during initial load.
 
-### 17. Portable BPCells downloads use a scSpotlight bundle contract
+### 18. Portable BPCells downloads use a scSpotlight bundle contract
 
 Decision:
 
@@ -570,7 +611,7 @@ Implementation notes:
   - `README.txt`
 - `manifest.json` includes `bundle_type = "scspotlight_bpcells_seurat_bundle"` and `rds_file` so the app can identify valid bundles.
 
-### 18. Bundled BPCells Seurat objects must be loaded from the bundle directory context
+### 19. Bundled BPCells Seurat objects must be loaded from the bundle directory context
 
 Decision:
 
@@ -587,7 +628,7 @@ Implementation notes:
 - `R/mod_dataInput.R` uses the bundle-aware loader for direct `.Rds` input and for decompressed BPCells bundles.
 - The saved bundle RDS now exposes the tool cache under `SaveSeuratRds`, matching what `LoadSeuratRds()` expects.
 
-### 19. `.h5ad` bundle conversion should stream matrices through BPCells
+### 20. `.h5ad` bundle conversion should stream matrices through BPCells
 
 Decision:
 
@@ -738,7 +779,7 @@ Expression queries must use DuckDB. The app selects the correct block from `feat
 
 These notes capture recent fixes and interaction decisions for the main scatter plot, category sidebar, and rename-cluster workflow.
 
-### 20. Multi-panel scatter interaction must treat every panel as a first-class viewport
+### 21. Multi-panel scatter interaction must treat every panel as a first-class viewport
 
 Decision:
 
@@ -759,7 +800,7 @@ Implementation notes:
 - `srcjs/modules/scatter/scatterRelayout.js` now measures panel rectangles relative to the deck container instead of relying only on offsets.
 - `srcjs/modules/deckScatter.js` treats null, empty, and literal `undefined` metadata levels as missing so they do not appear as category legends, split panel titles, or selectable category IDs.
 
-### 20a. Main scatter uses adaptive deck.gl binary layers
+### 21a. Main scatter uses adaptive deck.gl binary layers
 
 Decision:
 
@@ -779,7 +820,7 @@ Implementation notes:
 - `shouldEnablePicking()` does not re-enable base picking for `nPoints >= 2000000`, even when zoomed.
 - `srcjs/modules/scatter/scatterModel.js` keeps main scatter expression mode first-selected-gene only. Category + expression with exactly two split levels creates paired `{split} : {group_by}` and `{split} : {gene}` panels; expression multi-split uses one expression panel per non-missing split level.
 
-### 21. Category sidebar stays hybrid, but metadata expansion is cached on the client
+### 22. Category sidebar stays hybrid, but metadata expansion is cached on the client
 
 Decision:
 
@@ -800,7 +841,7 @@ Implementation notes:
 - `R/app_server.R` and `R/mod_UpdateCategory.R` now consume that single snapshot and preserve the currently selected `group.by` / `split.by` values when choices are rebuilt.
 - `R/mod_UpdateCategory.R` only increments `scatterUpdateIndicator` when the effective `(group.by, split.by)` pair actually changes.
 
-### 22. Rename Clusters selection UX is client-side; assignment persistence remains server-side
+### 23. Rename Clusters selection UX is client-side; assignment persistence remains server-side
 
 Decision:
 
@@ -822,7 +863,7 @@ Implementation notes:
 - `R/mod_AssignCellCluster.R` now uses `selectize = FALSE` for `chosenGroup` and `chosenSplit`.
 - `R/app_server.R` no longer passes obsolete rename-cluster category-filtering reactives into `mod_AssignCellCluster_server()`.
 
-### 23. Main scatter overlays expose persistent total/selected cell counts
+### 24. Main scatter overlays expose persistent total/selected cell counts
 
 Decision:
 
@@ -839,7 +880,7 @@ Implementation notes:
 - `srcjs/modules/deckScatter.js` updates that badge whenever lasso or category selection changes, with counts formatted by `Intl.NumberFormat`.
 - `setSelectedCells()` reconciles selected IDs against current panel cell IDs so valid redraws preserve visible selections and ambiguous context changes immediately clear stale IDs to `Selected 0`.
 
-### 24. Category legends and rename selectors must ignore null / missing category levels
+### 25. Category legends and rename selectors must ignore null / missing category levels
 
 Decision:
 
@@ -855,7 +896,7 @@ Implementation notes:
 - `srcjs/modules/deckScatter.js` now filters null category titles before building legends.
 - `srcjs/index.js` now normalizes rename selector choices to distinct non-empty strings and ignores nullish values.
 
-### 25. Rename selectors should only persist within one grouping context
+### 26. Rename selectors should only persist within one grouping context
 
 Decision:
 
@@ -873,7 +914,7 @@ Implementation notes:
 - `srcjs/index.js` now clears rename selector UI state after assign-time deselect and manual lasso deselect before resyncing category selection.
 - `srcjs/index.test.js` covers both regressions: grouping changes clear stale rename selections, and assign leaves the rename selectors cleared.
 
-### 26. Initial plot readiness depends on a real active reduction render
+### 27. Initial plot readiness depends on a real active reduction render
 
 Decision:
 
@@ -893,7 +934,7 @@ Implementation notes:
 - `reductions_ready` fetches and plots the resolved active reduction before warming the cache with inactive reductions.
 - `srcjs/index.test.js` covers stale DOM reduction values and missing active-reduction fallback behavior.
 
-### 27. Scatter render replacement must be atomic
+### 28. Scatter render replacement must be atomic
 
 Decision:
 
@@ -911,7 +952,7 @@ Implementation notes:
 - The catch path removes replacement nodes, restores previous plot/legend nodes, destroys only the replacement instance, and settles initial readiness if needed.
 - `srcjs/index.test.js` covers both early render-generation failures and late setup failures.
 
-### 28. Plot data transfer failures must be visible to users
+### 29. Plot data transfer failures must be visible to users
 
 Decision:
 
@@ -928,7 +969,7 @@ Implementation notes:
 - `srcjs/index.js` uses `handlePlotTransferError()` for `reduction_ready`, `reductions_ready`, `reduction_cached`, and `meta_ready` failures.
 - Successful reduction or metadata transfer clears the visible transfer error.
 
-### 29. Analysis Mode can derive missing processed state
+### 30. Analysis Mode can derive missing processed state
 
 Decision:
 
@@ -946,7 +987,7 @@ Implementation notes:
 - In Analysis Mode, `validate_seuratRDS()` computes missing HVGs and reductions before calling `assert_processed_input_requirements()`.
 - When `backend_root` is available, the processed object is re-backed through BPCells after derived state is created.
 
-### 30. h5ad export must not close unrelated HDF5 handles or overwrite source files
+### 31. h5ad export must not close unrelated HDF5 handles or overwrite source files
 
 Decision:
 
@@ -964,7 +1005,7 @@ Implementation notes:
 - `R/fct_bpcells_backend.R` now relies on local HDF5 handle close calls in helper functions.
 - `convert_to_scanpy_h5ad()` normalizes input/output paths and rejects same-path conversion.
 
-### 31. BPCells matrix coercion should fail clearly
+### 32. BPCells matrix coercion should fail clearly
 
 Decision:
 

@@ -29,6 +29,44 @@ test_that("running modes reject invalid values", {
   )
 })
 
+test_that("LLM options normalize supported values", {
+  normalize_llm_enabled <- getFromNamespace(
+    "normalize_llm_enabled",
+    "scSpotlight"
+  )
+  normalize_llm_provider <- getFromNamespace(
+    "normalize_llm_provider",
+    "scSpotlight"
+  )
+
+  expect_equal(normalize_llm_enabled(TRUE), TRUE)
+  expect_equal(normalize_llm_enabled(FALSE), FALSE)
+  expect_equal(normalize_llm_enabled(NULL), FALSE)
+  expect_equal(normalize_llm_provider(" Ollama "), "ollama")
+})
+
+test_that("LLM options reject invalid values", {
+  normalize_llm_enabled <- getFromNamespace(
+    "normalize_llm_enabled",
+    "scSpotlight"
+  )
+  normalize_llm_provider <- getFromNamespace(
+    "normalize_llm_provider",
+    "scSpotlight"
+  )
+
+  expect_error(
+    normalize_llm_enabled("yes"),
+    "enableLLM must be TRUE or FALSE",
+    fixed = TRUE
+  )
+  expect_error(
+    normalize_llm_provider("openai"),
+    "llmProvider must be 'ollama'",
+    fixed = TRUE
+  )
+})
+
 test_that("Explore Mode server does not register Analysis-only modules", {
   skip_if_not_installed("shiny")
 
@@ -81,6 +119,11 @@ test_that("Explore Mode server does not register Analysis-only modules", {
     },
     mod_DataConversion_server = function(...) {
       calls <<- c(calls, "conversion")
+      NULL
+    },
+    llm_is_enabled = function() FALSE,
+    mod_LLMChat_server = function(...) {
+      calls <<- c(calls, "llm")
       NULL
     },
     .package = "scSpotlight"

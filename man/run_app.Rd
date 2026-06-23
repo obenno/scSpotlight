@@ -13,6 +13,10 @@ run_app(
   runningMode = "analysis",
   maxSize = 20 * 1000 * 1024^2,
   nCores = 2,
+  enableLLM = FALSE,
+  llmProvider = "ollama",
+  llmModel = "llama3.2",
+  llmBaseUrl = Sys.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
   ...
 )
 }
@@ -47,6 +51,17 @@ processed data. Legacy aliases "processing" and "viewer" are accepted.}
 \item{maxSize}{Maximum allowed total size (in bytes) of global variables identified, see future.globals.maxSize.}
 
 \item{nCores}{Number of the threads to use (by \code{\link[future:plan]{future::plan()}}).}
+
+\item{enableLLM}{Logical. Enable the optional LLM assistant panel. Defaults to
+\code{FALSE}; credentials are resolved server-side by \code{ellmer} from environment or
+provider-managed credentials, never from Shiny inputs.}
+
+\item{llmProvider}{LLM provider name. Currently supports \code{"ollama"}.}
+
+\item{llmModel}{Model name for the selected provider.}
+
+\item{llmBaseUrl}{Base URL for local/OpenAI-compatible providers. For Ollama,
+defaults to \code{OLLAMA_BASE_URL} or \code{http://localhost:11434}.}
 
 \item{...}{arguments to pass to golem_opts.
 See \code{?golem::get_golem_options} for more details.}

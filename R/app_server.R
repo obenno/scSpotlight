@@ -148,7 +148,7 @@ app_server <- function(input, output, session) {
     }
   })
   ## Update reductions
-  mod_UpdateReduction_server(
+  reductionInfo <- mod_UpdateReduction_server(
     "updateReduction",
     seuratObj,
     reductionUpdateIndicator,
@@ -174,8 +174,13 @@ app_server <- function(input, output, session) {
     scatterUpdateIndicator
   )
 
+  DEG_state <- list(
+    markers = reactive(NULL),
+    pAdjCutoff = reactive(NULL)
+  )
+
   if (identical(runningMode, "analysis")) {
-    mod_DEG_Window_server(
+    DEG_state <- mod_DEG_Window_server(
       "DEGWindow",
       seuratObj,
       categoryInfo$group.by
@@ -196,6 +201,41 @@ app_server <- function(input, output, session) {
     message("input$selectedFeatures: ", input$selectedFeatures)
     input$selectedFeatures
   })
+
+  llmAnalysisContext <- reactive({
+    state <- metaSidebarState()
+    meta_cols <- if (is.list(state)) state$cols else NULL
+    build_llm_analysis_context(
+      object = seuratObj(),
+      running_mode = runningMode,
+      selected_assay = inputData$selectedAssay(),
+      selected_reduction = reductionInfo$reduction(),
+      group_by = categoryInfo$group.by(),
+      split_by = categoryInfo$split.by(),
+      selected_features = selectedFeatures(),
+      meta_cols = meta_cols,
+      deg_markers = DEG_state$markers(),
+      p_adj_cutoff = DEG_state$pAdjCutoff(),
+      context_version = paste(
+        metaUpdateIndicator(),
+        reductionUpdateIndicator(),
+        geneUpdateIndicator(),
+        sep = ":"
+      )
+    )
+  })
+
+  if (llm_is_enabled()) {
+    mod_LLMChat_server(
+      "llmChat",
+      analysisContext = llmAnalysisContext,
+      seuratObj = seuratObj,
+      group.by = categoryInfo$group.by,
+      degMarkers = DEG_state$markers,
+      pAdjCutoff = DEG_state$pAdjCutoff,
+      llmConfig = llm_provider_config()
+    )
+  }
 
   ## Draw cluster plot
   mod_mainClusterPlot_server(
