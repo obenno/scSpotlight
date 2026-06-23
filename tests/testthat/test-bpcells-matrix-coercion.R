@@ -51,3 +51,40 @@ test_that("coerce_bpcells_source_matrix rejects unsupported inputs clearly", {
     "Unsupported matrix class for BPCells conversion"
   )
 })
+
+test_that("ensure_bpcells_backing converts all app-state assay layers when requested", {
+  skip_if_not_installed("BPCells")
+  skip_if_not_installed("Seurat")
+
+  ensure_bpcells_backing <- getFromNamespace(
+    "ensure_bpcells_backing",
+    "scSpotlight"
+  )
+  assert_no_dense_scale_data <- getFromNamespace(
+    "assert_no_dense_scale_data",
+    "scSpotlight"
+  )
+
+  counts <- Matrix::Matrix(
+    matrix(c(1, 0, 2, 0, 3, 4, 0, 5, 6), nrow = 3),
+    sparse = TRUE
+  )
+  rownames(counts) <- paste0("gene", seq_len(nrow(counts)))
+  colnames(counts) <- paste0("cell", seq_len(ncol(counts)))
+
+  object <- Seurat::CreateSeuratObject(counts = counts)
+  object <- Seurat::NormalizeData(object, verbose = FALSE)
+  object <- ensure_bpcells_backing(
+    object,
+    root_dir = tempfile("bp_all_layers_"),
+    layers = NULL
+  )
+
+  for (layer in SeuratObject::Layers(object[["RNA"]])) {
+    expect_true(inherits(
+      SeuratObject::LayerData(object, assay = "RNA", layer = layer),
+      "IterableMatrix"
+    ))
+  }
+  expect_silent(assert_no_dense_scale_data(object))
+})

@@ -59,3 +59,38 @@ test_that("BPCells-native HVG methods match Seurat exactly", {
   compare_method("mean.var.plot")
   compare_method("dispersion")
 })
+
+test_that("memory-conserving processing preserves HVGs without final scale.data", {
+  skip_if_not_installed("Seurat")
+
+  run_memory_conserving_processing <- getFromNamespace(
+    "run_memory_conserving_processing",
+    "scSpotlight"
+  )
+  assert_no_dense_scale_data <- getFromNamespace(
+    "assert_no_dense_scale_data",
+    "scSpotlight"
+  )
+
+  set.seed(30302)
+  counts <- Matrix::rsparsematrix(70, 55, density = 0.08)
+  counts@x <- abs(counts@x) + 1
+  rownames(counts) <- paste0("gene", seq_len(nrow(counts)))
+  colnames(counts) <- paste0("cell", seq_len(ncol(counts)))
+
+  object <- Seurat::CreateSeuratObject(counts = counts)
+  processed <- suppressWarnings(suppressMessages(
+    run_memory_conserving_processing(
+      object,
+      normalization = TRUE,
+      hvg_method = "vst",
+      ndims = 2L,
+      res = 0.2,
+      npcs = 5L
+    )
+  ))
+
+  expect_gt(length(Seurat::VariableFeatures(processed)), 0)
+  expect_true("pca" %in% SeuratObject::Reductions(processed))
+  expect_silent(assert_no_dense_scale_data(processed))
+})

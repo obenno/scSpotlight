@@ -90,3 +90,27 @@ test_that("DEVELOPMENT documents Phase 02 transfer reliability", {
     "only the first selected gene receives semibold/`aria-current` primary emphasis"
   ))
 })
+
+test_that("DEVELOPMENT documents Phase 03 Analysis loading and processing safety", {
+  doc_text <- read_development_doc()
+
+  expect_development_doc_contains(doc_text, c(
+    "### Phase 03 Analysis Mode processing and mutation safety",
+    "supported Analysis Mode inputs",
+    "Seurat `.Rds`",
+    "`.h5ad`",
+    "BPCells bundle archive",
+    "compressed 10x-style matrix archive",
+    "Explore Parquet bundles remain rejected in Analysis Mode",
+    "BPCells-backed assay layers",
+    "memory-conserving derivation of normalized, HVG, PCA, neighbors, clusters, and UMAP state",
+    "no final dense `scale.data`",
+    "Phase 02 browser transfer contracts remain unchanged",
+    "`meta_ready`",
+    "`reduction_ready`",
+    "`reductions_ready`",
+    "`expr_ready`",
+    "`meta_patch_ready`",
+    "`transfer_error`"
+  ))
+})
