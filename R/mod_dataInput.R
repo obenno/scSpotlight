@@ -91,6 +91,251 @@ mod_dataInput_inputUI <- function(id) {
   }
 }
 
+#' Analysis Mode input loading helper
+#'
+#' @noRd
+load_analysis_input_file <- function(
+  input_file,
+  input_name = basename(input_file),
+  backend_root,
+  hvgSelectMethod = "vst",
+  nDims = 30,
+  resolution = 1,
+  temp_root = NULL,
+  status = function(...) NULL,
+  notify = function(...) NULL
+) {
+  if (!is.character(input_file) || length(input_file) != 1L || !nzchar(input_file)) {
+    stop("Expected a single Analysis input file path", call. = FALSE)
+  }
+  if (!file.exists(input_file)) {
+    stop("Analysis input file does not exist: ", basename(input_file), call. = FALSE)
+  }
+
+  input_name <- input_name %||% basename(input_file)
+  backend_root <- backend_root %||% tempfile("scspotlight_analysis_layers_")
+  temp_root <- temp_root %||% dirname(backend_root)
+  dir.create(backend_root, recursive = TRUE, showWarnings = FALSE)
+  dir.create(temp_root, recursive = TRUE, showWarnings = FALSE)
+
+  compressionFormatPattern <- "\\.zip$|\\.tar.gz$|\\.tgz$|\\.tar\\.bz2$|\\.tbz2"
+  rdsFormatPattern <- "\\.rds$|\\.RDS$|\\.Rds$"
+  h5adFormatPattern <- "\\.[Hh]5[Aa][Dd]$"
+  hvg_method <- if (isTruthy(hvgSelectMethod)) {
+    hvgSelectMethod
+  } else {
+    "vst"
+  }
+  nDims <- suppressWarnings(as.integer(nDims %||% 30L))
+  if (is.na(nDims) || nDims < 1L) {
+    nDims <- 30L
+  }
+  resolution <- suppressWarnings(as.numeric(resolution %||% 1))
+  if (is.na(resolution) || resolution <= 0) {
+    resolution <- 1
+  }
+
+  prefer_vst_warning <- function(object) {
+    if (
+      is_seurat_bpcells(object) &&
+        isTruthy(hvgSelectMethod) &&
+        !identical(hvgSelectMethod, "vst")
+    ) {
+      notify(
+        HTML(
+          "BPCells backend active, prefer <b>vst</b> on the <b>counts</b> layer for large datasets"
+        ),
+        type = "warning",
+        duration = 5
+      )
+    }
+  }
+
+  finalize_analysis_object <- function(object) {
+    object <- drop_dense_scale_data(object)
+    assert_no_dense_scale_data(object)
+    object <- ensure_bpcells_backing(
+      object,
+      root_dir = backend_root,
+      layers = NULL
+    )
+    assert_no_dense_scale_data(object)
+    assert_scspotlight_backend(object)
+    object
+  }
+
+  load_rds_analysis_object <- function(path) {
+    bundle_error <- NULL
+    object <- tryCatch(
+      load_scspotlight_bundle(path),
+      error = function(error) {
+        bundle_error <<- error
+        NULL
+      }
+    )
+    if (isTruthy(object)) {
+      return(object)
+    }
+
+    object <- tryCatch(
+      readRDS(path),
+      error = function(error) {
+        stop(
+          "Failed to load Seurat RDS input '",
+          basename(path),
+          "'.",
+          call. = FALSE
+        )
+      }
+    )
+    if (!inherits(object, "Seurat")) {
+      if (!is.null(bundle_error)) {
+        stop(
+          "Failed to load Seurat RDS input '",
+          basename(path),
+          "'.",
+          call. = FALSE
+        )
+      }
+      stop("RDS input did not contain a Seurat object.", call. = FALSE)
+    }
+    object
+  }
+
+  if (str_detect(input_name, scspotlight_explore_archive_pattern)) {
+    message <- paste(
+      "This file is an Explore Parquet bundle, which is read-only and can only be opened in Explore Mode.",
+      "Restart scSpotlight with runningMode = 'explore' to open it, or choose a Seurat RDS, h5ad, BPCells bundle, or 10x matrix archive for Analysis Mode."
+    )
+    notify(message, type = "error", duration = 8)
+    status("This Explore Parquet bundle can only be opened in Explore Mode.")
+    stop(message, call. = FALSE)
+  }
+
+  seuratObj <- NULL
+  if (str_detect(input_name, rdsFormatPattern)) {
+    seuratObj <- load_rds_analysis_object(input_file)
+    assay <- DefaultAssay(seuratObj)
+    if (inherits(seuratObj[[assay]], "Assay")) {
+      seuratObj[[assay]] <- as(seuratObj[[assay]], Class = "Assay5")
+    }
+    seuratObj <- drop_dense_scale_data(seuratObj)
+    assert_no_dense_scale_data(seuratObj)
+    seuratObj <- ensure_bpcells_backing(
+      seuratObj,
+      root_dir = backend_root,
+      layers = NULL
+    )
+    prefer_vst_warning(seuratObj)
+    seuratObj <- validate_seuratRDS(
+      seuratObj,
+      runningMode = "analysis",
+      hvgSelectMethod = hvg_method,
+      nDims = nDims,
+      resolution = resolution,
+      backend_root = backend_root
+    )
+  } else if (str_detect(input_name, h5adFormatPattern)) {
+    status("Importing h5ad...")
+    seuratObj <- import_h5ad_as_seurat_bpcells(
+      input_file,
+      backend_root = backend_root
+    )
+    prefer_vst_warning(seuratObj)
+    seuratObj <- validate_seuratRDS(
+      seuratObj,
+      runningMode = "analysis",
+      hvgSelectMethod = hvg_method,
+      nDims = nDims,
+      resolution = resolution,
+      backend_root = backend_root
+    )
+  } else if (str_detect(input_name, compressionFormatPattern)) {
+    status("Decompressing...")
+    dataDir <- decompress_matrix_input(input_name, input_file)
+    if (isTruthy(find_scspotlight_explore_bundle_root(dataDir))) {
+      message <- paste(
+        "This file is an Explore Parquet bundle, which is read-only and can only be opened in Explore Mode.",
+        "Restart scSpotlight with runningMode = 'explore' to open it, or choose a Seurat RDS, h5ad, BPCells bundle, or 10x matrix archive for Analysis Mode."
+      )
+      notify(message, type = "error", duration = 8)
+      status("This Explore Parquet bundle can only be opened in Explore Mode.")
+      stop(message, call. = FALSE)
+    }
+
+    BPCells_Rds <- dir(
+      dataDir,
+      recursive = TRUE,
+      pattern = "*.[Rr][Dd][Ss]$"
+    )
+    if (length(BPCells_Rds) > 0) {
+      bundleRoot <- if (is_scspotlight_bundle_dir(dataDir)) {
+        dataDir
+      } else {
+        candidate_roots <- unique(dirname(file.path(dataDir, BPCells_Rds)))
+        matched_root <- candidate_roots[vapply(
+          candidate_roots,
+          is_scspotlight_bundle_dir,
+          logical(1)
+        )]
+        if (!length(matched_root)) {
+          stop(
+            "Compressed RDS bundle detected, but manifest.json is missing or invalid",
+            call. = FALSE
+          )
+        }
+        matched_root[[1]]
+      }
+      bundleRds <- find_scspotlight_bundle_rds(bundleRoot)
+      seuratObj <- load_scspotlight_bundle(bundleRds)
+      prefer_vst_warning(seuratObj)
+      seuratObj <- validate_seuratRDS(
+        seuratObj,
+        runningMode = "analysis",
+        hvgSelectMethod = "vst",
+        nDims = nDims,
+        resolution = resolution,
+        backend_root = backend_root
+      )
+    } else {
+      status("Reading Matrix...")
+      counts <- BPCells_Read10X(dataDir, temp_root = temp_root)
+      if (isTruthy(hvgSelectMethod) && !identical(hvgSelectMethod, "vst")) {
+        notify(
+          HTML(
+            "BPCells backend active, prefer <b>vst</b> on the <b>counts</b> layer for large datasets"
+          ),
+          type = "warning",
+          duration = 5
+        )
+      }
+      status("Creating seuratObj...")
+      seuratObj <- CreateSeuratObject(counts = counts, min.cells = 1)
+      status("Calculating percent.mt...")
+      seuratObj[["percent.mt"]] <- PercentageFeatureSet(
+        seuratObj,
+        pattern = "^(MT-|mt-)"
+      )
+      seuratObj[["percent.rp"]] <- PercentageFeatureSet(
+        seuratObj,
+        pattern = "^(RPL|RPS|Rpl|Rps)"
+      )
+      seuratObj <- standard_process_seurat(
+        seuratObj,
+        hvg_method = hvg_method,
+        ndims = nDims,
+        res = resolution,
+        backend_root = backend_root
+      )
+    }
+  } else {
+    status("Input format not supported, please reload the page...")
+    stop("Input format not supported", call. = FALSE)
+  }
+
+  finalize_analysis_object(seuratObj)
+}
+
 #' dataInput Server Functions
 #'
 #' @import Seurat
@@ -271,237 +516,36 @@ mod_dataInput_server <- function(
           seuratObj <- capture_load_warnings(
             read_scspotlight_explore_bundle(exploreBundleRoot)
           )
-        } else if (str_detect(inputFileName(), scspotlight_explore_archive_pattern)) {
-          showNotification(
-            ui = analysis_explore_bundle_message,
-            action = NULL,
-            duration = 8,
-            closeButton = TRUE,
-            type = "error",
-            session = session
-          )
-          waiter_update(
-            html = waiting_screen(
-              "This Explore Parquet bundle can only be opened in Explore Mode."
-            )
-          )
-          stop(
-            analysis_explore_bundle_message,
-            call. = FALSE
-          )
-        } else if (str_detect(inputFileName(), rdsFormatPattern)) {
-          seuratObj <- load_scspotlight_bundle(inputFilePath())
-          assay <- DefaultAssay(seuratObj)
-          ## Convert v3 assay to v5 assay to save memory
-          if (inherits(seuratObj[[assay]], "Assay")) {
-            seuratObj[[assay]] <- as(seuratObj[[assay]], Class = "Assay5")
-          }
-          message("conversion finished...")
-          hvg_method <- ifelse(
-            isTruthy(hvgSelectMethod()),
-            hvgSelectMethod(),
-            "vst"
-          )
-          seuratObj <- ensure_bpcells_backing(
-            seuratObj,
-            root_dir = file.path(session$userData$backendDir, "layers"),
-            layers = NULL
-          )
-          if (
-            is_seurat_bpcells(seuratObj) &&
-              isTruthy(hvgSelectMethod()) &&
-              hvgSelectMethod() != "vst"
-          ) {
-            showNotification(
-              ui = HTML(
-                "BPCells backend active, prefer <b>vst</b> on the <b>counts</b> layer for large datasets"
-              ),
-              action = NULL,
-              duration = 5,
-              closeButton = TRUE,
-              type = "warning",
-              session = session
-            )
-          }
-
-          seuratObj <- validate_seuratRDS(
-            seuratObj,
-            runningMode = runningMode,
-            hvgSelectMethod = hvg_method,
-            nDims = clusterDims(),
-            resolution = clusterResolution(),
-            backend_root = file.path(session$userData$backendDir, "layers")
-          )
-          seuratObj <- ensure_bpcells_backing(
-            seuratObj,
-            root_dir = file.path(session$userData$backendDir, "layers"),
-            layers = NULL
-          )
-          assert_scspotlight_backend(seuratObj)
-        } else if (str_detect(inputFileName(), h5adFormatPattern)) {
-          waiter_update(html = waiting_screen("Importing h5ad..."))
-          hvg_method <- ifelse(
-            isTruthy(hvgSelectMethod()),
-            hvgSelectMethod(),
-            "vst"
-          )
-          seuratObj <- import_h5ad_as_seurat_bpcells(
-            inputFilePath(),
-            backend_root = file.path(session$userData$backendDir, "layers")
-          )
-          if (
-            is_seurat_bpcells(seuratObj) &&
-              isTruthy(hvgSelectMethod()) &&
-              hvgSelectMethod() != "vst"
-          ) {
-            showNotification(
-              ui = HTML(
-                "BPCells backend active, prefer <b>vst</b> on the <b>counts</b> layer for large datasets"
-              ),
-              action = NULL,
-              duration = 5,
-              closeButton = TRUE,
-              type = "warning",
-              session = session
-            )
-          }
-
-          seuratObj <- validate_seuratRDS(
-            seuratObj,
-            runningMode = runningMode,
-            hvgSelectMethod = hvg_method,
-            nDims = clusterDims(),
-            resolution = clusterResolution(),
-            backend_root = file.path(session$userData$backendDir, "layers")
-          )
-          assert_scspotlight_backend(seuratObj)
-        } else if (str_detect(inputFileName(), compressionFormatPattern)) {
-          waiter_update(html = waiting_screen("Decompressing..."))
-
-          dataDir <- capture_load_warnings(
-            decompress_matrix_input(inputFileName(), inputFilePath())
-          )
-
-          exploreBundleRoot <- if (identical(runningMode, "explore")) {
-            find_scspotlight_explore_bundle_root(dataDir)
-          } else {
-            NULL
-          }
-
-          if (isTruthy(exploreBundleRoot)) {
-            waiter_update(html = waiting_screen("Reading Explore bundle..."))
-            seuratObj <- capture_load_warnings(
-              read_scspotlight_explore_bundle(exploreBundleRoot)
-            )
-          } else {
-            ## Check the input format, compressed matrix or BPCells Rds taball
-            BPCells_Rds <- dir(
-              dataDir,
-              recursive = TRUE,
-              pattern = "*.[Rr][Dd][Ss]$"
-            )
-
-            if (length(BPCells_Rds) > 0) {
-              bundleRoot <- if (is_scspotlight_bundle_dir(dataDir)) {
-                dataDir
-              } else {
-                candidate_roots <- unique(dirname(file.path(
-                  dataDir,
-                  BPCells_Rds
-                )))
-                matched_root <- candidate_roots[vapply(
-                  candidate_roots,
-                  is_scspotlight_bundle_dir,
-                  logical(1)
-                )]
-                if (!length(matched_root)) {
-                  stop(
-                    "Compressed RDS bundle detected, but manifest.json is missing or invalid"
-                  )
-                }
-                matched_root[[1]]
-              }
-              bundleRds <- find_scspotlight_bundle_rds(bundleRoot)
-              seuratObj <- load_scspotlight_bundle(bundleRds)
-              if (isTruthy(hvgSelectMethod()) && hvgSelectMethod() != "vst") {
-                showNotification(
-                  ui = HTML(
-                    "BPCells enabled, enforce to use <b>vst</b> method and <b>counts</b> layer"
-                  ),
-                  action = NULL,
-                  duration = 5,
-                  closeButton = TRUE,
-                  type = "warning",
-                  session = session
-                )
-              }
-              seuratObj <- validate_seuratRDS(
-                seuratObj,
-                runningMode = runningMode,
-                hvgSelectMethod = "vst",
-                nDims = clusterDims(),
-                resolution = clusterResolution(),
-                backend_root = file.path(session$userData$backendDir, "layers")
-              )
-              assert_scspotlight_backend(seuratObj)
-            } else {
-              waiter_update(html = waiting_screen("Reading Matrix..."))
-              counts <- BPCells_Read10X(
-                dataDir,
-                temp_root = session$userData$backendDir
-              )
-              hvg_method <- ifelse(
-                isTruthy(hvgSelectMethod()),
-                hvgSelectMethod(),
-                "vst"
-              )
-              if (isTruthy(hvgSelectMethod()) && hvgSelectMethod() != "vst") {
-                showNotification(
-                  ui = HTML(
-                    "BPCells backend active, prefer <b>vst</b> on the <b>counts</b> layer for large datasets"
-                  ),
-                  action = NULL,
-                  duration = 5,
-                  closeButton = TRUE,
-                  type = "warning",
-                  session = session
-                )
-              }
-
-              waiter_update(html = waiting_screen("Creating seuratObj..."))
-              seuratObj <- CreateSeuratObject(counts = counts, min.cells = 1) # remove genes with no expression value
-
-              waiter_update(html = waiting_screen("Calculating percent.mt..."))
-
-              seuratObj[["percent.mt"]] <- PercentageFeatureSet(
-                seuratObj,
-                pattern = "^(MT-|mt-)"
-              )
-              seuratObj[["percent.rp"]] <- PercentageFeatureSet(
-                seuratObj,
-                pattern = "^(RPL|RPS|Rpl|Rps)"
-              )
-
-              seuratObj <- standard_process_seurat(
-                seuratObj,
-                hvg_method = hvg_method,
-                ndims = clusterDims(),
-                res = clusterResolution(),
-                backend_root = file.path(session$userData$backendDir, "layers")
-              )
-            }
-          }
         } else {
-          waiter_update(
-            html = waiting_screen(
-              "Input format not supported, please reload the page..."
+          seuratObj <- capture_load_warnings(
+            load_analysis_input_file(
+              input_file = inputFilePath(),
+              input_name = inputFileName(),
+              backend_root = file.path(session$userData$backendDir, "layers"),
+              hvgSelectMethod = hvgSelectMethod(),
+              nDims = clusterDims(),
+              resolution = clusterResolution(),
+              temp_root = session$userData$backendDir,
+              status = function(message) {
+                waiter_update(html = waiting_screen(message))
+              },
+              notify = function(ui, type = "default", duration = NULL) {
+                showNotification(
+                  ui = ui,
+                  action = NULL,
+                  duration = duration,
+                  closeButton = TRUE,
+                  type = type,
+                  session = session
+                )
+              }
             )
           )
-          stop("Input format not supported")
         }
 
         ## update assay list
         if (isTruthy(seuratObj)) {
+          assert_no_dense_scale_data(seuratObj)
           updateSelectizeInput(
             session = session,
             inputId = "selectAssay",
@@ -759,6 +803,14 @@ dataNormalized <- function(seuratObj) {
   any(dim(m) > 0)
 }
 
+#' @noRd
+analysis_waiter_update <- function(message) {
+  tryCatch(
+    waiter_update(html = waiting_screen(message)),
+    error = function(...) invisible(NULL)
+  )
+}
+
 #' HVG_exist
 #'
 #' Check if seurat object has HVGs stored
@@ -822,14 +874,14 @@ validate_seuratRDS <- function(
 
   if (identical(runningMode, "analysis")) {
     if (!HVG_exist(seuratObj)) {
-      waiter_update(html = waiting_screen("Finding HVGs..."))
+      analysis_waiter_update("Finding HVGs...")
       seuratObj <- set_variable_features_backend(
         seuratObj,
         selection.method = hvgSelectMethod
       )
     }
     if (!reduction_exist(seuratObj)) {
-      waiter_update(html = waiting_screen("Calculating Reductions..."))
+      analysis_waiter_update("Calculating Reductions...")
       seuratObj <- run_memory_conserving_pca(
         seuratObj,
         npcs = max(nDims, 30L)
@@ -842,6 +894,8 @@ validate_seuratRDS <- function(
       seuratObj <- Seurat::FindClusters(seuratObj, resolution = resolution)
       seuratObj <- Seurat::RunUMAP(seuratObj, dims = 1:nDims, reduction = "pca")
     }
+    seuratObj <- drop_dense_scale_data(seuratObj)
+    assert_no_dense_scale_data(seuratObj)
     if (isTruthy(backend_root)) {
       seuratObj <- ensure_bpcells_backing(
         seuratObj,
@@ -849,6 +903,7 @@ validate_seuratRDS <- function(
         layers = NULL
       )
     }
+    assert_no_dense_scale_data(seuratObj)
   }
 
   assert_processed_input_requirements(seuratObj, input_label = "Input object")
@@ -918,9 +973,7 @@ standard_process_seurat <- function(
   res = 0.5,
   backend_root = NULL
 ) {
-  waiter_update(
-    html = waiting_screen("Running memory-conserving processing...")
-  )
+  analysis_waiter_update("Running memory-conserving processing...")
   seuratObj <- run_memory_conserving_processing(
     seuratObj,
     normalization = normalization,
@@ -935,8 +988,12 @@ standard_process_seurat <- function(
       root_dir = backend_root,
       layers = NULL
     )
+    seuratObj <- drop_dense_scale_data(seuratObj)
+    assert_no_dense_scale_data(seuratObj)
     assert_scspotlight_backend(seuratObj)
   }
+  seuratObj <- drop_dense_scale_data(seuratObj)
+  assert_no_dense_scale_data(seuratObj)
   seuratObj
 }
 

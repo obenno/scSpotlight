@@ -123,6 +123,98 @@ is_seurat_bpcells <- function(object, assay = NULL) {
 }
 
 #' @noRd
+dense_scale_data_layers <- function(object, assays = NULL) {
+  if (!isTruthy(object)) {
+    return(data.frame(assay = character(0), layer = character(0)))
+  }
+
+  assays <- assays %||% Assays(object)
+  scale_layers <- unlist(
+    lapply(assays, function(assay) {
+      layers <- tryCatch(
+        SeuratObject::Layers(object[[assay]]),
+        error = function(...) character(0)
+      )
+      layers[grepl("^scale\\.data(?:\\.|$)", layers)]
+    }),
+    use.names = FALSE
+  )
+  scale_assays <- unlist(
+    lapply(assays, function(assay) {
+      layers <- tryCatch(
+        SeuratObject::Layers(object[[assay]]),
+        error = function(...) character(0)
+      )
+      rep(assay, sum(grepl("^scale\\.data(?:\\.|$)", layers)))
+    }),
+    use.names = FALSE
+  )
+
+  data.frame(
+    assay = scale_assays,
+    layer = scale_layers,
+    stringsAsFactors = FALSE
+  )
+}
+
+#' @noRd
+drop_dense_scale_data <- function(object, assays = NULL) {
+  if (!isTruthy(object)) {
+    return(object)
+  }
+
+  assays <- assays %||% Assays(object)
+  for (assay in assays) {
+    layers <- tryCatch(
+      SeuratObject::Layers(object[[assay]]),
+      error = function(...) character(0)
+    )
+    scale_layers <- layers[grepl("^scale\\.data(?:\\.|$)", layers)]
+    if (!length(scale_layers)) {
+      next
+    }
+
+    for (layer in scale_layers) {
+      tryCatch(
+        {
+          SeuratObject::LayerData(
+            object,
+            assay = assay,
+            layer = layer
+          ) <- NULL
+        },
+        error = function(error) {
+          stop(
+            "Failed to remove dense scale.data layer from assay '",
+            assay,
+            "': ",
+            conditionMessage(error),
+            call. = FALSE
+          )
+        }
+      )
+    }
+  }
+
+  object
+}
+
+#' @noRd
+assert_no_dense_scale_data <- function(object, assays = NULL) {
+  scale_layers <- dense_scale_data_layers(object, assays = assays)
+  if (nrow(scale_layers)) {
+    labels <- paste0(scale_layers$assay, "/", scale_layers$layer)
+    stop(
+      "Analysis app state must not retain dense scale.data layers: ",
+      paste(labels, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  invisible(TRUE)
+}
+
+#' @noRd
 materialize_bpcells_layers <- function(object, assays = NULL) {
   assays <- assays %||% Assays(object)
 
@@ -277,7 +369,7 @@ set_variable_features_backend <- function(
     preferred_expr_layer(object, assay)
   }
 
-  if (!is_seurat_bpcells(object, assay) || identical(selection.method, "vst")) {
+  if (!is_seurat_bpcells(object, assay)) {
     return(Seurat::FindVariableFeatures(
       object,
       selection.method = selection.method,
@@ -286,6 +378,39 @@ set_variable_features_backend <- function(
       verbose = verbose,
       ...
     ))
+  }
+
+  if (identical(selection.method, "vst")) {
+    mat <- SeuratObject::LayerData(object, assay = assay, layer = layer)
+    dims <- tryCatch(dim(mat), error = function(...) c(Inf, Inf))
+    tiny_matrix <- length(dims) == 2L && prod(dims) <= 1e6
+    if (!isTRUE(tiny_matrix)) {
+      return(Seurat::FindVariableFeatures(
+        object,
+        selection.method = selection.method,
+        layer = layer,
+        nfeatures = nfeatures,
+        verbose = verbose,
+        ...
+      ))
+    }
+
+    # Seurat's VST IterableMatrix path can fail on very small BPCells-backed
+    # fixtures due loess/min_by_row edge cases. Only for small matrices, use a
+    # sparse temporary object so tests and small inputs stay executable without
+    # introducing a large-dataset materialization path.
+    mat <- materialize_layer_matrix(object, assay = assay, layer = layer)
+    temp <- Seurat::CreateSeuratObject(counts = mat, assay = assay)
+    temp <- Seurat::FindVariableFeatures(
+      temp,
+      selection.method = selection.method,
+      layer = layer,
+      nfeatures = nfeatures,
+      verbose = verbose,
+      ...
+    )
+    VariableFeatures(object) <- stats::na.omit(VariableFeatures(temp))
+    return(object)
   }
 
   if (isTRUE(verbose)) {
@@ -442,6 +567,8 @@ ensure_bpcells_backing <- function(
 
 #' @noRd
 assert_scspotlight_backend <- function(object) {
+  assert_no_dense_scale_data(object)
+
   assays <- Assays(object)
   missing_layers <- unlist(
     lapply(assays, function(assay) {
@@ -1432,7 +1559,10 @@ run_memory_conserving_pca <- function(
   layer <- layer %||% preferred_expr_layer(object, assay)
 
   if (is_seurat_bpcells(object, assay) && bpcells_available()) {
-    return(run_bpcells_pca(object, assay = assay, layer = layer, npcs = npcs))
+    object <- run_bpcells_pca(object, assay = assay, layer = layer, npcs = npcs)
+    object <- drop_dense_scale_data(object, assays = assay)
+    assert_no_dense_scale_data(object, assays = assay)
+    return(object)
   }
 
   object <- Seurat::ScaleData(
@@ -1442,7 +1572,10 @@ run_memory_conserving_pca <- function(
     features = VariableFeatures(object),
     save = "scale.data"
   )
-  Seurat::RunPCA(object, assay = assay, npcs = npcs)
+  object <- Seurat::RunPCA(object, assay = assay, npcs = npcs)
+  object <- drop_dense_scale_data(object, assays = assay)
+  assert_no_dense_scale_data(object, assays = assay)
+  object
 }
 
 #' @noRd
@@ -1488,6 +1621,8 @@ run_memory_conserving_processing <- function(
     dims = seq_len(ndims),
     reduction = "pca"
   )
+  seuratObj <- drop_dense_scale_data(seuratObj)
+  assert_no_dense_scale_data(seuratObj)
   seuratObj
 }
 
@@ -2394,7 +2529,8 @@ find_scspotlight_bundle_rds <- function(bundle_dir) {
 
 #' @noRd
 prepare_bundle_object <- function(object, bundle_dir) {
-  object_copy <- object
+  object_copy <- drop_dense_scale_data(object)
+  assert_no_dense_scale_data(object_copy)
   support_dir <- file.path(bundle_dir, "supporting")
   dir.create(support_dir, recursive = TRUE, showWarnings = FALSE)
 
