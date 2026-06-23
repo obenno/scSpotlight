@@ -240,6 +240,34 @@ Analysis Mode uses the in-memory Seurat object plus BPCells-backed assay layers 
 
 For Analysis Mode, do not reintroduce a mirrored DuckDB runtime for Analysis Mode. DuckDB remains appropriate for immutable Explore Parquet bundle scans, but Analysis metadata, reductions, features, PCA summaries, and expression must not be mirrored into a second DuckDB runtime source of truth.
 
+### Phase 03 Analysis Mode processing and mutation safety
+
+Analysis loading now routes supported Analysis Mode inputs through one validation,
+BPCells-backing, and no-dense-scale safety seam before the Seurat object becomes
+app state. The supported Analysis Mode inputs are Seurat `.Rds`, `.h5ad`,
+BPCells bundle archive, and compressed 10x-style matrix archive files. Explore Parquet bundles remain rejected in Analysis Mode; open those read-only artifacts
+only with `run_app(runningMode = "explore")`.
+
+Loaded and processed Analysis objects must preserve or convert assay storage to
+BPCells-backed assay layers whenever BPCells is available. The loading and
+validation paths derive missing normalized data, HVGs, PCA, neighbors, clusters,
+and UMAP through the memory-conserving helpers in `R/fct_bpcells_backend.R`.
+This is the required memory-conserving derivation of normalized, HVG, PCA, neighbors, clusters, and UMAP state for Analysis Mode startup and reprocessing.
+
+No Analysis load, validation, PCA, processing, or portable bundle-save path may
+finish with a no final dense `scale.data` violation: final app state must have
+no final dense `scale.data` layers. Temporary Seurat fallback scaling is allowed
+only inside a helper call and must be followed by `drop_dense_scale_data()` plus
+`assert_no_dense_scale_data()` before returning. `counts`, normalized `data`,
+metadata, reductions, graphs, and BPCells layer paths remain intact.
+
+Phase 02 browser transfer contracts remain unchanged while this backend safety
+work lands. Continue using Arrow IPC messages `meta_ready`, `reduction_ready`,
+`reductions_ready`, `expr_ready`, `meta_patch_ready`, `pca_ready`, cache messages,
+and `transfer_error`; do not add JSON cell-level payloads, local file paths,
+mirrored Analysis DuckDB stores, or live Seurat/BPCells objects in background
+futures to work around loading or processing issues.
+
 ### Browser payload contracts
 
 The machine-readable payload contract is `inst/protocol/browser-payload-contracts.json`. The paired R producer test is `tests/testthat/test-browser-payload-contracts.R`, and the paired JS consumer test is `srcjs/index.test.js`.
