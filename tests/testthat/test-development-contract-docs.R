@@ -170,3 +170,18 @@ test_that("DEVELOPMENT documents Phase 03 subset and restore safety", {
     "no final dense `scale.data` after subset or restore"
   ))
 })
+
+test_that("DEVELOPMENT documents Phase 03 gap-closure invariants", {
+  doc_text <- read_development_doc()
+
+  expect_development_doc_contains(doc_text, c(
+    "Phase 03 gap-closure invariants",
+    "compressed Analysis archives must validate unsafe entries before extraction",
+    "metadata refreshes and metadata patches share one server-owned monotonic version sequence",
+    "assignment validation must not trust browser-submitted current metadata versions",
+    "browser selectedPoints are canonical cell IDs rather than numeric row indices",
+    "subset backing must use the session backend root for BPCells-safe output",
+    "IPC payload URLs use a session-scoped resourcePrefix plus basename instead of global /data paths",
+    "normal assignment activation emits a single renameCluster-assignmentIntent"
+  ))
+})

@@ -390,6 +390,12 @@ const expectResourceUrl = (url, kind, basename) => {
   expect(url).not.toMatch(/filePath|output_file|matrix_dir|\/tmp|[A-Za-z]:\\/);
 };
 
+const expectSessionResourceUrl = (url, resourcePrefix, kind, basename) => {
+  expect(url).toBe(`${window.location.origin}/${resourcePrefix}/${kind}/${basename}`);
+  expect(url).not.toBe(`${window.location.origin}/data/${kind}/${basename}`);
+  expect(url).not.toMatch(/filePath|output_file|matrix_dir|\/tmp|[A-Za-z]:\\/);
+};
+
 const numericValueFromResourceUrl = (url) => {
   const match = /v(\d+)/.exec(url);
   return match ? Number(match[1]) : 0;
@@ -516,6 +522,31 @@ describe("rename cluster client selection", () => {
     });
     expect(latestInputValue("renameCluster-selectedCellsPayload")).toBeUndefined();
     expect(latestInputValue("newMetaColData")).toBeUndefined();
+  });
+
+  it("emits one assignment intent for a normal assignment activation", () => {
+    setCategoryMeta("clusterA", { A: [0, 1], B: [2] });
+    testState.handlers.reglScatter_plot({
+      group_by: "clusterA",
+      split_by: "None",
+      moduleScore: null,
+    });
+
+    testState.reglInstance.setSelectedCells(["c1", "c3"], { source: "lasso" });
+    setAssignmentInputs({ colName: "single_activation", value: "manual" });
+
+    clickAssign();
+
+    const assignmentEvents = testState.inputs.filter(
+      ([inputName]) => inputName === "renameCluster-assignmentIntent",
+    );
+    expect(assignmentEvents).toHaveLength(1);
+    expect(assignmentEvents[0][1]).toMatchObject({
+      type: "selected_cells",
+      selectedCells: ["c1", "c3"],
+      newMetaCol: "single_activation",
+      assignAs: "manual",
+    });
   });
 
   it("sends bounded category assignment intent only for the current group and split context", () => {
@@ -1115,6 +1146,33 @@ describe("rename cluster client selection", () => {
     await vi.waitFor(() => {
       expectResourceUrl(arrowReader.readArrowIPC.mock.calls[0][0], "meta", "meta-ipc");
       expect(arrowReader.parseMetaFromArrow).toHaveBeenCalledWith({ table: "meta" });
+      expect(testState.reglInstance.origData.cellMetaData).toBe(parsedMeta);
+      expect(latestInputValue("metaProcessed")).toBe(true);
+    });
+  });
+
+  it("meta_ready builds fetch URLs from the session resourcePrefix", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    const parsedMeta = {
+      cells: { type: "category", value: { Cell1: [0], Cell2: [1], Cell3: [2] } },
+      cluster: { type: "category", value: { alpha: [0, 2], beta: [1] } },
+    };
+    arrowReader.readArrowIPC.mockResolvedValue({ table: "prefixed-meta" });
+    arrowReader.parseMetaFromArrow.mockReturnValue(parsedMeta);
+
+    testState.handlers.meta_ready({
+      resourcePrefix: "data-session-abc123",
+      metaFile: "meta-ipc",
+      metaVersion: 100,
+    });
+
+    await vi.waitFor(() => {
+      expectSessionResourceUrl(
+        arrowReader.readArrowIPC.mock.calls[0][0],
+        "data-session-abc123",
+        "meta",
+        "meta-ipc",
+      );
       expect(testState.reglInstance.origData.cellMetaData).toBe(parsedMeta);
       expect(latestInputValue("metaProcessed")).toBe(true);
     });

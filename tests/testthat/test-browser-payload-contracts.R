@@ -444,3 +444,43 @@ test_that("assignment metadata mutation reuses existing scoped patch contract", 
     info = "assignment must not accept a browser-built full metadata column"
   )
 })
+
+test_that("browser IPC payload contracts require a session resource prefix", {
+  contract <- read_browser_payload_contract()
+
+  file_backed_messages <- c(
+    "meta_ready",
+    "meta_patch_ready",
+    "reduction_ready",
+    "reductions_ready",
+    "pca_ready",
+    "expr_ready"
+  )
+
+  for (message_name in file_backed_messages) {
+    message_contract <- contract$messages[[message_name]]
+    expect_true(
+      "resourcePrefix" %in% message_contract$required_fields,
+      info = paste(message_name, "must include the session-scoped resource prefix")
+    )
+  }
+
+  expect_equal(
+    contract$browser_path_policy$allowed_path_shape,
+    "resource_prefix_plus_basename"
+  )
+
+  index_source <- paste(
+    readLines(testthat::test_path("..", "..", "srcjs", "index.js"), warn = FALSE),
+    collapse = "\n"
+  )
+  expect_match(
+    index_source,
+    "resourcePrefix",
+    info = "browser fetch handlers must use the message resourcePrefix field"
+  )
+  expect_false(
+    grepl("/data/(meta|reduction|expr)", index_source, perl = TRUE),
+    info = "browser fetch handlers must not hard-code the global /data resource root"
+  )
+})
