@@ -1286,6 +1286,70 @@ const getCurrentCellIds = () => {
   return plotCells.flat ? plotCells.flat().map((cell) => String(cell)) : [];
 };
 
+const clearExpressionState = ({ refreshPanels = true } = {}) => {
+  ipcCache.expr.clear();
+  ipcCache.exprVersion = null;
+  ipcCache.exprAssay = null;
+  updateExprCacheKeys();
+
+  reglElementData.origData.expressionData = {};
+  reglElementData.plotMetaData.selectedFeatures = [];
+  Shiny.setInputValue("inputFeatures-storedFeatures", [], {
+    priority: "event",
+  });
+  Shiny.setInputValue("selectedFeatures", [], { priority: "event" });
+
+  const sparkLineContainer = document.getElementById("featureSparkLine");
+  if (sparkLineContainer) {
+    sparkLineContainer.innerHTML = "";
+  }
+
+  if (!refreshPanels) {
+    return;
+  }
+
+  markVlnPlotDirty();
+  refreshVlnDropOptions();
+  markDotPlotDirty();
+  markFeaturePlotDirty();
+  requestFloatingPlotRefresh([
+    "floatingDotPlot",
+    "floatingFeaturePlot",
+  ]);
+};
+
+const reconcileSelectedCellsAfterObjectReplacement = () => {
+  const currentCellSet = new Set(getCurrentCellIds());
+  const previousSelection = (reglElementData.plotData.selectedCells || [])
+    .map((cell) => String(cell))
+    .filter((cell) => cell.length > 0);
+  const shouldPreserveManualSelection = reglElementData.selectionSource === "lasso";
+  const reconciledSelection = shouldPreserveManualSelection
+    ? [...new Set(previousSelection)].filter((cell) => currentCellSet.has(cell))
+    : [];
+  const nextSource = reconciledSelection.length > 0 ? "lasso" : null;
+
+  reglElementData.setSelectedCells(reconciledSelection, { source: nextSource });
+  if (reconciledSelection.length === 0) {
+    reglElementData.interactions?.clearLasso?.();
+  }
+  updateRenameSelectedCellsText(reconciledSelection.length);
+  Shiny.setInputValue(
+    "selectedPoints",
+    reconciledSelection.length > 0 ? reconciledSelection : null,
+    { priority: "event" },
+  );
+};
+
+const handleFullObjectReplacementState = () => {
+  clearExpressionState({ refreshPanels: false });
+  reconcileSelectedCellsAfterObjectReplacement();
+  clearRenameCategorySelectionUi();
+  clearRenameAssignmentTransportState();
+  renameSelectionState.lastGroupBy = null;
+  renameSelectionState.lastSplitBy = null;
+};
+
 const isSafeAssignmentColumnName = (value) => (
   /^[A-Za-z][A-Za-z0-9_.]*$/.test(String(value || ""))
 );
@@ -1580,6 +1644,7 @@ Shiny.addCustomMessageHandler("meta_ready", (msg) => {
       console.log("metaData", out);
       clearPlotTransferError();
       reglElementData.updateCellMetaData(out);
+      handleFullObjectReplacementState();
       syncMetaUiAfterUpdate({ fullTransfer: true });
 
       // do not hide the spinner, since it will trigger the reglScatter_plot immediately
@@ -1822,26 +1887,8 @@ Shiny.addCustomMessageHandler("expr_cached", (msg) => {
 });
 
 Shiny.addCustomMessageHandler("clear_expr", (msg) => {
-  // purge exprssion data
-  reglElementData.origData.expressionData = {};
-  reglElementData.plotMetaData.selectedFeatures = [];
-  // remember to add shiny module id as prefix
-  Shiny.setInputValue("inputFeatures-storedFeatures", [], {
-    priority: "event",
-  });
-  Shiny.setInputValue("selectedFeatures", [], { priority: "event" });
-
-  // remove all sparkline
-  document.getElementById("featureSparkLine").innerHTML = "";
-
-  markVlnPlotDirty();
-  refreshVlnDropOptions();
-  markDotPlotDirty();
-  markFeaturePlotDirty();
-  requestFloatingPlotRefresh([
-    "floatingDotPlot",
-    "floatingFeaturePlot",
-  ]);
+  // purge expression data and associated client cache/state
+  clearExpressionState();
 });
 
 Shiny.addCustomMessageHandler("selectPointsByCategory", (msg) => {
