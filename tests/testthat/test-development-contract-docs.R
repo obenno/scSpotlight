@@ -154,3 +154,19 @@ test_that("DEVELOPMENT documents Phase 03 assignment consistency", {
     "clear stale rename selections after assignment completion"
   ))
 })
+
+test_that("DEVELOPMENT documents Phase 03 subset and restore safety", {
+  doc_text <- read_development_doc()
+
+  expect_development_doc_contains(doc_text, c(
+    "subset and restore refresh semantics",
+    "subset uses safe_subset_seurat_object",
+    "original object is stored once",
+    "restore clears seuratObj_orig",
+    "invalid or repeated subset toggles do not mutate app state",
+    "successful subset and restore increment geneUpdateIndicator, metaUpdateIndicator, and reductionUpdateIndicator",
+    "browser selected-cell, rename, assignment, expression cache, and feature state clear or reconcile after object replacement",
+    "reuse existing Phase 02 contracts",
+    "no final dense `scale.data` after subset or restore"
+  ))
+})

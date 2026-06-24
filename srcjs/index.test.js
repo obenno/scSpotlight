@@ -611,6 +611,93 @@ describe("rename cluster client selection", () => {
     expect(latestInputValue("renameCluster-assignmentIntent")).toBeNull();
   });
 
+  it("clears subset-stale browser state on full object replacement", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    testState.reglInstance.origData.cellMetaData = {
+      cells: { type: "category", value: { c1: [0], c2: [1], c3: [2] } },
+      clusterA: { type: "category", value: { A: [0, 1], B: [2] } },
+    };
+    testState.reglInstance.origData.expressionData = {
+      GeneA: new Float32Array([1, 2, 3]),
+    };
+    testState.reglInstance.plotData.selectedCells = ["c1", "c3"];
+    testState.reglInstance.selectionSource = "lasso";
+    testState.reglInstance.plotMetaData.selectedFeatures = ["GeneA"];
+    setCategoryMeta("clusterA", { A: [0, 1], B: [2] });
+    testState.handlers.reglScatter_plot({
+      group_by: "clusterA",
+      split_by: "None",
+      moduleScore: null,
+    });
+    selectValues("renameCluster-chosenGroup", ["A"]);
+    setAssignmentInputs({ colName: "safe_assignment", value: "selected" });
+    clickAssign();
+    expect(latestInputValue("renameCluster-assignmentIntent")).toBeTruthy();
+
+    arrowReader.readArrowIPC.mockResolvedValue({ table: "subset-meta" });
+    arrowReader.parseMetaFromArrow.mockReturnValue({
+      cells: { type: "category", value: { c2: [0], c4: [1] } },
+      clusterB: { type: "category", value: { C: [0], D: [1] } },
+    });
+
+    testState.handlers.meta_ready({ metaFile: "subset-meta-ipc", metaVersion: 2 });
+
+    await vi.waitFor(() => {
+      expect(testState.reglInstance.plotData.selectedCells).toEqual([]);
+      expect(testState.reglInstance.selectionSource).toBeNull();
+      expect(document.getElementById("renameCluster-chosenGroup").selectedOptions).toHaveLength(0);
+      expect(latestInputValue("renameCluster-selectedCellsPayload")).toBeNull();
+      expect(latestInputValue("renameCluster-assignmentIntent")).toBeNull();
+      expect(testState.reglInstance.origData.expressionData).toEqual({});
+      expect(testState.reglInstance.plotMetaData.selectedFeatures).toEqual([]);
+      expect(latestInputValue("inputFeatures-cachedExprKeys")).toEqual([]);
+    });
+  });
+
+  it("reconciles selection only to visible cell IDs after object replacement", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    testState.reglInstance.origData.cellMetaData = {
+      cells: { type: "category", value: { c1: [0], c2: [1], c3: [2] } },
+      clusterA: { type: "category", value: { A: [0, 1], B: [2] } },
+    };
+    testState.reglInstance.setSelectedCells(["c1", "c2", "c3"], { source: "lasso" });
+    arrowReader.readArrowIPC.mockResolvedValue({ table: "restore-meta" });
+    arrowReader.parseMetaFromArrow.mockReturnValue({
+      cells: { type: "category", value: { c2: [0], c4: [1] } },
+      clusterA: { type: "category", value: { A: [0], C: [1] } },
+    });
+
+    testState.handlers.meta_ready({ metaFile: "restore-meta-ipc", metaVersion: 3 });
+
+    await vi.waitFor(() => {
+      expect(testState.reglInstance.plotData.selectedCells).toEqual(["c2"]);
+      expect(latestInputValue("renameCluster-selectedCellsPayload")).toBeNull();
+      expect(latestInputValue("renameCluster-assignmentIntent")).toBeNull();
+    });
+  });
+
+  it("keeps existing transfer_error and stale gates unchanged during subset refreshes", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    arrowReader.readArrowIPC.mockResolvedValue({ table: "current" });
+    arrowReader.parseMetaFromArrow.mockReturnValue({
+      cells: { type: "category", value: { c1: [0] } },
+    });
+
+    testState.handlers.meta_ready({ metaFile: "meta-v4", metaVersion: 4 });
+    await vi.waitFor(() => {
+      expect(testState.reglInstance.origData.cellMetaData.cells.value).toEqual({ c1: [0] });
+    });
+
+    testState.handlers.transfer_error({
+      payloadType: "metadata",
+      reasonCode: "write_failed",
+      version: 3,
+    });
+
+    expect(getPlotTransferError()).toBeNull();
+    expect(Object.keys(testState.handlers)).not.toContain("subset_restore_ready");
+  });
+
   it("rejects invalid assignment inputs before sending Shiny assignment intent", () => {
     setCategoryMeta("clusterA", { A: [0, 1], B: [2] });
     testState.handlers.reglScatter_plot({
