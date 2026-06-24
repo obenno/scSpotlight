@@ -316,6 +316,40 @@ test_that("cell-cycle module requests one exact metadata patch for scoring colum
   expect_false(any(grepl("CellCycleScoring failed|/tmp|private", notifications)))
 })
 
+test_that("metadata patches share one monotonic version with full metadata refreshes", {
+  app_source <- paste(
+    readLines(testthat::test_path("..", "..", "R", "app_server.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  cell_cycle_source <- paste(
+    readLines(testthat::test_path("..", "..", "R", "mod_CellCyling.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  mutation_source <- paste(app_source, cell_cycle_source, sep = "\n")
+
+  expect_false(
+    grepl("metaPatchVersion\\s*<-\\s*reactiveVal\\s*\\(\\s*0", app_source, perl = TRUE),
+    info = "metadata patches must not use a separate counter that can lag full metadata transfers"
+  )
+  expect_false(
+    grepl("metaPatchVersion\\s*\\(\\s*\\)\\s*\\+\\s*1L", mutation_source, perl = TRUE),
+    info = "patch versions must be allocated from the same server-owned metadata sequence as full refreshes"
+  )
+  expect_match(
+    app_source,
+    "nextMetadataVersion|metadataVersion",
+    info = "app_server should own a single monotonic metadata version allocator"
+  )
+  expect_true(
+    grepl(
+      "metaUpdateIndicator[\\s\\S]*nextMetadataVersion|nextMetadataVersion[\\s\\S]*metaUpdateIndicator",
+      app_source,
+      perl = TRUE
+    ),
+    info = "full metadata refreshes must advance the same metadata sequence used by patches"
+  )
+})
+
 test_that("cell-cycle module surfaces generic path-free errors", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("Seurat")

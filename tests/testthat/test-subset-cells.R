@@ -145,3 +145,56 @@ test_that("restore replaces subset state with original, clears backup, and repea
     }
   )
 })
+
+test_that("browser selectedPoints cell IDs flow through assignment module into subset selection", {
+  object <- make_subset_object()
+  seurat_value <- shiny::reactiveVal(object)
+  selected_points <- shiny::reactiveVal(c("Cell1", "Cell3"))
+  gene_indicator <- shiny::reactiveVal(0)
+  meta_indicator <- shiny::reactiveVal(0)
+  reduction_indicator <- shiny::reactiveVal(0)
+
+  testServer(
+    mod_AssignCellCluster_server,
+    args = list(
+      seuratObj = seurat_value,
+      selectedPoints = selected_points,
+      geneUpdateIndicator = gene_indicator,
+      metaUpdateIndicator = meta_indicator,
+      reductionUpdateIndicator = reduction_indicator
+    ),
+    {
+      session$setInputs("subsetCells-subsetData" = TRUE)
+
+      expect_identical(
+        colnames(shiny::isolate(seurat_value())),
+        c("Cell1", "Cell3")
+      )
+      expect_subset_indicator_values(gene_indicator, meta_indicator, reduction_indicator, 1)
+    }
+  )
+})
+
+test_that("subset module threads the session backend root into BPCells-safe subset backing", {
+  subset_source <- paste(
+    readLines(testthat::test_path("..", "..", "R", "mod_SubsetCells.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  app_source <- paste(
+    readLines(testthat::test_path("..", "..", "R", "app_server.R"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_true(
+    grepl("mod_SubsetCells_server\\s*<-\\s*function[\\s\\S]*backend_root", subset_source, perl = TRUE),
+    info = "subset module should accept a session cleanup-root backend path"
+  )
+  expect_true(
+    grepl("safe_subset_seurat_object[\\s\\S]*backend_root\\s*=", subset_source, perl = TRUE),
+    info = "safe_subset_seurat_object must receive backend_root when subsetting"
+  )
+  expect_true(
+    grepl("mod_AssignCellCluster_server[\\s\\S]*backend_root\\s*=\\s*session\\$userData\\$backendDir", app_source, perl = TRUE),
+    info = "app_server should thread session$userData$backendDir into the assignment/subset module tree"
+  )
+})

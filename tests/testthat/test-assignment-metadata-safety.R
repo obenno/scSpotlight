@@ -214,3 +214,35 @@ test_that("category assignment intent rejects stale or incomplete context", {
     "stale"
   )
 })
+
+test_that("assignment validation rejects browser-trusted current-version fallback", {
+  skip_if_not_installed("Seurat")
+  object <- make_assignment_safety_object()
+  validate_assignment_intent <- getFromNamespace(
+    "validate_assignment_intent",
+    "scSpotlight"
+  )
+
+  expect_error(
+    validate_assignment_intent(
+      object,
+      selected_cells_intent(),
+      current_context = list(groupBy = "cluster", splitBy = "batch", metaVersion = NULL)
+    ),
+    "stale assignment context",
+    fixed = TRUE
+  )
+
+  app_source <- paste(
+    readLines(testthat::test_path("..", "..", "R", "app_server.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  expect_false(
+    grepl(
+      "metaVersion\\s*=\\s*\\(metaSidebarState\\(\\)[\\s\\S]*assignmentIntent\\$context[\\s\\S]*metaVersion",
+      app_source,
+      perl = TRUE
+    ),
+    info = "server current metadata version must never fall back to the browser-submitted assignment context"
+  )
+})

@@ -276,6 +276,48 @@ test_that("Explore parquet archives are rejected by Analysis loading", {
   )
 })
 
+test_that("compressed Analysis archives validate unsafe entries before extraction", {
+  mod_source <- paste(
+    readLines(testthat::test_path("..", "..", "R", "mod_dataInput.R"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  unsafe_entry_needles <- c(
+    "assert_safe_archive_entries",
+    "\\.\\.",
+    "Windows drive",
+    "UNC",
+    "symlink"
+  )
+
+  for (needle in unsafe_entry_needles) {
+    expect_match(
+      mod_source,
+      needle,
+      info = paste("Archive safety source should mention", needle)
+    )
+  }
+
+  expect_true(
+    grepl("untar\\s*\\([^)]*list\\s*=\\s*TRUE", mod_source, perl = TRUE),
+    info = "tar archives must be listed and validated before extraction"
+  )
+  expect_match(
+    mod_source,
+    "zip::zip_list",
+    fixed = TRUE,
+    info = "zip archives must be listed and validated before extraction"
+  )
+  expect_true(
+    grepl(
+      "assert_safe_archive_entries[\\s\\S]*(untar|zip::unzip)\\s*\\([^)]*exdir",
+      mod_source,
+      perl = TRUE
+    ),
+    info = "archive entry validation must happen before any extraction call"
+  )
+})
+
 test_that("loading and processing source guards block high-memory Analysis regressions", {
   mod_source <- paste(readLines(testthat::test_path("..", "..", "R", "mod_dataInput.R"), warn = FALSE), collapse = "\n")
   backend_source <- paste(readLines(testthat::test_path("..", "..", "R", "fct_bpcells_backend.R"), warn = FALSE), collapse = "\n")
