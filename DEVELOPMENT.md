@@ -284,6 +284,8 @@ Cell-cycle scoring first tries Seurat::CellCycleScoring() and falls back to Cell
 and do not trigger a full metadata reload for cell-cycle scoring. browser-visible mutation errors must be path-free and must not expose raw condition text,
 local paths, or stack traces.
 
+The assignment and category-selection consistency contract keeps browser-owned rename filtering for responsive previews while moving persistence to a bounded server-validated intent. lasso selections take precedence over category selections. The browser sends bounded browser assignment intent through `renameCluster-assignmentIntent`: manual/lasso assignment carries selected cell IDs, and category assignment carries the current group/split levels and plot context. The server resolves assigned cells from canonical Seurat metadata, assignment mutates exactly one metadata column, and the browser receives a one-column scoped `meta_patch_ready` patch. Assignment must use no full JSON cell-level metadata transfer. Rename UI state must clear stale rename selections on group.by or split.by changes, metadata patch invalidation, explicit deselect, and clear stale rename selections after assignment completion.
+
 ### Browser payload contracts
 
 The machine-readable payload contract is `inst/protocol/browser-payload-contracts.json`. The paired R producer test is `tests/testthat/test-browser-payload-contracts.R`, and the paired JS consumer test is `srcjs/index.test.js`.
@@ -902,8 +904,8 @@ Why:
 Implementation notes:
 
 - `srcjs/index.js` now owns rename-cluster selector choice population, selector visibility, category-based cell filtering, and selected-cell count text updates.
-- `srcjs/index.js` pushes `renameCluster-selectedCellsPayload` immediately before assign so the server receives the current client-side selection.
-- `R/mod_AssignCellCluster.R` now validates the selected-cell payload / lasso-derived selection and performs only assign-time notifications plus metadata write requests.
+- `srcjs/index.js` sends bounded `renameCluster-assignmentIntent` payloads immediately before assign so the server receives either validated lasso cell IDs or the current category context, never a full metadata column.
+- `R/mod_AssignCellCluster.R` keeps assign-time input validation/notifications while `R/app_server.R` validates the assignment intent, resolves category cells from canonical Seurat metadata, mutates one metadata column, and requests the existing `meta_patch_ready` path.
 - `R/mod_AssignCellCluster.R` now uses `selectize = FALSE` for `chosenGroup` and `chosenSplit`.
 - `R/app_server.R` no longer passes obsolete rename-cluster category-filtering reactives into `mod_AssignCellCluster_server()`.
 
