@@ -417,3 +417,30 @@ test_that("R browser payload producers satisfy the contract manifest", {
     expect_false(any(c("filePath", "output_file", "matrix_dir") %in% names(payload)))
   }
 })
+
+test_that("assignment metadata mutation reuses existing scoped patch contract", {
+  contract <- read_browser_payload_contract()
+  expect_true("meta_patch_ready" %in% names(contract$messages))
+  expect_false("assignment_ready" %in% names(contract$messages))
+
+  app_server_path <- testthat::test_path("..", "..", "R", "app_server.R")
+  expect_true(file.exists(app_server_path))
+  app_server_source <- paste(readLines(app_server_path, warn = FALSE), collapse = "\n")
+
+  expect_true(
+    grepl("renameCluster-assignmentIntent", app_server_source, fixed = TRUE),
+    info = "app_server.R must consume the bounded browser assignment intent"
+  )
+  expect_true(
+    grepl("validate_assignment_intent", app_server_source, fixed = TRUE),
+    info = "assignment intent must be validated before Seurat metadata mutation"
+  )
+  expect_true(
+    grepl("metaPatchRequest", app_server_source, fixed = TRUE),
+    info = "assignment completion should request an existing meta_patch_ready update"
+  )
+  expect_false(
+    grepl("newMetaColData", app_server_source, fixed = TRUE),
+    info = "assignment must not accept a browser-built full metadata column"
+  )
+})

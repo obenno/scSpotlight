@@ -136,3 +136,21 @@ test_that("DEVELOPMENT documents Phase 03 Analysis mutation safety", {
     "browser-visible mutation errors must be path-free"
   ))
 })
+
+test_that("DEVELOPMENT documents Phase 03 assignment consistency", {
+  doc_text <- read_development_doc()
+
+  expect_development_doc_contains(doc_text, c(
+    "assignment and category-selection consistency",
+    "browser-owned rename filtering",
+    "lasso selections take precedence over category selections",
+    "bounded browser assignment intent",
+    "renameCluster-assignmentIntent",
+    "server resolves assigned cells from canonical Seurat metadata",
+    "assignment mutates exactly one metadata column",
+    "one-column scoped `meta_patch_ready` patch",
+    "no full JSON cell-level metadata transfer",
+    "clear stale rename selections on group.by or split.by changes",
+    "clear stale rename selections after assignment completion"
+  ))
+})

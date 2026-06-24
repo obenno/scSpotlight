@@ -226,6 +226,8 @@ const buildDom = () => {
     <select id="renameCluster-chosenGroup" multiple></select>
     <select id="renameCluster-chosenSplit" multiple></select>
     <div id="renameCluster-selectedCellsText"></div>
+    <input id="renameCluster-newMeta" />
+    <input id="renameCluster-assignAs" />
     <button id="renameCluster-assign"></button>
     <select id="updateReduction-reduction"><option value="umap" selected>umap</option></select>
     <div id="floatingVlnPlot"></div>
@@ -311,6 +313,17 @@ const setCategoryMeta = (columnName, mapping) => {
     type: "category",
     value: mapping,
   };
+};
+
+const setAssignmentInputs = ({ colName = "assignedCluster", value = "T cell" } = {}) => {
+  document.getElementById("renameCluster-newMeta").value = colName;
+  document.getElementById("renameCluster-assignAs").value = value;
+};
+
+const clickAssign = () => {
+  const assignButton = document.getElementById("renameCluster-assign");
+  assignButton.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+  assignButton.click();
 };
 
 const selectValues = (id, values) => {
@@ -472,6 +485,157 @@ describe("rename cluster client selection", () => {
       selected: [0, 1],
       unknown: [2],
     });
+  });
+
+  it("sends bounded lasso assignment intent ahead of category selections", () => {
+    setCategoryMeta("clusterA", { A: [0, 1], B: [2] });
+    setCategoryMeta("batch", { batch1: [0, 2], batch2: [1] });
+    testState.handlers.reglScatter_plot({
+      group_by: "clusterA",
+      split_by: "batch",
+      moduleScore: null,
+    });
+
+    selectValues("renameCluster-chosenGroup", ["A"]);
+    selectValues("renameCluster-chosenSplit", ["batch1"]);
+    expect(testState.reglInstance.plotData.selectedCells).toEqual(["c1"]);
+
+    testState.reglInstance.setSelectedCells(["c2", "c3"], { source: "lasso" });
+    setAssignmentInputs({ colName: "safe_assignment", value: "manual selection" });
+    clickAssign();
+
+    expect(latestInputValue("renameCluster-assignmentIntent")).toMatchObject({
+      type: "selected_cells",
+      newMetaCol: "safe_assignment",
+      assignAs: "manual selection",
+      selectedCells: ["c2", "c3"],
+      context: {
+        groupBy: "clusterA",
+        splitBy: "batch",
+      },
+    });
+    expect(latestInputValue("renameCluster-selectedCellsPayload")).toBeUndefined();
+    expect(latestInputValue("newMetaColData")).toBeUndefined();
+  });
+
+  it("sends bounded category assignment intent only for the current group and split context", () => {
+    setCategoryMeta("clusterA", { A: [0, 1], B: [2] });
+    setCategoryMeta("batch", { batch1: [0, 2], batch2: [1] });
+    testState.handlers.reglScatter_plot({
+      group_by: "clusterA",
+      split_by: "batch",
+      moduleScore: null,
+    });
+    selectValues("renameCluster-chosenGroup", ["A"]);
+    selectValues("renameCluster-chosenSplit", ["batch1"]);
+    setAssignmentInputs({ colName: "safe_assignment", value: "category selection" });
+
+    clickAssign();
+
+    expect(latestInputValue("renameCluster-assignmentIntent")).toMatchObject({
+      type: "category_context",
+      newMetaCol: "safe_assignment",
+      assignAs: "category selection",
+      context: {
+        groupBy: "clusterA",
+        splitBy: "batch",
+      },
+      category: {
+        groupBy: "clusterA",
+        groupLevels: ["A"],
+        splitBy: "batch",
+        splitLevels: ["batch1"],
+      },
+    });
+    expect(latestInputValue("renameCluster-selectedCellsPayload")).toBeUndefined();
+    expect(latestInputValue("newMetaColData")).toBeUndefined();
+  });
+
+  it("clears rename selection payloads on split changes, patch invalidation, assignment completion, and deselect", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    setCategoryMeta("clusterA", { A: [0, 1], B: [2] });
+    setCategoryMeta("batchA", { batch1: [0, 2], batch2: [1] });
+    testState.handlers.reglScatter_plot({
+      group_by: "clusterA",
+      split_by: "batchA",
+      moduleScore: null,
+    });
+    selectValues("renameCluster-chosenGroup", ["A"]);
+    selectValues("renameCluster-chosenSplit", ["batch1"]);
+    setAssignmentInputs({ colName: "safe_assignment", value: "category selection" });
+    clickAssign();
+    expect(latestInputValue("renameCluster-assignmentIntent")).toBeTruthy();
+
+    setCategoryMeta("batchB", { other1: [0, 1], other2: [2] });
+    testState.handlers.reglScatter_plot({
+      group_by: "clusterA",
+      split_by: "batchB",
+      moduleScore: null,
+    });
+    expect(document.getElementById("renameCluster-chosenGroup").selectedOptions).toHaveLength(0);
+    expect(document.getElementById("renameCluster-chosenSplit").selectedOptions).toHaveLength(0);
+    expect(testState.reglInstance.plotData.selectedCells).toEqual([]);
+    expect(latestInputValue("renameCluster-selectedCellsPayload")).toBeNull();
+    expect(latestInputValue("renameCluster-assignmentIntent")).toBeNull();
+
+    selectValues("renameCluster-chosenGroup", ["A"]);
+    selectValues("renameCluster-chosenSplit", ["other1"]);
+    arrowReader.readArrowIPC.mockResolvedValue({ table: "patch" });
+    arrowReader.parseMetaFromArrow.mockReturnValue({
+      clusterA: { type: "category", value: { C: [0, 1], D: [2] } },
+    });
+    testState.handlers.meta_patch_ready({
+      metaFile: "cluster-patch-ipc",
+      metaVersion: 900,
+      cols: ["clusterA"],
+    });
+    await vi.waitFor(() => {
+      expect(document.getElementById("renameCluster-chosenGroup").selectedOptions).toHaveLength(0);
+      expect(testState.reglInstance.plotData.selectedCells).toEqual([]);
+      expect(latestInputValue("renameCluster-selectedCellsPayload")).toBeNull();
+      expect(latestInputValue("renameCluster-assignmentIntent")).toBeNull();
+    });
+
+    testState.reglInstance.setSelectedCells(["c1"], { source: "lasso" });
+    setAssignmentInputs({ colName: "safe_assignment", value: "manual selection" });
+    clickAssign();
+    testState.handlers.addNewMeta({ colName: "safe_assignment", colValue: "manual selection" });
+    expect(latestInputValue("renameCluster-selectedCellsPayload")).toBeNull();
+    expect(latestInputValue("renameCluster-assignmentIntent")).toBeNull();
+
+    testState.reglInstance.setSelectedCells(["c2"], { source: "lasso" });
+    clickAssign();
+    testState.handlers.reglScatter_deselect({});
+    expect(testState.reglInstance.plotData.selectedCells).toEqual([]);
+    expect(latestInputValue("renameCluster-selectedCellsPayload")).toBeNull();
+    expect(latestInputValue("renameCluster-assignmentIntent")).toBeNull();
+  });
+
+  it("rejects invalid assignment inputs before sending Shiny assignment intent", () => {
+    setCategoryMeta("clusterA", { A: [0, 1], B: [2] });
+    testState.handlers.reglScatter_plot({
+      group_by: "clusterA",
+      split_by: "None",
+      moduleScore: null,
+    });
+    testState.reglInstance.setSelectedCells(["c1", "missing-cell"], { source: "lasso" });
+    setAssignmentInputs({ colName: "", value: "manual selection" });
+
+    clickAssign();
+
+    expect(latestInputValue("renameCluster-assignmentIntent")).toBeUndefined();
+    expect(latestInputValue("renameCluster-selectedCellsPayload")).toBeUndefined();
+    expect(latestInputValue("newMetaColData")).toBeUndefined();
+
+    setAssignmentInputs({ colName: "safe_assignment", value: "" });
+    clickAssign();
+    expect(latestInputValue("renameCluster-assignmentIntent")).toBeUndefined();
+    expect(latestInputValue("renameCluster-selectedCellsPayload")).toBeUndefined();
+
+    setAssignmentInputs({ colName: "safe_assignment", value: "manual selection" });
+    clickAssign();
+    expect(latestInputValue("renameCluster-assignmentIntent")).toBeUndefined();
+    expect(latestInputValue("renameCluster-selectedCellsPayload")).toBeUndefined();
   });
 
   it("prefetches reduction buffers and plots only the selected reduction", async () => {
