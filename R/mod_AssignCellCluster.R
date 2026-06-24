@@ -108,7 +108,20 @@ mod_AssignCellCluster_server <- function(
     })
 
     selectedCellsPayload <- reactive({
-      input$selectedCellsPayload
+      payload <- input$selectedCellsPayload
+      if (!isTruthy(payload) || !isTruthy(seuratObj())) {
+        return(NULL)
+      }
+      cells <- as.character(payload)
+      cells <- cells[nzchar(cells)]
+      if (!length(cells) || anyDuplicated(cells)) {
+        return(NULL)
+      }
+      all_cells <- rownames(seuratObj()[[]])
+      if (any(!cells %in% all_cells)) {
+        return(NULL)
+      }
+      cells
     })
 
     selectedCells <- eventReactive(
@@ -141,15 +154,6 @@ mod_AssignCellCluster_server <- function(
           type = "default",
           session = session
         )
-      } else if (!isTruthy(selectedCells())) {
-        showNotification(
-          ui = "Please select cells before assigning",
-          action = NULL,
-          duration = 3,
-          closeButton = TRUE,
-          type = "default",
-          session = session
-        )
       } else if (!isTruthy(input$assignAs)) {
         showNotification(
           ui = "Please input a valid label for the new cell type",
@@ -160,30 +164,7 @@ mod_AssignCellCluster_server <- function(
           session = session
         )
       } else {
-        req(selectedCells())
-        message("Initializing new meta column...")
-        ## ask client to update metaData
-        session$sendCustomMessage(
-          type = "addNewMeta",
-          list(
-            colName = input$newMeta,
-            colValue = input$assignAs
-          )
-        )
-
-        ## show finishing notification
-        showNotification(
-          ui = "Successfully assigned...",
-          action = NULL,
-          duration = 3,
-          closeButton = TRUE,
-          type = "default",
-          session = session
-        )
-
-        ## Ask regl-scatter to deselect
-        ##message("Deselect points...")
-        ##reglScatter_deselect(session)
+        message("Metadata assignment intent submitted for validation.")
       }
     })
 

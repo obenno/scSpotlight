@@ -1,3 +1,149 @@
+#' Validate a bounded browser assignment intent
+#'
+#' @param object A Seurat object.
+#' @param intent Browser-submitted assignment intent.
+#' @param current_context Current group/split metadata context.
+#' @noRd
+validate_assignment_intent <- function(
+  object,
+  intent,
+  current_context = list()
+) {
+  if (!is.list(intent)) {
+    stop("Invalid assignment intent", call. = FALSE)
+  }
+
+  full_vector_fields <- c(
+    "metadataVector",
+    paste0("newMetaCol", "Data"),
+    "newMetaColVector",
+    "metadata_vector"
+  )
+  if (any(full_vector_fields %in% names(intent))) {
+    stop("Assignment intent must not include a full metadata vector", call. = FALSE)
+  }
+
+  col_name <- trimws(as.character(intent$newMetaCol %||% ""))
+  if (
+    length(col_name) != 1L ||
+      !nzchar(col_name) ||
+      !grepl("^[A-Za-z][A-Za-z0-9_.]*$", col_name)
+  ) {
+    stop("Invalid metadata column name", call. = FALSE)
+  }
+
+  col_value <- trimws(as.character(intent$assignAs %||% ""))
+  if (length(col_value) != 1L || !nzchar(col_value)) {
+    stop("Invalid assignment value", call. = FALSE)
+  }
+
+  normalize_context_value <- function(value) {
+    value <- as.character(value %||% "None")
+    if (length(value) == 0L || is.na(value[[1]]) || !nzchar(value[[1]])) {
+      return("None")
+    }
+    value[[1]]
+  }
+
+  intent_context <- intent$context %||% list()
+  current_group <- normalize_context_value(current_context$groupBy)
+  current_split <- normalize_context_value(current_context$splitBy)
+  intent_group <- normalize_context_value(intent_context$groupBy)
+  intent_split <- normalize_context_value(intent_context$splitBy)
+
+  if (!identical(intent_group, current_group) || !identical(intent_split, current_split)) {
+    stop("stale assignment context", call. = FALSE)
+  }
+
+  current_version <- current_context$metaVersion %||% NULL
+  intent_version <- intent_context$metaVersion %||% NULL
+  if (
+    !is.null(current_version) &&
+      !is.null(intent_version) &&
+      !identical(as.character(current_version), as.character(intent_version))
+  ) {
+    stop("stale assignment context", call. = FALSE)
+  }
+
+  object_cells <- colnames(object)
+  if (is.null(object_cells) || length(object_cells) == 0L) {
+    stop("Object has no cells for assignment", call. = FALSE)
+  }
+
+  intent_type <- as.character(intent$type %||% "")
+  if (!intent_type %in% c("selected_cells", "category_context")) {
+    stop("Invalid assignment intent type", call. = FALSE)
+  }
+
+  if (identical(intent_type, "selected_cells")) {
+    selected_cells <- as.character(intent$selectedCells %||% character(0))
+    selected_cells <- selected_cells[nzchar(selected_cells)]
+    if (length(selected_cells) == 0L) {
+      stop("No selected cells in assignment intent", call. = FALSE)
+    }
+    if (anyDuplicated(selected_cells)) {
+      stop("Assignment intent contains duplicate cells", call. = FALSE)
+    }
+    unknown_cells <- setdiff(selected_cells, object_cells)
+    if (length(unknown_cells) > 0L) {
+      stop("Assignment intent contains unknown cells", call. = FALSE)
+    }
+    return(list(
+      type = intent_type,
+      cells = selected_cells,
+      colName = col_name,
+      colValue = col_value,
+      metadataVector = NULL
+    ))
+  }
+
+  category <- intent$category %||% list()
+  group_col <- normalize_context_value(category$groupBy)
+  if (!identical(group_col, current_group) || identical(group_col, "None")) {
+    stop("Invalid category metadata column", call. = FALSE)
+  }
+  group_levels <- as.character(category$groupLevels %||% character(0))
+  group_levels <- group_levels[nzchar(group_levels)]
+  if (length(group_levels) == 0L) {
+    stop("Category assignment is missing group levels", call. = FALSE)
+  }
+
+  meta <- object[[]]
+  if (!group_col %in% colnames(meta)) {
+    stop("Unknown category metadata column", call. = FALSE)
+  }
+  matched <- as.character(meta[[group_col]]) %in% group_levels
+
+  if (!identical(current_split, "None")) {
+    split_col <- normalize_context_value(category$splitBy)
+    if (!identical(split_col, current_split) || identical(split_col, "None")) {
+      stop("Category assignment is missing split context", call. = FALSE)
+    }
+    split_levels <- as.character(category$splitLevels %||% character(0))
+    split_levels <- split_levels[nzchar(split_levels)]
+    if (length(split_levels) == 0L) {
+      stop("Category assignment is missing split levels", call. = FALSE)
+    }
+    if (!split_col %in% colnames(meta)) {
+      stop("Unknown split metadata column", call. = FALSE)
+    }
+    matched <- matched & as.character(meta[[split_col]]) %in% split_levels
+  }
+
+  resolved_cells <- rownames(meta)[matched]
+  if (length(resolved_cells) == 0L) {
+    stop("Category assignment resolved no cells", call. = FALSE)
+  }
+
+  list(
+    type = intent_type,
+    cells = resolved_cells,
+    colName = col_name,
+    colValue = col_value,
+    metadataVector = NULL
+  )
+}
+
 #' The application server-side
 #'
 #' @param input,output,session Internal parameters for {shiny}.
@@ -260,25 +406,72 @@ app_server <- function(input, output, session) {
       ignoreNULL = FALSE
     )
 
-    observeEvent(input$newMetaColData, {
-      d <- input$newMetaColData[[1]] %>% unlist()
-      str(d)
-      colName <- names(input$newMetaColData)[1]
-      ## update seuratObj
-      if (isTruthy(seuratObj())) {
-        withProgress(message = "Updating seurat object...", {
-          obj <- SeuratObject::AddMetaData(
-            seuratObj(),
-            metadata = d,
-            col.name = colName
-          )
-          seuratObj(obj)
-        })
-      }
+    observeEvent(input[["renameCluster-assignmentIntent"]], {
+      assignmentIntent <- input[["renameCluster-assignmentIntent"]]
+      req(isTruthy(seuratObj()))
 
-      if (colName %in% active_plot_meta_cols()) {
-        plotRefreshIndicator(plotRefreshIndicator() + 1)
-      }
+      current_context <- list(
+        groupBy = categoryInfo$group.by(),
+        splitBy = categoryInfo$split.by(),
+        metaVersion = (metaSidebarState() %||% list())$metaVersion %||%
+          (assignmentIntent$context %||% list())$metaVersion %||%
+          NULL
+      )
+
+      tryCatch(
+        {
+          assignment <- validate_assignment_intent(
+            seuratObj(),
+            assignmentIntent,
+            current_context = current_context
+          )
+
+          withProgress(message = "Updating metadata assignment...", {
+            obj <- seuratObj()
+            meta <- obj[[]]
+            assigned_col <- if (assignment$colName %in% colnames(meta)) {
+              as.character(meta[[assignment$colName]])
+            } else {
+              rep("unknown", ncol(obj))
+            }
+            names(assigned_col) <- colnames(obj)
+            assigned_col[assignment$cells] <- assignment$colValue
+            obj <- SeuratObject::AddMetaData(
+              obj,
+              metadata = assigned_col,
+              col.name = assignment$colName
+            )
+            seuratObj(obj)
+
+            patch_version <- metaPatchVersion() + 1L
+            metaPatchVersion(patch_version)
+            metaPatchRequest(list(
+              cols = assignment$colName,
+              version = patch_version
+            ))
+          })
+
+          showNotification(
+            ui = "Successfully assigned metadata.",
+            action = NULL,
+            duration = 3,
+            closeButton = TRUE,
+            type = "message",
+            session = session
+          )
+        },
+        error = function(e) {
+          message("Metadata assignment rejected: ", conditionMessage(e))
+          showNotification(
+            ui = "Metadata assignment could not be applied. Refresh the plot and try again.",
+            action = NULL,
+            duration = 6,
+            closeButton = TRUE,
+            type = "error",
+            session = session
+          )
+        }
+      )
     })
 
     mod_AssignCellCluster_server(

@@ -66,6 +66,7 @@ const renameClusterIds = {
   selectedCellsText: "renameCluster-selectedCellsText",
   assign: "renameCluster-assign",
   selectedCellsPayload: "renameCluster-selectedCellsPayload",
+  assignmentIntent: "renameCluster-assignmentIntent",
 };
 const renameSelectionState = {
   lastGroupBy: null,
@@ -1151,6 +1152,7 @@ const getSidebarMetaState = () => {
     splitBy,
     groupByLevels: groupBy ? getMetaLevels(metaData[groupBy]) : null,
     splitByLevels: splitBy ? getMetaLevels(metaData[splitBy]) : null,
+    metaVersion: activeMetaVersion,
     timestamp: Date.now(),
   };
 };
@@ -1252,6 +1254,131 @@ const updateRenameSelectedCellsText = (count = 0) => {
   el.textContent = `${new Intl.NumberFormat().format(Math.max(0, Number(count) || 0))} Cells Selected`;
 };
 
+const setRenameAssignmentFeedback = (message) => {
+  const el = document.getElementById(renameClusterIds.selectedCellsText);
+  if (!el || !message) return;
+  el.textContent = message;
+};
+
+const clearRenameAssignmentTransportState = () => {
+  if (!globalThis.Shiny?.setInputValue) return;
+  Shiny.setInputValue(renameClusterIds.selectedCellsPayload, null, { priority: "event" });
+  Shiny.setInputValue(renameClusterIds.assignmentIntent, null, { priority: "event" });
+};
+
+const normalizePlotContextValue = (value) => (
+  value == null || value === "" ? "None" : String(value)
+);
+
+const currentRenameContext = () => ({
+  groupBy: normalizePlotContextValue(reglElementData.plotMetaData.group_by),
+  splitBy: normalizePlotContextValue(reglElementData.plotMetaData.split_by),
+  metaVersion: activeMetaVersion,
+});
+
+const getCurrentCellIds = () => {
+  const metaData = reglElementData.origData.cellMetaData || {};
+  const metaCells = expandMeta(metaData.cells) || [];
+  if (metaCells.length > 0) {
+    return metaCells.map((cell) => String(cell));
+  }
+  const plotCells = reglElementData.plotData.cells || [];
+  return plotCells.flat ? plotCells.flat().map((cell) => String(cell)) : [];
+};
+
+const isSafeAssignmentColumnName = (value) => (
+  /^[A-Za-z][A-Za-z0-9_.]*$/.test(String(value || ""))
+);
+
+const buildRenameAssignmentIntent = () => {
+  const newMetaCol = document.getElementById("renameCluster-newMeta")?.value?.trim() || "";
+  const assignAs = document.getElementById("renameCluster-assignAs")?.value?.trim() || "";
+  if (!isSafeAssignmentColumnName(newMetaCol)) {
+    setRenameAssignmentFeedback("Enter a valid metadata column name before assigning.");
+    return null;
+  }
+  if (!assignAs) {
+    setRenameAssignmentFeedback("Enter a label before assigning selected cells.");
+    return null;
+  }
+
+  const context = currentRenameContext();
+  const knownCellSet = new Set(getCurrentCellIds());
+  const selectedCells = (reglElementData.plotData.selectedCells || [])
+    .map((cell) => String(cell))
+    .filter((cell) => cell.length > 0);
+  const hasManualSelection =
+    reglElementData.selectionSource === "lasso" && selectedCells.length > 0;
+
+  if (hasManualSelection) {
+    const uniqueCells = [...new Set(selectedCells)];
+    if (
+      uniqueCells.length !== selectedCells.length ||
+      uniqueCells.some((cell) => !knownCellSet.has(cell))
+    ) {
+      setRenameAssignmentFeedback("Selected cells are no longer valid for the current plot.");
+      return null;
+    }
+    return {
+      type: "selected_cells",
+      newMetaCol,
+      assignAs,
+      selectedCells: uniqueCells,
+      context,
+    };
+  }
+
+  const groupBy = context.groupBy;
+  const splitBy = context.splitBy;
+  const groupContextMatches =
+    normalizePlotContextValue(renameSelectionState.lastGroupBy) === groupBy &&
+    normalizePlotContextValue(renameSelectionState.lastSplitBy) === splitBy;
+  const selectedGroupLevels = getRenameSelectedValues(renameClusterIds.chosenGroup);
+  const selectedSplitLevels = splitBy !== "None"
+    ? getRenameSelectedValues(renameClusterIds.chosenSplit)
+    : [];
+  const metaData = reglElementData.origData.cellMetaData || {};
+
+  if (!groupContextMatches || groupBy === "None" || selectedGroupLevels.length === 0) {
+    setRenameAssignmentFeedback("Select cells in the current plot context before assigning.");
+    return null;
+  }
+  const validGroupLevels = new Set(getMetaLevels(metaData[groupBy]));
+  if (selectedGroupLevels.some((level) => !validGroupLevels.has(level))) {
+    setRenameAssignmentFeedback("Selected group levels are no longer available.");
+    return null;
+  }
+  if (splitBy !== "None") {
+    const validSplitLevels = new Set(getMetaLevels(metaData[splitBy]));
+    if (
+      selectedSplitLevels.length === 0 ||
+      selectedSplitLevels.some((level) => !validSplitLevels.has(level))
+    ) {
+      setRenameAssignmentFeedback("Selected split levels are no longer available.");
+      return null;
+    }
+  }
+
+  return {
+    type: "category_context",
+    newMetaCol,
+    assignAs,
+    context,
+    category: {
+      groupBy,
+      groupLevels: selectedGroupLevels,
+      splitBy,
+      splitLevels: selectedSplitLevels,
+    },
+  };
+};
+
+const pushRenameAssignmentIntent = () => {
+  const intent = buildRenameAssignmentIntent();
+  if (!intent) return;
+  Shiny.setInputValue(renameClusterIds.assignmentIntent, intent, { priority: "event" });
+};
+
 const computeRenameCategorySelectedCells = () => {
   const groupBy = reglElementData.plotMetaData.group_by;
   const splitBy = reglElementData.plotMetaData.split_by;
@@ -1304,6 +1431,10 @@ const syncRenameClusterSelectionUi = () => {
   const groupingChanged =
     renameSelectionState.lastGroupBy !== groupBy ||
     renameSelectionState.lastSplitBy !== splitBy;
+  const hadPriorRenameContext =
+    renameSelectionState.lastGroupBy !== null || renameSelectionState.lastSplitBy !== null;
+  const previousGroupSelection = getRenameSelectedValues(renameClusterIds.chosenGroup);
+  const previousSplitSelection = getRenameSelectedValues(renameClusterIds.chosenSplit);
   const hasManualSelection =
     reglElementData.selectionSource === "lasso" && reglElementData.plotData.selectedCells.length > 0;
   const showCategoryControls = Boolean(groupBy) && groupBy !== "None" && !hasManualSelection;
@@ -1326,6 +1457,25 @@ const syncRenameClusterSelectionUi = () => {
     } else {
       setRenameSelectChoices(renameClusterIds.chosenSplit, []);
     }
+  }
+
+  const nextGroupSelection = getRenameSelectedValues(renameClusterIds.chosenGroup);
+  const nextSplitSelection = getRenameSelectedValues(renameClusterIds.chosenSplit);
+  const selectionInvalidated =
+    previousGroupSelection.length !== nextGroupSelection.length ||
+    previousGroupSelection.some((value) => !nextGroupSelection.includes(value)) ||
+    previousSplitSelection.length !== nextSplitSelection.length ||
+    previousSplitSelection.some((value) => !nextSplitSelection.includes(value));
+  const hasRenameSelectionToClear =
+    previousGroupSelection.length > 0 ||
+    previousSplitSelection.length > 0 ||
+    (reglElementData.plotData.selectedCells || []).length > 0;
+
+  if (
+    hasRenameSelectionToClear &&
+    ((hadPriorRenameContext && groupingChanged) || selectionInvalidated)
+  ) {
+    clearRenameAssignmentTransportState();
   }
 
   renameSelectionState.lastGroupBy = groupBy;
@@ -1352,15 +1502,8 @@ const initRenameClusterClientSelection = () => {
   const assignBtn = document.getElementById(renameClusterIds.assign);
   if (assignBtn && assignBtn.dataset.renameClusterBound !== "true") {
     assignBtn.dataset.renameClusterBound = "true";
-    const pushAssignSelection = () => {
-      Shiny.setInputValue(
-        renameClusterIds.selectedCellsPayload,
-        reglElementData.plotData.selectedCells || [],
-        { priority: "event" },
-      );
-    };
-    assignBtn.addEventListener("pointerdown", pushAssignSelection);
-    assignBtn.addEventListener("click", pushAssignSelection);
+    assignBtn.addEventListener("pointerdown", pushRenameAssignmentIntent);
+    assignBtn.addEventListener("click", pushRenameAssignmentIntent);
   }
 
   syncRenameClusterSelectionUi();
@@ -1398,6 +1541,7 @@ const syncMetaUiAfterUpdate = ({
   }
 
   pushSidebarMetaState();
+  syncRenameClusterSelectionUi();
 
   if (notifyServer) {
     if (fullTransfer) {
@@ -1768,19 +1912,10 @@ Shiny.addCustomMessageHandler("addNewMeta", (msg) => {
     notifyServer: false,
   });
 
-  // send the newMetaCol data to R
-  Shiny.setInputValue(
-    "newMetaColData",
-    {
-      [newMetaCol]: expandMeta(
-        reglElementData.origData.cellMetaData[newMetaCol],
-      ),
-    },
-    { priority: "event" },
-  );
   // deselct points
   reglElementData.deselectAll();
   clearRenameCategorySelectionUi();
+  clearRenameAssignmentTransportState();
   syncRenameClusterSelectionUi();
   // reset selectedCells
   Shiny.setInputValue("categorySelectedCells", null, { priority: "event" });
@@ -1861,6 +1996,7 @@ Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
       },
       onDeselect: () => {
         clearRenameCategorySelectionUi();
+        clearRenameAssignmentTransportState();
         syncRenameClusterSelectionUi();
         Shiny.setInputValue("selectedPoints", null);
       },
@@ -2513,6 +2649,9 @@ const syncDotPlotPanelState = () => {
 Shiny.addCustomMessageHandler("reglScatter_deselect", (msg) => {
   console.log("Deselect points...");
   reglElementData.deselectAll();
+  clearRenameCategorySelectionUi();
+  clearRenameAssignmentTransportState();
+  syncRenameClusterSelectionUi();
 });
 
 function getPadding(element) {

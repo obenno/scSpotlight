@@ -586,7 +586,7 @@ describe("rename cluster client selection", () => {
     });
     testState.handlers.meta_patch_ready({
       metaFile: "cluster-patch-ipc",
-      metaVersion: 900,
+      metaVersion: 1,
       cols: ["clusterA"],
     });
     await vi.waitFor(() => {
