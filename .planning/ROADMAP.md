@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Runtime Contract Backbone** - Lock Analysis backend seams and browser protocol change rules before higher-level workflows depend on them. (completed 2026-06-20)
 - [x] **Phase 2: Arrow Transfer & Main Scatter Reliability** - Make metadata, reductions, expression, patches, and the main deck.gl scatter dependable at large scale. (completed 2026-06-22)
-- [ ] **Phase 3: Analysis Mode Processing & Mutation Safety** - Preserve low-memory Analysis Mode loading, processing, mutation, annotation, subsetting, and restore behavior.
+- [x] **Phase 3: Analysis Mode Processing & Mutation Safety** - Preserve low-memory Analysis Mode loading, processing, mutation, annotation, subsetting, and restore behavior. (completed 2026-06-24)
 - [ ] **Phase 4: Portable Artifacts & Explore Mode End-to-end** - Deliver portable exports and validated read-only Explore artifact inspection without mode leakage.
 - [ ] **Phase 5: Floating Analysis Panels & DEG Workflows** - Stabilize explicit-action floating visualizations and bounded DEG/marker inspection.
 - [ ] **Phase 6: Optional Assistant Safety & Release Documentation** - Keep optional dependencies, assistant helpers, and public contributor docs aligned and safe.
@@ -97,7 +97,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. Analysis Mode user can select cells by lasso or category context, assign metadata values, and see stale rename selections clear when grouping context changes.
   5. Analysis Mode user can subset to selected cells and restore the original object while downstream metadata, reduction, feature, and plot state refresh correctly.
 
-**Plans:** 3/4 plans executed
+**Plans:** 4/4 plans complete
 
 **Wave 1**
 
@@ -113,7 +113,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 **Wave 4** *(blocked on Waves 1–3 completion)*
 
-- [ ] 03-04-PLAN.md — Stabilize subset and restore refresh semantics.
+- [x] 03-04-PLAN.md — Stabilize subset and restore refresh semantics.
 
 **UI hint**: yes
 
@@ -217,7 +217,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 |-------|----------------|--------|-----------|
 | 1. Runtime Contract Backbone | 3/3 | Complete    | 2026-06-20 |
 | 2. Arrow Transfer & Main Scatter Reliability | 4/4 | Complete    | 2026-06-22 |
-| 3. Analysis Mode Processing & Mutation Safety | 3/4 | In Progress | - |
+| 3. Analysis Mode Processing & Mutation Safety | 4/4 | Complete   | 2026-06-24 |
 | 4. Portable Artifacts & Explore Mode End-to-end | 0/TBD | Not started | - |
 | 5. Floating Analysis Panels & DEG Workflows | 0/TBD | Not started | - |
 | 6. Optional Assistant Safety & Release Documentation | 0/TBD | Not started | - |

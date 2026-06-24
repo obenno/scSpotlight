@@ -36,7 +36,7 @@ Requirements for the current roadmap. Each requirement maps to exactly one roadm
 - [x] **ANAL-02**: Analysis Mode user can derive missing normalized/HVG/PCA/neighbors/clusters/UMAP state for processable inputs through memory-conserving processing paths.
 - [x] **ANAL-03**: Analysis Mode user can filter cells, update clustering, and add cell-cycle metadata without preserving dense `scale.data` or triggering unnecessary full-dataset transfers.
 - [x] **ANAL-04**: Analysis Mode user can select cells by lasso or category context and assign them to metadata values with stale rename selections cleared when grouping context changes.
-- [ ] **ANAL-05**: Analysis Mode user can subset to selected cells and restore the original object while downstream metadata, reduction, feature, and plot state refresh correctly.
+- [x] **ANAL-05**: Analysis Mode user can subset to selected cells and restore the original object while downstream metadata, reduction, feature, and plot state refresh correctly.
 
 ### Portable Artifacts and Explore Mode
 
@@ -124,7 +124,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ANAL-02 | Phase 3 | Complete |
 | ANAL-03 | Phase 3 | Complete |
 | ANAL-04 | Phase 3 | Complete |
-| ANAL-05 | Phase 3 | Pending |
+| ANAL-05 | Phase 3 | Complete |
 | BUND-01 | Phase 4 | Pending |
 | BUND-02 | Phase 4 | Pending |
 | BUND-03 | Phase 4 | Pending |
