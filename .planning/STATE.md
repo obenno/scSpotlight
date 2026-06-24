@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 03-01-PLAN.md
-last_updated: "2026-06-23T12:26:15.058Z"
-last_activity: 2026-06-23 -- Phase 03 execution started
+stopped_at: Completed 03-02-PLAN.md
+last_updated: "2026-06-24T00:31:59.428Z"
+last_activity: 2026-06-23 -- Completed Phase 03 Plan 02 mutation safety
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 11
-  completed_plans: 8
-  percent: 73
+  completed_plans: 9
+  percent: 82
 ---
 
 # Project State
@@ -26,19 +26,19 @@ See: .planning/PROJECT.md (updated 2026-06-20)
 ## Current Position
 
 Phase: 03 (analysis-mode-processing-mutation-safety) — EXECUTING
-Plan: 2 of 4
-Status: Ready to execute 03-02
-Last activity: 2026-06-23 -- Completed Phase 03 Plan 01 loading and processing safety
+Plan: 3 of 4
+Status: Ready to execute 03-03
+Last activity: 2026-06-23 -- Completed Phase 03 Plan 02 mutation safety
 
-Progress: [███████░░░] 73%
+Progress: [████████░░] 82%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 8
-- Average duration: 25 min
-- Total execution time: 3.3 hours
+- Total plans completed: 9
+- Average duration: 26 min
+- Total execution time: 3.9 hours
 
 **By Phase:**
 
@@ -46,21 +46,22 @@ Progress: [███████░░░] 73%
 |-------|-------|-------|----------|
 | 1. Runtime Contract Backbone | 3/3 | 34 min | 11 min |
 | 2. Arrow Transfer & Main Scatter Reliability | 4/4 | 115 min | 29 min |
-| 3. Analysis Mode Processing & Mutation Safety | 1/4 | 50 min | 50 min |
+| 3. Analysis Mode Processing & Mutation Safety | 2/4 | 87 min | 44 min |
 | 4. Portable Artifacts & Explore Mode End-to-end | 0/TBD | N/A | N/A |
 | 5. Floating Analysis Panels & DEG Workflows | 0/TBD | N/A | N/A |
 | 6. Optional Assistant Safety & Release Documentation | 0/TBD | N/A | N/A |
 
 **Recent Trend:**
 
-- Last 5 plans: 02-01 (19 min), 02-02 (17 min), 02-03 (24 min), 02-04 (55 min), 03-01 (50 min)
-- Trend: Slower during scatter reliability hardening and Analysis loading safety due broader fixture and invariant coverage.
+- Last 5 plans: 02-02 (17 min), 02-03 (24 min), 02-04 (55 min), 03-01 (50 min), 03-02 (37 min)
+- Trend: Slower during scatter reliability hardening and Analysis safety work due broader fixture and invariant coverage.
 
 | Phase 02-arrow-transfer-main-scatter-reliability P01 | 19min | 3 tasks | 11 files |
 | Phase 02-arrow-transfer-main-scatter-reliability P02 | 17min | 3 tasks | 6 files |
 | Phase 02-arrow-transfer-main-scatter-reliability P03 | 24min | 3 tasks | 8 files |
 | Phase 02-arrow-transfer-main-scatter-reliability P04 | 55min | 3 tasks | 8 files |
 | Phase 03-analysis-mode-processing-mutation-safety P01 | 50min | 3 tasks | 7 files |
+| Phase 03-analysis-mode-processing-mutation-safety P02 | 37 min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -79,10 +80,14 @@ Progress: [███████░░░] 73%
 - [Phase 03]: Analysis Mode loading now uses a central helper so every supported input class reaches validation, BPCells backing, and no-dense-scale checks before app-state update.
 - [Phase 03]: Final Analysis app state must not retain dense scale.data; temporary fallback scaling is allowed only inside helpers and is followed by drop/assert enforcement.
 - [Phase 03]: Large-data safety in this slice is proven by automated invariants and synthetic fixtures; no representative 1M+ fixture was manually loaded.
+- [Phase 03-analysis-mode-processing-mutation-safety]: Filtering now uses safe_subset_seurat_object() so user-selected cells are intersected against current object cells, returned in source-object order, and rejected before mutation if no valid cells remain.
+- [Phase 03-analysis-mode-processing-mutation-safety]: Cluster update modes are centralized in apply_cluster_update_mode() to keep Update All and Update nDim Only refreshing reductions while Update Res Only reuses an existing graph and avoids unnecessary reduction transfer.
+- [Phase 03-analysis-mode-processing-mutation-safety]: Cell-cycle scoring sends only S.Score, G2M.Score, and Phase through the existing metadata patch path; no browser payload contract change was introduced.
+- [Phase 03-analysis-mode-processing-mutation-safety]: Large-data safety in Phase 03 Plan 02 is proven by synthetic fixtures and invariant tests; no representative 1M+ fixture was manually loaded.
 
 ### Pending Todos
 
-- Continue Phase 03 plans in dependency order: 03-02, 03-03, 03-04.
+- Continue Phase 03 plans in dependency order: 03-03, 03-04.
 
 ### Blockers/Concerns
 
@@ -98,6 +103,6 @@ Progress: [███████░░░] 73%
 
 ## Session Continuity
 
-Last session: 2026-06-23T12:25:39.154Z
-Stopped at: Completed 03-01-PLAN.md
+Last session: 2026-06-24T00:31:59.378Z
+Stopped at: Completed 03-02-PLAN.md
 Resume file: None
