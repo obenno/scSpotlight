@@ -160,7 +160,12 @@ app_server <- function(input, output, session) {
     dir.create(file.path(tempDir, "meta"))
     dir.create(file.path(tempDir, "expr"))
     dir.create(file.path(tempDir, "backend"))
-    addResourcePath("data", tempDir)
+    dataResourcePrefix <- paste0("data-", session$token)
+    session$userData$dataResourcePrefix <- dataResourcePrefix
+    addResourcePath(dataResourcePrefix, tempDir)
+    session$onSessionEnded(function() {
+      removeResourcePath(dataResourcePrefix)
+    })
     session$userData$tempDir <- tempDir
     session$userData$backendDir <- file.path(tempDir, "backend")
     message("temp dir created: ", session$userData$tempDir)

@@ -917,6 +917,97 @@ validate_seuratRDS <- function(
 #' Function for reading compressed matrix
 #'
 #' @noRd
+archive_entry_is_unsafe <- function(entry) {
+  if (is.null(entry) || length(entry) == 0L) {
+    return(TRUE)
+  }
+
+  entry <- as.character(entry)[[1]]
+  if (!nzchar(entry)) {
+    return(TRUE)
+  }
+
+  entry <- gsub("\\\\", "/", entry)
+
+  # Reject absolute Unix paths, Windows drive paths, and UNC shares before
+  # extraction so archive entries can only create files below the temp root.
+  if (grepl("^(/|[A-Za-z]:)", entry)) {
+    return(TRUE)
+  }
+  if (grepl("^//", entry)) {
+    return(TRUE)
+  }
+
+  # Reject any parent-directory traversal segment.
+  if (grepl("(^|/)\\.\\.(?=/|$)", entry, perl = TRUE)) {
+    return(TRUE)
+  }
+
+  FALSE
+}
+
+list_tar_archive_entries <- function(filePath) {
+  entries <- utils::untar(filePath, list = TRUE)
+  tar_cmd <- Sys.which("tar")
+  has_symlink <- FALSE
+
+  if (nzchar(tar_cmd)) {
+    tar_listing <- tryCatch(
+      system2(tar_cmd, c("-tvf", filePath), stdout = TRUE, stderr = TRUE),
+      error = function(error) character()
+    )
+    has_symlink <- any(startsWith(trimws(tar_listing), "l"))
+  }
+
+  list(entries = entries, has_symlink = has_symlink)
+}
+
+list_zip_archive_entries <- function(filePath) {
+  zip_entries <- zip::zip_list(filePath)
+  entry_names <- if ("filename" %in% names(zip_entries)) {
+    zip_entries$filename
+  } else if ("Name" %in% names(zip_entries)) {
+    zip_entries$Name
+  } else {
+    character()
+  }
+
+  has_symlink <- FALSE
+  if ("type" %in% names(zip_entries)) {
+    has_symlink <- any(tolower(as.character(zip_entries$type)) == "symlink")
+  } else if ("permissions" %in% names(zip_entries)) {
+    has_symlink <- any(startsWith(as.character(zip_entries$permissions), "l"))
+  }
+
+  list(entries = entry_names, has_symlink = has_symlink)
+}
+
+assert_safe_archive_entries <- function(archive_entries, archive_type = c("tar", "zip")) {
+  archive_type <- match.arg(archive_type)
+
+  entries <- if (is.list(archive_entries) && !is.null(archive_entries$entries)) {
+    archive_entries$entries
+  } else {
+    archive_entries
+  }
+
+  entries <- as.character(entries)
+  entries <- entries[nzchar(entries)]
+  if (length(entries) == 0L) {
+    stop("Compressed archive contains no extractable entries.", call. = FALSE)
+  }
+
+  if (is.list(archive_entries) && isTRUE(archive_entries$has_symlink)) {
+    stop("Compressed archive contains unsafe entries.", call. = FALSE)
+  }
+
+  if (any(vapply(entries, archive_entry_is_unsafe, logical(1)))) {
+    stop("Compressed archive contains unsafe entries.", call. = FALSE)
+  }
+
+  invisible(entries)
+}
+
 decompress_matrix_input <- function(fileName, filePath) {
   if (
     str_detect(fileName, "\\.tar.gz$") ||
@@ -924,6 +1015,7 @@ decompress_matrix_input <- function(fileName, filePath) {
       str_detect(fileName, "\\.tar.bz2$") ||
       str_detect(fileName, "\\.tbz2$")
   ) {
+    assert_safe_archive_entries(list_tar_archive_entries(filePath), archive_type = "tar")
     tmpMatrixDir <- tempfile(pattern = "matrixDir")
     dir.create(tmpMatrixDir)
     untar(tarfile = filePath, exdir = tmpMatrixDir)
@@ -931,6 +1023,7 @@ decompress_matrix_input <- function(fileName, filePath) {
     if (!requireNamespace("zip", quietly = TRUE)) {
       stop("The 'zip' package is required to decompress zip archives.")
     }
+    assert_safe_archive_entries(list_zip_archive_entries(filePath), archive_type = "zip")
     tmpMatrixDir <- tempfile(pattern = "matrixDir")
     dir.create(tmpMatrixDir)
     zip::unzip(zipfile = filePath, exdir = tmpMatrixDir)
