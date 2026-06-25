@@ -176,12 +176,20 @@ test_that("DEVELOPMENT documents Phase 03 gap-closure invariants", {
 
   expect_development_doc_contains(doc_text, c(
     "Phase 03 gap-closure invariants",
+    "Safe archive extraction:",
     "compressed Analysis archives must validate unsafe entries before extraction",
+    "Session-scoped IPC resource prefixes:",
+    "metadata, reduction, PCA, expression, metadata patch, and transfer-error payloads",
+    "Monotonic metadata versioning:",
     "metadata refreshes and metadata patches share one server-owned monotonic version sequence",
+    "Server-trusted assignment validation:",
     "assignment validation must not trust browser-submitted current metadata versions",
+    "Single assignment activation:",
+    "normal assignment activation emits a single renameCluster-assignmentIntent",
+    "Cell-ID lasso and subset flow:",
     "browser selectedPoints are canonical cell IDs rather than numeric row indices",
+    "Session-root BPCells subset backing:",
     "subset backing must use the session backend root for BPCells-safe output",
-    "IPC payload URLs use a session-scoped resourcePrefix plus basename instead of global /data paths",
-    "normal assignment activation emits a single renameCluster-assignmentIntent"
+    "IPC payload URLs use a session-scoped resourcePrefix plus basename instead of global /data paths"
   ))
 })

@@ -288,6 +288,18 @@ The assignment and category-selection consistency contract keeps browser-owned r
 
 The subset and restore refresh semantics are part of the same Analysis Mode mutation safety seam. A subset uses safe_subset_seurat_object with validated current selected cells, preserves source-object cell order, and leaves app state untouched when no selected cells remain valid. The original object is stored once before the first active subset, and restore clears seuratObj_orig after replacing app state with that original object. invalid or repeated subset toggles do not mutate app state: empty, stale, or already-subsetted requests reset or no-op without incrementing refresh indicators. successful subset and restore increment geneUpdateIndicator, metaUpdateIndicator, and reductionUpdateIndicator so existing metadata, reduction, feature, expression, and plot refresh chains run. browser selected-cell, rename, assignment, expression cache, and feature state clear or reconcile after object replacement; selected cells are intersected with visible cell IDs, stale rename selectors and assignment payloads are cleared, expression cache and selected features are purged, and the implementation must reuse existing Phase 02 contracts (`meta_ready`, `reduction_ready`/`reductions_ready`, `expr_ready`, `meta_patch_ready`, `transfer_error`, and `clear_expr`) rather than adding a subset-specific browser message. There must be no final dense `scale.data` after subset or restore.
 
+### Phase 03 gap-closure invariants
+
+The final Phase 03 gap-closure repairs are now part of the Analysis Mode processing and mutation safety contract. Preserve these rules with source changes, browser payload changes, and documentation updates:
+
+- **Safe archive extraction:** compressed Analysis archives must validate unsafe entries before extraction. Tar and zip inputs are listed before unpacking, and absolute paths, Windows drive roots, parent-directory traversal, and symlink entries are rejected with generic path-free errors.
+- **Session-scoped IPC resource prefixes:** IPC payload URLs use a session-scoped resourcePrefix plus basename instead of global /data paths. R registers an opaque per-session Shiny resource prefix, sends `resourcePrefix` with metadata, reduction, PCA, expression, metadata patch, and transfer-error payloads, and removes that prefix when the session ends.
+- **Monotonic metadata versioning:** metadata refreshes and metadata patches share one server-owned monotonic version sequence. Full `meta_ready` transfers and column-scoped `meta_patch_ready` transfers must allocate comparable metadata versions from the same server-owned counter so valid patches cannot be rejected as stale after a full refresh.
+- **Server-trusted assignment validation:** assignment validation must not trust browser-submitted current metadata versions. Versioned assignment intents are accepted only when the server can compare them with the server-trusted current metadata version for the active group/split context.
+- **Single assignment activation:** normal assignment activation emits a single renameCluster-assignmentIntent. Browser handlers must avoid pointerdown/click double submission so one user action produces one bounded assignment intent and one scoped metadata mutation.
+- **Cell-ID lasso and subset flow:** browser selectedPoints are canonical cell IDs rather than numeric row indices. Lasso/manual selections are validated against `colnames(seuratObj())`, re-ordered by the current Seurat object, and then used for assignment and subset operations.
+- **Session-root BPCells subset backing:** subset backing must use the session backend root for BPCells-safe output. Session callers pass `session$userData$backendDir` (or a child directory) into `safe_subset_seurat_object()` so temporary BPCells subset layers are cleaned up with the Shiny session.
+
 ### Browser payload contracts
 
 The machine-readable payload contract is `inst/protocol/browser-payload-contracts.json`. The paired R producer test is `tests/testthat/test-browser-payload-contracts.R`, and the paired JS consumer test is `srcjs/index.test.js`.
@@ -304,7 +316,7 @@ The manifest currently defines these browser message contracts:
 - `expr_cached`: request to rehydrate an already-cached expression payload for the current `exprVersion`.
 - `transfer_error`: sanitized transfer failure notification with `payloadType`, `reasonCode`, `version`, and scoped context fields such as `reductionName`, `activeReduction`, `geneName`, `assay`, or `cols`.
 
-Browser payload file fields are resource basenames, not local paths. The browser fetches them through `/data/meta/`, `/data/reduction/`, or `/data/expr/`; payloads must not expose producer-local `filePath`, `output_file`, or `matrix_dir` fields.
+Browser payload file fields are resource basenames, not local paths. Resource-backed payloads include the session-scoped `resourcePrefix`, and the browser fetches files by combining that prefix with the metadata, reduction, or expression basename. Payloads must not use global `/data` paths or expose producer-local `filePath`, `output_file`, or `matrix_dir` fields.
 
 ### Phase 02 transfer reliability
 
