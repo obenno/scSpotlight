@@ -97,7 +97,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. Analysis Mode user can select cells by lasso or category context, assign metadata values, and see stale rename selections clear when grouping context changes.
   5. Analysis Mode user can subset to selected cells and restore the original object while downstream metadata, reduction, feature, and plot state refresh correctly.
 
-**Plans:** 4/4 plans complete
+**Plans:** 7/8 plans executed
 
 **Wave 1**
 
@@ -217,7 +217,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 |-------|----------------|--------|-----------|
 | 1. Runtime Contract Backbone | 3/3 | Complete    | 2026-06-20 |
 | 2. Arrow Transfer & Main Scatter Reliability | 4/4 | Complete    | 2026-06-22 |
-| 3. Analysis Mode Processing & Mutation Safety | 4/4 | Complete   | 2026-06-24 |
+| 3. Analysis Mode Processing & Mutation Safety | 7/8 | In Progress|  |
 | 4. Portable Artifacts & Explore Mode End-to-end | 0/TBD | Not started | - |
 | 5. Floating Analysis Panels & DEG Workflows | 0/TBD | Not started | - |
 | 6. Optional Assistant Safety & Release Documentation | 0/TBD | Not started | - |
