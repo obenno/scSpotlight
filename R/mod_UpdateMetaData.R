@@ -43,10 +43,18 @@ mod_UpdateMetaData_server <- function(
   seuratObj,
   metaUpdateIndicator,
   metaPatchRequest,
-  metaProcessed
+  metaProcessed,
+  nextMetadataVersion = NULL
 ) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
+
+    allocate_full_metadata_version <- function() {
+      if (is.function(nextMetadataVersion)) {
+        return(nextMetadataVersion())
+      }
+      metaUpdateIndicator()
+    }
 
     observeEvent(
       metaUpdateIndicator(),
@@ -71,7 +79,7 @@ mod_UpdateMetaData_server <- function(
         )
         message("Transferring metaData...")
         metaProcessed(FALSE)
-        metaVersion <- metaUpdateIndicator()
+        metaVersion <- allocate_full_metadata_version()
         dirPath <- file.path(session$userData$tempDir, "meta")
         transfer <- prepare_backend_metadata_transfer(
           seuratObj(),

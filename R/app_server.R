@@ -55,13 +55,18 @@ validate_assignment_intent <- function(
     stop("stale assignment context", call. = FALSE)
   }
 
-  current_version <- current_context$metaVersion %||% NULL
-  intent_version <- intent_context$metaVersion %||% NULL
-  if (
-    !is.null(current_version) &&
-      !is.null(intent_version) &&
-      !identical(as.character(current_version), as.character(intent_version))
-  ) {
+  normalize_context_version <- function(value) {
+    if (is.null(value) || length(value) == 0L || is.na(value[[1]])) {
+      return(NULL)
+    }
+    as.character(value[[1]])
+  }
+  current_version <- normalize_context_version(current_context$metaVersion %||% NULL)
+  intent_version <- normalize_context_version(intent_context$metaVersion %||% NULL)
+  if (is.null(current_version) || is.null(intent_version)) {
+    stop("stale assignment context", call. = FALSE)
+  }
+  if (!identical(current_version, intent_version)) {
     stop("stale assignment context", call. = FALSE)
   }
 
@@ -192,6 +197,21 @@ app_server <- function(input, output, session) {
   geneUpdateIndicator <- reactiveVal(0)
   ## indicator for meta changes
   metaUpdateIndicator <- reactiveVal(0)
+  ## server-owned metadata version sequence shared by full refreshes and patches
+  metadataVersion <- reactiveVal(0L)
+  currentMetadataVersion <- function() {
+    value <- metadataVersion()
+    if (is.null(value) || length(value) == 0L || is.na(value[[1]])) {
+      return(NULL)
+    }
+    as.integer(value[[1]])
+  }
+  nextMetadataVersion <- function() {
+    current_version <- currentMetadataVersion() %||% 0L
+    next_version <- current_version + 1L
+    metadataVersion(next_version)
+    next_version
+  }
   ## indicator for reduction changes
   reductionUpdateIndicator <- reactiveVal(0)
   ## indicator for view-driven plot changes (group.by/split.by/feature toggles)
@@ -200,8 +220,6 @@ app_server <- function(input, output, session) {
   plotRefreshIndicator <- reactiveVal(0)
   ## request for partial metadata transfer
   metaPatchRequest <- reactiveVal(NULL)
-  ## monotonic counter for partial metadata patch versions
-  metaPatchVersion <- reactiveVal(0)
   ## Init value to store user defined groups/metaData
   userMetaData <- reactiveVal(NULL)
 
@@ -251,7 +269,7 @@ app_server <- function(input, output, session) {
       seuratObj,
       inputData$selectedAssay,
       metaPatchRequest,
-      metaPatchVersion
+      nextMetadataVersion
     )
   }
 
@@ -267,7 +285,8 @@ app_server <- function(input, output, session) {
     seuratObj,
     metaUpdateIndicator,
     metaPatchRequest,
-    metaProcessed
+    metaProcessed,
+    nextMetadataVersion
   )
 
   observeEvent(input$reductionProcessed, {
@@ -418,9 +437,7 @@ app_server <- function(input, output, session) {
       current_context <- list(
         groupBy = categoryInfo$group.by(),
         splitBy = categoryInfo$split.by(),
-        metaVersion = (metaSidebarState() %||% list())$metaVersion %||%
-          (assignmentIntent$context %||% list())$metaVersion %||%
-          NULL
+        metaVersion = currentMetadataVersion()
       )
 
       tryCatch(
@@ -448,8 +465,7 @@ app_server <- function(input, output, session) {
             )
             seuratObj(obj)
 
-            patch_version <- metaPatchVersion() + 1L
-            metaPatchVersion(patch_version)
+            patch_version <- nextMetadataVersion()
             metaPatchRequest(list(
               cols = assignment$colName,
               version = patch_version

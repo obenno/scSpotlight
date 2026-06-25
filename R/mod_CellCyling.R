@@ -82,10 +82,29 @@ mod_CellCycling_server <- function(
   seuratObj,
   assay,
   metaPatchRequest,
-  metaPatchVersion
+  nextMetadataVersion = NULL,
+  metaPatchVersion = NULL
 ) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
+    allocate_metadata_version <- function() {
+      if (is.function(nextMetadataVersion)) {
+        return(nextMetadataVersion())
+      }
+
+      if (is.function(metaPatchVersion)) {
+        previous_version <- suppressWarnings(as.integer(metaPatchVersion()))
+        if (length(previous_version) == 0L || is.na(previous_version[[1]])) {
+          previous_version <- 0L
+        }
+        next_version <- previous_version[[1]] + 1L
+        metaPatchVersion(next_version)
+        return(next_version)
+      }
+
+      stop("Metadata version allocator is not available.", call. = FALSE)
+    }
+
     observeEvent(input$addCycling, {
       s.genes <- Seurat::cc.genes$s.genes
       g2m.genes <- Seurat::cc.genes$g2m.genes
@@ -126,8 +145,7 @@ mod_CellCycling_server <- function(
                 set.ident = FALSE
               )
               seuratObj(obj)
-              nextPatchVersion <- metaPatchVersion() + 1L
-              metaPatchVersion(nextPatchVersion)
+              nextPatchVersion <- allocate_metadata_version()
               metaPatchRequest(list(
                 cols = c("S.Score", "G2M.Score", "Phase"),
                 version = nextPatchVersion
