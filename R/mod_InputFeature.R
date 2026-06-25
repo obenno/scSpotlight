@@ -242,21 +242,22 @@ mod_InputFeature_server <- function(
           result$value
         }) %...!%
         (function(error) {
+          message("Expression export failed during IPC write: ", conditionMessage(error))
           session$sendCustomMessage(
             type = "transfer_error",
             message = make_transfer_error_payload(
               payload_type = "expression",
-                reason_code = "write_failed",
-                version = job$transfer$payload$exprVersion,
-                context = list(
-                  geneName = job$transfer$payload$geneName %||% job$transfer$feature,
-                  assay = job$transfer$payload$assay %||% job$transfer$assay
-                ),
-                resource_prefix = session$userData$dataResourcePrefix
-              )
+              reason_code = "write_failed",
+              version = job$transfer$payload$exprVersion,
+              context = list(
+                geneName = job$transfer$payload$geneName %||% job$transfer$feature,
+                assay = job$transfer$payload$assay %||% job$transfer$assay
+              ),
+              resource_prefix = session$userData$dataResourcePrefix
             )
+          )
           showNotification(
-            ui = paste("Expression export failed:", conditionMessage(error)),
+            ui = "Expression export failed. Retry transfer or choose another feature.",
             action = NULL,
             duration = 6,
             closeButton = TRUE,
@@ -318,11 +319,9 @@ mod_InputFeature_server <- function(
           resource_prefix = session$userData$dataResourcePrefix
         ),
         error = function(error) {
+          message("Expression extraction failed while preparing transfer: ", conditionMessage(error))
           showNotification(
-            ui = paste(
-              "Expression extraction failed:",
-              conditionMessage(error)
-            ),
+            ui = "Expression extraction failed. Retry transfer or choose another feature.",
             action = NULL,
             duration = 6,
             closeButton = TRUE,

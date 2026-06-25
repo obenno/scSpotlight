@@ -124,3 +124,36 @@ test_that("InputFeature expression exports use path-based futures", {
   expect_true(any(grepl("input$cacheMissFeature", invoke_source, fixed = TRUE)))
   expect_true(any(grepl("create_sparkline = FALSE", invoke_source, fixed = TRUE)))
 })
+
+test_that("InputFeature expression failures keep raw paths out of notifications", {
+  mod_input_feature_path <- test_path("..", "..", "R", "mod_InputFeature.R")
+  skip_if_not(file.exists(mod_input_feature_path))
+  mod_input_feature_source <- readLines(mod_input_feature_path, warn = FALSE)
+
+  expect_true(any(grepl(
+    "Expression export failed. Retry transfer or choose another feature.",
+    mod_input_feature_source,
+    fixed = TRUE
+  )))
+  expect_true(any(grepl(
+    "Expression extraction failed. Retry transfer or choose another feature.",
+    mod_input_feature_source,
+    fixed = TRUE
+  )))
+
+  expect_false(any(grepl(
+    "Expression export failed:\", conditionMessage(error)",
+    mod_input_feature_source,
+    fixed = TRUE
+  )))
+
+  extraction_failure_lines <- grep(
+    "Expression extraction failed:",
+    mod_input_feature_source,
+    fixed = TRUE
+  )
+  for (line in extraction_failure_lines) {
+    window <- mod_input_feature_source[line:min(length(mod_input_feature_source), line + 3L)]
+    expect_false(any(grepl("conditionMessage", window, fixed = TRUE)))
+  }
+})
