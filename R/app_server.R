@@ -501,7 +501,8 @@ app_server <- function(input, output, session) {
       selectedPoints,
       geneUpdateIndicator,
       metaUpdateIndicator,
-      reductionUpdateIndicator
+      reductionUpdateIndicator,
+      backend_root = session$userData$backendDir
     )
 
     ## Download Object

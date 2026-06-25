@@ -85,7 +85,8 @@ mod_AssignCellCluster_server <- function(
   selectedPoints,
   geneUpdateIndicator,
   metaUpdateIndicator,
-  reductionUpdateIndicator
+  reductionUpdateIndicator,
+  backend_root = NULL
 ) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
@@ -94,12 +95,13 @@ mod_AssignCellCluster_server <- function(
     manuallySelectedCells <- reactive({
       ## Do not use req() here, or it will block the validation chain
       if (isTruthy(selectedPoints()) && isTruthy(seuratObj())) {
-        all_cells <- rownames(seuratObj()[[]])
-        selected_idx <- as.integer(selectedPoints()) + 1L
-        selected_idx <- selected_idx[
-          selected_idx >= 1L & selected_idx <= length(all_cells)
+        all_cells <- colnames(seuratObj())
+        requested_cells <- as.character(selectedPoints())
+        requested_cells <- requested_cells[
+          !is.na(requested_cells) & nzchar(requested_cells)
         ]
-        cells <- all_cells[selected_idx]
+        requested_cells <- unique(requested_cells)
+        cells <- all_cells[all_cells %in% requested_cells]
       } else {
         cells <- NULL
       }
@@ -175,7 +177,8 @@ mod_AssignCellCluster_server <- function(
       selectedCells,
       geneUpdateIndicator,
       metaUpdateIndicator,
-      reductionUpdateIndicator
+      reductionUpdateIndicator,
+      backend_root = backend_root
     )
   })
 }

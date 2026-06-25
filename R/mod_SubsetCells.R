@@ -29,7 +29,8 @@ mod_SubsetCells_server <- function(
   selectedCells,
   geneUpdateIndicator,
   metaUpdateIndicator,
-  reductionUpdateIndicator
+  reductionUpdateIndicator,
+  backend_root = NULL
 ) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
@@ -90,10 +91,17 @@ mod_SubsetCells_server <- function(
           return(invisible(NULL))
         }
 
+        subset_backend_root <- if (isTruthy(backend_root)) {
+          file.path(backend_root, "subset")
+        } else {
+          NULL
+        }
+
         obj_sub <- tryCatch(
           safe_subset_seurat_object(
             obj,
             cells = valid_cells,
+            backend_root = subset_backend_root,
             input_label = "Selected cells"
           ),
           error = function(error) {
