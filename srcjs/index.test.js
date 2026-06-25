@@ -12,6 +12,8 @@ const testState = vi.hoisted(() => ({
   spinners: {},
 }));
 
+const TEST_RESOURCE_PREFIX = "data-test-session";
+
 vi.mock("shiny", () => ({}), { virtual: true });
 
 vi.mock("./modules/spinner.js", () => ({
@@ -254,9 +256,19 @@ const buildDom = () => {
 };
 
 const installShiny = () => {
+  const resourceBackedMessages = new Set([
+    "meta_ready",
+    "meta_patch_ready",
+    "reduction_ready",
+    "reductions_ready",
+    "pca_ready",
+    "expr_ready",
+  ]);
   globalThis.Shiny = {
     addCustomMessageHandler: (name, handler) => {
-      testState.handlers[name] = handler;
+      testState.handlers[name] = resourceBackedMessages.has(name)
+        ? (msg) => handler({ resourcePrefix: TEST_RESOURCE_PREFIX, ...msg })
+        : handler;
     },
     setInputValue: (...args) => {
       testState.inputs.push(args);
@@ -386,7 +398,8 @@ const resetArrowReaderMocks = async () => {
 };
 
 const expectResourceUrl = (url, kind, basename) => {
-  expect(url).toBe(`${window.location.origin}/data/${kind}/${basename}`);
+  expect(url).toBe(`${window.location.origin}/${TEST_RESOURCE_PREFIX}/${kind}/${basename}`);
+  expect(url).not.toBe(`${window.location.origin}/data/${kind}/${basename}`);
   expect(url).not.toMatch(/filePath|output_file|matrix_dir|\/tmp|[A-Za-z]:\\/);
 };
 

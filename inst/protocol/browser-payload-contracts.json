@@ -3,40 +3,40 @@
   "description": "Browser payload contracts for scSpotlight Arrow IPC transfer messages.",
   "messages": {
     "meta_ready": {
-      "required_fields": ["metaFile", "metaVersion"],
+      "required_fields": ["metaFile", "metaVersion", "resourcePrefix"],
       "file_fields": ["metaFile"],
       "version_field": "metaVersion",
       "ipc_contract": "meta_ready"
     },
     "meta_patch_ready": {
-      "required_fields": ["metaFile", "metaVersion", "cols"],
+      "required_fields": ["metaFile", "metaVersion", "cols", "resourcePrefix"],
       "file_fields": ["metaFile"],
       "version_field": "metaVersion",
       "ipc_contract": "meta_patch_ready"
     },
     "reduction_ready": {
-      "required_fields": ["reductionFile", "reductionName", "reductionVersion"],
+      "required_fields": ["reductionFile", "reductionName", "reductionVersion", "resourcePrefix"],
       "file_fields": ["reductionFile"],
       "version_field": "reductionVersion",
       "cache_family": "reduction",
       "ipc_contract": "reduction_ready"
     },
     "reductions_ready": {
-      "required_fields": ["reductions", "activeReduction", "reductionVersion"],
-      "entry_required_fields": ["reductionFile", "reductionName", "reductionVersion"],
+      "required_fields": ["reductions", "activeReduction", "reductionVersion", "resourcePrefix"],
+      "entry_required_fields": ["reductionFile", "reductionName", "reductionVersion", "resourcePrefix"],
       "file_fields": ["reductionFile"],
       "version_field": "reductionVersion",
       "cache_family": "reduction",
       "ipc_contract": "reduction_ready"
     },
     "pca_ready": {
-      "required_fields": ["stdevFile", "reductionVersion"],
+      "required_fields": ["stdevFile", "reductionVersion", "resourcePrefix"],
       "file_fields": ["stdevFile"],
       "version_field": "reductionVersion",
       "ipc_contract": "pca_ready"
     },
     "expr_ready": {
-      "required_fields": ["exprFile", "geneName", "assay", "exprVersion"],
+      "required_fields": ["exprFile", "geneName", "assay", "exprVersion", "resourcePrefix"],
       "file_fields": ["exprFile"],
       "version_field": "exprVersion",
       "cache_family": "expression",
@@ -55,6 +55,7 @@
     "transfer_error": {
       "required_fields": ["payloadType", "reasonCode", "version"],
       "optional_fields": [
+        "resourcePrefix",
         "reductionName",
         "activeReduction",
         "geneName",
@@ -115,6 +116,7 @@
       "message",
       "conditionMessage"
     ],
-    "allowed_path_shape": "resource_basename_only"
+    "resource_prefix_field": "resourcePrefix",
+    "allowed_path_shape": "resource_prefix_plus_basename"
   }
 }

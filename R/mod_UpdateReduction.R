@@ -71,7 +71,8 @@ mod_UpdateReduction_server <- function(
             write_backend_pca_stdev_transfer(
               seuratObj(),
               dir_path = file.path(session$userData$tempDir, "reduction"),
-              reduction_version = reductionVersion
+              reduction_version = reductionVersion,
+              resource_prefix = session$userData$dataResourcePrefix
             )
           ),
           error = function(error) {
@@ -81,7 +82,8 @@ mod_UpdateReduction_server <- function(
               message = make_transfer_error_payload(
                 "pca",
                 "write_failed",
-                reductionVersion
+                reductionVersion,
+                resource_prefix = session$userData$dataResourcePrefix
               )
             )
             showNotification(
@@ -160,7 +162,8 @@ mod_UpdateReduction_server <- function(
         seuratObj(),
         reduction_name = reduction_name,
         dir_path = dirPath,
-        reduction_version = reductionVersion
+        reduction_version = reductionVersion,
+        resource_prefix = session$userData$dataResourcePrefix
       )
       reduction_promise <- future_promise({
         capture_warnings(write_backend_reduction_transfer(transfer))
@@ -185,7 +188,8 @@ mod_UpdateReduction_server <- function(
               "reduction",
               "write_failed",
               reductionVersion,
-              list(reductionName = reduction_name)
+              list(reductionName = reduction_name),
+              resource_prefix = session$userData$dataResourcePrefix
             )
           )
           showNotification(
@@ -241,7 +245,8 @@ mod_UpdateReduction_server <- function(
           seuratObj(),
           reduction_name = reduction_name,
           dir_path = dirPath,
-          reduction_version = reductionVersion
+          reduction_version = reductionVersion,
+          resource_prefix = session$userData$dataResourcePrefix
         )
       })
       names(reduction_transfers) <- reduction_names
@@ -266,7 +271,8 @@ mod_UpdateReduction_server <- function(
             message = list(
               reductions = result$value,
               activeReduction = active_reduction_name,
-              reductionVersion = reductionVersion
+              reductionVersion = reductionVersion,
+              resourcePrefix = session$userData$dataResourcePrefix
             )
           )
           result$value
@@ -279,7 +285,8 @@ mod_UpdateReduction_server <- function(
               "reductions",
               "write_failed",
               reductionVersion,
-              list(activeReduction = active_reduction_name)
+              list(activeReduction = active_reduction_name),
+              resource_prefix = session$userData$dataResourcePrefix
             )
           )
           showNotification(

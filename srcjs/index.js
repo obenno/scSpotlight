@@ -490,6 +490,30 @@ const decodeReductionBuffer = (buffer) => {
   };
 };
 
+const resolveDataResourceUrl = (resourcePrefix, kind, fileName) => {
+  if (!resourcePrefix || typeof resourcePrefix !== "string") {
+    throw new Error("Missing session resource prefix for IPC fetch");
+  }
+  if (!/^(meta|reduction|expr)$/.test(kind)) {
+    throw new Error(`Invalid IPC resource kind: ${kind}`);
+  }
+  if (!fileName || typeof fileName !== "string") {
+    throw new Error("Missing IPC resource file name");
+  }
+
+  const basename = fileName.split(/[\\/]/).pop();
+  if (basename !== fileName || basename === "." || basename === "..") {
+    throw new Error("IPC resource file names must be basenames");
+  }
+
+  const normalizedPrefix = resourcePrefix.replace(/^\/+|\/+$/g, "");
+  if (!normalizedPrefix || normalizedPrefix === "data" || normalizedPrefix.includes("/")) {
+    throw new Error("Invalid session resource prefix for IPC fetch");
+  }
+
+  return `${window.location.origin}/${encodeURIComponent(normalizedPrefix)}/${kind}/${encodeURIComponent(basename)}`;
+};
+
 const plotReductionBuffer = (buffer, shouldMutate = () => true) => {
   const reductionData = decodeReductionBuffer(buffer);
   if (!shouldMutate()) {
@@ -785,7 +809,7 @@ Shiny.addCustomMessageHandler("reduction_ready", (msg) => {
   );
   try {
     const reductionURL =
-      window.location.origin + "/data/reduction/" + msg.reductionFile;
+      resolveDataResourceUrl(msg.resourcePrefix, "reduction", msg.reductionFile);
     (async () => {
       // show spinner
       if (mainPlotSpinner.style.display === "none") {
@@ -879,7 +903,11 @@ Shiny.addCustomMessageHandler("reductions_ready", (msg) => {
       );
 
       const activeURL =
-        window.location.origin + "/data/reduction/" + activeReduction.reductionFile;
+        resolveDataResourceUrl(
+          activeReduction.resourcePrefix || msg.resourcePrefix,
+          "reduction",
+          activeReduction.reductionFile,
+        );
       const activeBuffer = await fetchArrowIPCBuffer(activeURL);
       if (!isCurrentReductionRequest(transferRequest)) {
         return;
@@ -899,7 +927,11 @@ Shiny.addCustomMessageHandler("reductions_ready", (msg) => {
             return;
           }
           const reductionURL =
-            window.location.origin + "/data/reduction/" + reduction.reductionFile;
+            resolveDataResourceUrl(
+              reduction.resourcePrefix || msg.resourcePrefix,
+              "reduction",
+              reduction.reductionFile,
+            );
           const buffer = await fetchArrowIPCBuffer(reductionURL);
           if (!isCurrentReductionRequest(transferRequest)) {
             return;
@@ -1008,7 +1040,11 @@ Shiny.addCustomMessageHandler("pca_ready", (msg) => {
         return;
       }
 
-      const stdevURL = `${window.location.origin}/data/reduction/${msg.stdevFile}`;
+      const stdevURL = resolveDataResourceUrl(
+        msg.resourcePrefix,
+        "reduction",
+        msg.stdevFile,
+      );
       const table = await readArrowIPC(stdevURL);
       if (!isCurrentPcaRequest(transferRequest)) {
         return;
@@ -1437,7 +1473,14 @@ const buildRenameAssignmentIntent = () => {
   };
 };
 
-const pushRenameAssignmentIntent = () => {
+const pushRenameAssignmentIntent = (event) => {
+  if (event?.type === "click" && renameSelectionState.pointerAssignmentHandled) {
+    renameSelectionState.pointerAssignmentHandled = false;
+    return;
+  }
+  if (event?.type === "pointerdown") {
+    renameSelectionState.pointerAssignmentHandled = true;
+  }
   const intent = buildRenameAssignmentIntent();
   if (!intent) return;
   Shiny.setInputValue(renameClusterIds.assignmentIntent, intent, { priority: "event" });
@@ -1630,7 +1673,7 @@ Shiny.addCustomMessageHandler("meta_ready", (msg) => {
   const requestId = pendingInitialPlotRequestId;
   const transferRequest = startMetaRequest(msg.metaVersion);
   try {
-    const metaURL = window.location.origin + "/data/meta/" + msg.metaFile;
+    const metaURL = resolveDataResourceUrl(msg.resourcePrefix, "meta", msg.metaFile);
     (async () => {
       // show main plot spinner
       if (mainPlotSpinner.style.display === "none") {
@@ -1691,7 +1734,7 @@ Shiny.addCustomMessageHandler("meta_patch_ready", (msg) => {
     if (changedCols.length === 0) {
       throw new Error("Metadata patch did not include column scope");
     }
-    const metaURL = window.location.origin + "/data/meta/" + msg.metaFile;
+    const metaURL = resolveDataResourceUrl(msg.resourcePrefix, "meta", msg.metaFile);
     (async () => {
       const refreshMainPlot = metaColsAffectMainPlot(changedCols);
 
@@ -1750,7 +1793,7 @@ Shiny.addCustomMessageHandler("meta_patch_ready", (msg) => {
 
 Shiny.addCustomMessageHandler("expr_ready", (msg) => {
   try {
-    const exprURL = window.location.origin + "/data/expr/" + msg.exprFile;
+    const exprURL = resolveDataResourceUrl(msg.resourcePrefix, "expr", msg.exprFile);
     (async () => {
       if (!ensureExprCacheVersion(msg.exprVersion, msg.assay)) {
         return;

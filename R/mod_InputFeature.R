@@ -246,14 +246,15 @@ mod_InputFeature_server <- function(
             type = "transfer_error",
             message = make_transfer_error_payload(
               payload_type = "expression",
-              reason_code = "write_failed",
-              version = job$transfer$payload$exprVersion,
-              context = list(
-                geneName = job$transfer$payload$geneName %||% job$transfer$feature,
-                assay = job$transfer$payload$assay %||% job$transfer$assay
+                reason_code = "write_failed",
+                version = job$transfer$payload$exprVersion,
+                context = list(
+                  geneName = job$transfer$payload$geneName %||% job$transfer$feature,
+                  assay = job$transfer$payload$assay %||% job$transfer$assay
+                ),
+                resource_prefix = session$userData$dataResourcePrefix
               )
             )
-          )
           showNotification(
             ui = paste("Expression export failed:", conditionMessage(error)),
             action = NULL,
@@ -313,7 +314,8 @@ mod_InputFeature_server <- function(
           feature = feature,
           dir_path = file.path(session$userData$tempDir, "expr"),
           expr_version = exprVersion,
-          backend_root = session$userData$backendDir
+          backend_root = session$userData$backendDir,
+          resource_prefix = session$userData$dataResourcePrefix
         ),
         error = function(error) {
           showNotification(

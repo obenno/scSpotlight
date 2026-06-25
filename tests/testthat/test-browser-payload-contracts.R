@@ -80,6 +80,11 @@ flatten_payload_fields <- function(payload) {
   unlist(payload, recursive = TRUE, use.names = TRUE)
 }
 
+add_test_resource_prefix <- function(payload, resource_prefix = "data-test-session") {
+  payload$resourcePrefix <- resource_prefix
+  payload
+}
+
 payload_leaf_names <- function(payload) {
   flattened_names <- names(flatten_payload_fields(payload))
   unique(sub("^.*\\.", "", flattened_names))
@@ -178,7 +183,7 @@ test_that("browser payload manifest enumerates XFER-05 message contracts", {
     c("payloadType", "reasonCode", "version")
   )
   expect_true(all(
-    c("reductionName", "activeReduction", "geneName", "assay", "cols") %in%
+    c("resourcePrefix", "reductionName", "activeReduction", "geneName", "assay", "cols") %in%
       unlist(contract$messages$transfer_error$optional_fields, use.names = FALSE)
   ))
 })
@@ -316,10 +321,11 @@ test_that("R browser payload producers satisfy the contract manifest", {
     layers = "data"
   )
 
-  metadata_transfer <- prepare_backend_metadata_transfer(
+    metadata_transfer <- prepare_backend_metadata_transfer(
     object,
     dir_path = file.path(transfer_dir, "meta"),
-    meta_version = 10L
+    meta_version = 10L,
+    resource_prefix = "data-test-session"
   )
   metadata_payload <- write_backend_metadata_transfer(metadata_transfer)
   expect_payload_satisfies_contract(contract, "meta_ready", metadata_payload)
@@ -331,7 +337,8 @@ test_that("R browser payload producers satisfy the contract manifest", {
     object,
     dir_path = file.path(transfer_dir, "meta"),
     meta_version = 11L,
-    cols = "cluster"
+    cols = "cluster",
+    resource_prefix = "data-test-session"
   )
   patch_payload <- write_backend_metadata_transfer(patch_transfer)
   expect_payload_satisfies_contract(contract, "meta_patch_ready", patch_payload)
@@ -345,7 +352,8 @@ test_that("R browser payload producers satisfy the contract manifest", {
     object,
     reduction_name = "umap",
     dir_path = file.path(transfer_dir, "reduction"),
-    reduction_version = 12L
+    reduction_version = 12L,
+    resource_prefix = "data-test-session"
   )
   reduction_payload <- write_backend_reduction_transfer(reduction_transfer)
   expect_payload_satisfies_contract(contract, "reduction_ready", reduction_payload)
@@ -356,7 +364,8 @@ test_that("R browser payload producers satisfy the contract manifest", {
   reductions_ready_payload <- list(
     reductions = list(reduction_payload),
     activeReduction = "umap",
-    reductionVersion = 12L
+    reductionVersion = 12L,
+    resourcePrefix = "data-test-session"
   )
   expect_payload_satisfies_contract(
     contract,
@@ -367,7 +376,8 @@ test_that("R browser payload producers satisfy the contract manifest", {
   pca_payload <- write_backend_pca_stdev_transfer(
     object,
     dir_path = file.path(transfer_dir, "reduction"),
-    reduction_version = 12L
+    reduction_version = 12L,
+    resource_prefix = "data-test-session"
   )
   expect_payload_satisfies_contract(contract, "pca_ready", pca_payload)
   pca_table <- arrow::read_ipc_stream(
@@ -382,13 +392,14 @@ test_that("R browser payload producers satisfy the contract manifest", {
     feature = "GeneC",
     dir_path = file.path(transfer_dir, "expr"),
     expr_version = 13L,
-    backend_root = backend_root
+    backend_root = backend_root,
+    resource_prefix = "data-test-session"
   )
   expression_payload <- write_backend_expression_transfer(expression_transfer)
   expect_payload_satisfies_contract(contract, "expr_ready", expression_payload)
   expect_identical(
     names(expression_payload),
-    c("geneName", "assay", "exprVersion", "exprFile")
+    c("geneName", "assay", "exprVersion", "exprFile", "resourcePrefix")
   )
   expression_table <- arrow::read_ipc_stream(expression_transfer$output_file)
   expect_true(all(contract$ipc_columns$expr_ready$required %in% names(expression_table)))

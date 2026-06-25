@@ -152,7 +152,8 @@ test_that("Analysis Mode transfer adapters write Arrow IPC without mirrored Duck
     object,
     dir_path = file.path(transfer_dir, "meta"),
     meta_version = 1L,
-    cols = c("cluster", "quality")
+    cols = c("cluster", "quality"),
+    resource_prefix = "data-test-session"
   )
   expect_equal(metadata_transfer$backend, "data_frame")
   metadata_payload <- write_backend_metadata_transfer(metadata_transfer)
@@ -166,7 +167,8 @@ test_that("Analysis Mode transfer adapters write Arrow IPC without mirrored Duck
     object,
     reduction_name = "umap",
     dir_path = file.path(transfer_dir, "reduction"),
-    reduction_version = 2L
+    reduction_version = 2L,
+    resource_prefix = "data-test-session"
   )
   expect_equal(reduction_transfer$backend, "data_frame")
   reduction_payload <- write_backend_reduction_transfer(reduction_transfer)
@@ -179,7 +181,8 @@ test_that("Analysis Mode transfer adapters write Arrow IPC without mirrored Duck
   pca_payload <- write_backend_pca_stdev_transfer(
     object,
     dir_path = file.path(transfer_dir, "reduction"),
-    reduction_version = 3L
+    reduction_version = 3L,
+    resource_prefix = "data-test-session"
   )
   expect_false(is.null(pca_payload$stdevFile))
   pca_table <- arrow::read_ipc_stream(
@@ -193,7 +196,8 @@ test_that("Analysis Mode transfer adapters write Arrow IPC without mirrored Duck
   pca_missing_payload <- write_backend_pca_stdev_transfer(
     object_without_pca,
     dir_path = file.path(transfer_dir, "reduction"),
-    reduction_version = 4L
+    reduction_version = 4L,
+    resource_prefix = "data-test-session"
   )
   expect_null(pca_missing_payload$stdevFile)
 
@@ -203,7 +207,8 @@ test_that("Analysis Mode transfer adapters write Arrow IPC without mirrored Duck
     feature = "GeneC",
     dir_path = file.path(transfer_dir, "expr"),
     expr_version = 5L,
-    backend_root = backend_root
+    backend_root = backend_root,
+    resource_prefix = "data-test-session"
   )
   expect_equal(expression_transfer$backend, "bpcells")
   expect_setequal(
@@ -218,7 +223,7 @@ test_that("Analysis Mode transfer adapters write Arrow IPC without mirrored Duck
   expect_false(any(c("query_plan", "duckdb") %in% names(expression_transfer)))
   expect_identical(
     names(expression_transfer$payload),
-    c("geneName", "assay", "exprVersion", "exprFile")
+    c("geneName", "assay", "exprVersion", "exprFile", "resourcePrefix")
   )
   expect_equal(expression_transfer$payload$exprFile, basename(expression_transfer$output_file))
   expect_false(any(grepl("/", unlist(expression_transfer$payload), fixed = TRUE)))

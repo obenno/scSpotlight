@@ -41,7 +41,8 @@ make_transfer_error_payload <- function(
   payload_type,
   reason_code,
   version,
-  context = list()
+  context = list(),
+  resource_prefix = NULL
 ) {
   payload_type <- as.character(payload_type)[[1]]
   if (!payload_type %in% transfer_error_payload_types) {
@@ -53,6 +54,10 @@ make_transfer_error_payload <- function(
     reasonCode = as.character(reason_code)[[1]],
     version = version
   )
+
+  if (isTruthy(resource_prefix)) {
+    payload$resourcePrefix <- basename(as.character(resource_prefix)[[1]])
+  }
 
   fields <- transfer_error_context_fields[[payload_type]]
   for (field in fields) {
@@ -76,7 +81,8 @@ prepare_backend_metadata_transfer <- function(
   object,
   dir_path,
   meta_version,
-  cols = NULL
+  cols = NULL,
+  resource_prefix = NULL
 ) {
   if (isTruthy(cols)) {
     patch_key <- paste(sort(cols), collapse = "|")
@@ -94,6 +100,10 @@ prepare_backend_metadata_transfer <- function(
   } else {
     file_name <- hash_md5(paste0("meta_", meta_version))
     payload <- list(metaFile = file_name, metaVersion = meta_version)
+  }
+
+  if (isTruthy(resource_prefix)) {
+    payload$resourcePrefix <- basename(as.character(resource_prefix)[[1]])
   }
 
   if (is_scspotlight_explore_bundle(object)) {
@@ -133,7 +143,8 @@ write_backend_metadata_transfer <- function(transfer) {
 write_backend_pca_stdev_transfer <- function(
   object,
   dir_path,
-  reduction_version
+  reduction_version,
+  resource_prefix = NULL
 ) {
   file_name <- hash_md5(paste0("pca_stdev_", reduction_version))
   file_path <- file.path(dir_path, file_name)
@@ -144,20 +155,29 @@ write_backend_pca_stdev_transfer <- function(
       arrow_table(stdev = Array$create(pca_stdev, type = float32())),
       file_path
     )
-    return(list(stdevFile = file_name, reductionVersion = reduction_version))
+    payload <- list(stdevFile = file_name, reductionVersion = reduction_version)
+    if (isTruthy(resource_prefix)) {
+      payload$resourcePrefix <- basename(as.character(resource_prefix)[[1]])
+    }
+    return(payload)
   }
 
   if (file.exists(file_path)) {
     file.remove(file_path)
   }
-  list(stdevFile = NULL, reductionVersion = reduction_version)
+  payload <- list(stdevFile = NULL, reductionVersion = reduction_version)
+  if (isTruthy(resource_prefix)) {
+    payload$resourcePrefix <- basename(as.character(resource_prefix)[[1]])
+  }
+  payload
 }
 
 prepare_backend_reduction_transfer <- function(
   object,
   reduction_name,
   dir_path,
-  reduction_version
+  reduction_version,
+  resource_prefix = NULL
 ) {
   file_name <- hash_md5(paste0(
     "reduction_",
@@ -170,6 +190,10 @@ prepare_backend_reduction_transfer <- function(
     reductionName = reduction_name,
     reductionVersion = reduction_version
   )
+
+  if (isTruthy(resource_prefix)) {
+    payload$resourcePrefix <- basename(as.character(resource_prefix)[[1]])
+  }
 
   if (is_scspotlight_explore_bundle(object)) {
     query_plan <- explore_bundle_reduction_query_plan(
@@ -222,8 +246,16 @@ prepare_backend_expression_transfer <- function(
   feature,
   dir_path,
   expr_version,
-  backend_root = NULL
+  backend_root = NULL,
+  resource_prefix = NULL
 ) {
+  add_resource_prefix <- function(payload) {
+    if (isTruthy(resource_prefix)) {
+      payload$resourcePrefix <- basename(as.character(resource_prefix)[[1]])
+    }
+    payload
+  }
+
   if (is_scspotlight_explore_bundle(object)) {
     assay <- assay %||% get_backend_default_assay(object)
     file_name <- hash_md5(paste0(
@@ -247,12 +279,12 @@ prepare_backend_expression_transfer <- function(
       feature_idx = query_plan$feature_idx,
       cell_count = query_plan$cell_count,
       output_file = file.path(dir_path, file_name),
-      payload = list(
+      payload = add_resource_prefix(list(
         geneName = feature,
         assay = assay,
         exprVersion = expr_version,
         exprFile = file_name
-      )
+      ))
     ))
   }
 
@@ -279,12 +311,12 @@ prepare_backend_expression_transfer <- function(
     assay = layer_ref$assay,
     layer = layer_ref$layer,
     output_file = file.path(dir_path, file_name),
-    payload = list(
+    payload = add_resource_prefix(list(
       geneName = feature,
       assay = layer_ref$assay,
       exprVersion = expr_version,
       exprFile = file_name
-    )
+    ))
   )
 }
 

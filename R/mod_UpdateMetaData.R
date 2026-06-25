@@ -76,7 +76,8 @@ mod_UpdateMetaData_server <- function(
         transfer <- prepare_backend_metadata_transfer(
           seuratObj(),
           dir_path = dirPath,
-          meta_version = metaVersion
+          meta_version = metaVersion,
+          resource_prefix = session$userData$dataResourcePrefix
         )
         meta_promise <- future_promise({
           capture_warnings(write_backend_metadata_transfer(transfer))
@@ -100,7 +101,8 @@ mod_UpdateMetaData_server <- function(
               message = make_transfer_error_payload(
                 "metadata",
                 "write_failed",
-                metaVersion
+                metaVersion,
+                resource_prefix = session$userData$dataResourcePrefix
               )
             )
             showNotification(
@@ -162,7 +164,8 @@ mod_UpdateMetaData_server <- function(
           seuratObj(),
           dir_path = dirPath,
           meta_version = patch_version,
-          cols = patch_cols
+          cols = patch_cols,
+          resource_prefix = session$userData$dataResourcePrefix
         )
         meta_patch_promise <- future_promise({
           capture_warnings(write_backend_metadata_transfer(transfer))
@@ -188,7 +191,8 @@ mod_UpdateMetaData_server <- function(
                 "metadata_patch",
                 "write_failed",
                 patch_version,
-                list(cols = patch_cols)
+                list(cols = patch_cols),
+                resource_prefix = session$userData$dataResourcePrefix
               )
             )
             showNotification(
