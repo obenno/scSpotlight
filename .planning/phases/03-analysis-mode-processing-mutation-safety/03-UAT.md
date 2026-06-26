@@ -3,7 +3,7 @@ status: testing
 phase: 03-analysis-mode-processing-mutation-safety
 source: [03-VERIFICATION.md]
 started: 2026-06-25T18:28:02Z
-updated: 2026-06-25T18:28:02Z
+updated: 2026-06-26T00:00:00Z
 ---
 
 # Phase 03 UAT: Analysis Mode Processing and Mutation Safety
@@ -30,7 +30,16 @@ expected: |
   original object. The UI completes without stale selections, wrong selected
   cells, path leaks, or stuck transfer/loading state; metadata, reduction,
   feature, and plot state refresh after subset and restore.
-result: pending
+result: passed
+evidence: |
+  Assisted UAT was run in Analysis Mode at http://127.0.0.1:6830 using a
+  synthetic processed Seurat RDS fixture generated at
+  /tmp/opencode/scspotlight-uat-small.rds. The user completed the visible
+  browser lasso/assign/subset/restore flow. Server log evidence showed the
+  live session loaded the uploaded RDS, transferred metadata and reductions,
+  selected real cell IDs (Cell5, Cell23, Cell32, Cell36, Cell48, Cell59),
+  initialized a new metadata column, then refreshed metadata and reductions
+  after subset and restore. No raw temp/session-path UI leak was reported.
 
 ### 2. Representative large-fixture safety check
 
@@ -44,9 +53,9 @@ result: pending
 ## Summary
 
 total: 2
-passed: 0
+passed: 1
 issues: 0
-pending: 2
+pending: 1
 skipped: 0
 blocked: 0
 
