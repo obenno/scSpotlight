@@ -353,7 +353,9 @@ mod_dataInput_server <- function(
   clusterResolution,
   geneUpdateIndicator,
   metaUpdateIndicator,
-  reductionUpdateIndicator
+  reductionUpdateIndicator,
+  analysisTransition = NULL,
+  resetAnalysisUi = NULL
 ) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
@@ -546,6 +548,24 @@ mod_dataInput_server <- function(
         ## update assay list
         if (isTruthy(seuratObj)) {
           assert_no_dense_scale_data(seuratObj)
+          reset_applied <- if (!is.null(analysisTransition)) {
+            analysisTransition$reset(seuratObj)
+          } else {
+            obj(seuratObj)
+            TRUE
+          }
+          if (!isTRUE(reset_applied)) {
+            waiter::waiter_hide()
+            showNotification(
+              ui = "Dataset load could not be applied while an Analysis change is in progress.",
+              action = NULL,
+              duration = 6,
+              closeButton = TRUE,
+              type = "error",
+              session = session
+            )
+            return(invisible(NULL))
+          }
           updateSelectizeInput(
             session = session,
             inputId = "selectAssay",
@@ -560,7 +580,9 @@ mod_dataInput_server <- function(
               NULL
             )
           )
-          obj(seuratObj)
+          if (is.function(resetAnalysisUi)) {
+            resetAnalysisUi()
+          }
           show_load_warnings(inputFileName())
         }
 

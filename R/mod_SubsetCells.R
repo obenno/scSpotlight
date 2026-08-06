@@ -25,24 +25,36 @@ mod_SubsetCells_ui <- function(id) {
 mod_SubsetCells_server <- function(
   id,
   seuratObj,
-  seuratObj_orig,
   selectedCells,
   geneUpdateIndicator,
   metaUpdateIndicator,
   reductionUpdateIndicator,
+  analysisTransition,
   backend_root = NULL
 ) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
+    known_lineage_id <- analysisTransition$lineage_id()
+    reset_acknowledgement_pending <- FALSE
 
-    reset_subset_switch <- function() {
+    sync_subset_switch <- function() {
       updateSwitchInput(
         session = session,
         inputId = "subsetData",
-        value = FALSE,
+        value = analysisTransition$is_subsetted(),
         label = NULL
       )
     }
+
+    observe({
+      current_lineage_id <- analysisTransition$lineage_signal()
+      if (!identical(current_lineage_id, known_lineage_id)) {
+        known_lineage_id <<- current_lineage_id
+        reset_acknowledgement_pending <<-
+          analysisTransition$reset_replaces_active_analysis()
+        sync_subset_switch()
+      }
+    })
 
     notify_subset_status <- function(message) {
       showNotification(
@@ -62,108 +74,89 @@ mod_SubsetCells_server <- function(
       reductionUpdateIndicator(reductionUpdateIndicator() + 1)
     }
 
-    ## Subset dataset code
-    observeEvent(input$subsetData, {
-      req(seuratObj())
-      ##req(selectedCells())
-
-      if (input$subsetData) {
-        obj <- seuratObj()
-        requested_cells <- selectedCells()
-        requested_cells <- if (is.null(requested_cells)) {
-          character(0)
-        } else {
-          as.character(requested_cells)
-        }
-        requested_cells <- requested_cells[!is.na(requested_cells) & nzchar(requested_cells)]
-        requested_cells <- unique(requested_cells)
-        valid_cells <- colnames(obj)[colnames(obj) %in% requested_cells]
-
-        if (!length(valid_cells)) {
-          notify_subset_status("Please select current cells before subsetting.")
-          ## Reset subset switch
-          reset_subset_switch()
-          return(invisible(NULL))
-        }
-
-        if (!is.null(seuratObj_orig())) {
-          notify_subset_status("Dataset is already subsetted. Restore before subsetting again.")
-          return(invisible(NULL))
-        }
-
-        subset_backend_root <- if (isTruthy(backend_root)) {
-          file.path(backend_root, "subset")
-        } else {
+    notify_transition_failure <- function(reason_code, operation) {
+      message <- switch(
+        reason_code,
+        no_valid_cells = "Please select current cells before subsetting.",
+        already_subsetted = "Dataset is already subsetted. Restore before subsetting again.",
+        subset_failed = "Unable to subset selected cells safely.",
+        original_state_failed = "Unable to preserve the original dataset safely.",
+        restore_failed = "Unable to restore the original dataset safely.",
+        stale_analysis_version = "Analysis state is stale. Refresh and try again.",
+        invalid_intent = "Analysis request could not be understood.",
+        invalid_operation = "Analysis operation is not supported.",
+        stale_analysis_lineage = "Analysis state is stale. Refresh and try again.",
+        version_exhausted = "Analysis version limit reached. Reload the dataset.",
+        cancelled = NULL,
+        mutation_in_progress = "Another Analysis change is in progress. Try again.",
+        transition_failed = "Analysis change could not be applied safely.",
+        if (identical(operation, "restore")) {
           NULL
+        } else {
+          "Analysis operation could not be applied."
         }
+      )
 
-        obj_sub <- tryCatch(
-          safe_subset_seurat_object(
-            obj,
-            cells = valid_cells,
-            backend_root = subset_backend_root,
-            input_label = "Selected cells"
-          ),
-          error = function(error) {
-            notify_subset_status("Unable to subset selected cells safely.")
-            reset_subset_switch()
-            NULL
-          }
-        )
-        if (is.null(obj_sub)) {
-          return(invisible(NULL))
-        }
-
-        original_obj <- tryCatch(
-          {
-            cleaned_original <- drop_dense_scale_data(obj)
-            assert_no_dense_scale_data(cleaned_original)
-            cleaned_original
-          },
-          error = function(error) {
-            notify_subset_status("Unable to preserve the original dataset safely.")
-            reset_subset_switch()
-            NULL
-          }
-        )
-        if (is.null(original_obj)) {
-          return(invisible(NULL))
-        }
-
-        ##DefaultAssay(seuratObj) <- "subsetData"
-        notify_subset_status("Subsetted dataset to selected cells.")
-        seuratObj_orig(original_obj)
-        seuratObj(obj_sub)
-        increment_subset_refresh_indicators()
-        ## Reset manuallySelectedCells()
-        ##manuallySelectedCells(NULL)
-      } else {
-        obj <- seuratObj_orig()
-        if (is.null(obj)) {
-          return(invisible(NULL))
-        }
-
-        restored_obj <- tryCatch(
-          {
-            restored <- drop_dense_scale_data(obj)
-            assert_no_dense_scale_data(restored)
-            restored
-          },
-          error = function(error) {
-            notify_subset_status("Unable to restore the original dataset safely.")
-            NULL
-          }
-        )
-        if (is.null(restored_obj)) {
-          return(invisible(NULL))
-        }
-
-        notify_subset_status("Restored the original dataset.")
-        seuratObj(restored_obj)
-        ## clear seuratObj_orig()
-        seuratObj_orig(NULL)
-        increment_subset_refresh_indicators()
+      if (!is.null(message)) {
+        notify_subset_status(message)
       }
+      invisible(NULL)
+    }
+
+    ## Subset and Restore route through one Analysis Transition seam.
+    observeEvent(input$subsetData, {
+      subset_value <- input$subsetData
+      if (
+        length(subset_value) != 1L ||
+          !is.logical(subset_value) ||
+          is.na(subset_value)
+      ) {
+        sync_subset_switch()
+        notify_transition_failure("invalid_intent", "subset")
+        return(invisible(NULL))
+      }
+
+      if (isTRUE(reset_acknowledgement_pending)) {
+        reset_acknowledgement_pending <<- FALSE
+        if (isTRUE(subset_value)) {
+          sync_subset_switch()
+          notify_transition_failure("stale_analysis_lineage", "subset")
+        }
+        return(invisible(NULL))
+      }
+
+      req(seuratObj())
+
+      transition_context <- analysisTransition$intent_context()
+      operation <- if (isTRUE(subset_value)) "subset" else "restore"
+      subset_backend_root <- if (isTRUE(subset_value) && isTruthy(backend_root)) {
+        file.path(backend_root, "subset")
+      } else {
+        NULL
+      }
+
+      result <- analysisTransition$apply(
+        intent = list(
+          operation = operation,
+          expected_version = transition_context$expected_version,
+          lineage_id = transition_context$lineage_id,
+          cells = if (identical(operation, "subset")) selectedCells() else character(0)
+        ),
+        backend_root = subset_backend_root
+      )
+
+      if (!isTRUE(result$committed)) {
+        notify_transition_failure(result$reason_code, operation)
+        sync_subset_switch()
+        return(invisible(NULL))
+      }
+
+      if (identical(operation, "subset")) {
+        notify_subset_status("Subsetted dataset to selected cells.")
+      } else {
+        notify_subset_status("Restored the original dataset.")
+      }
+      increment_subset_refresh_indicators()
     })
   })
 }

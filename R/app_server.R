@@ -184,6 +184,22 @@ app_server <- function(input, output, session) {
   ## setup universal status indicator
   seuratObj <- reactiveVal(NULL)
   runningMode <- normalize_running_mode(golem::get_golem_options("runningMode"))
+  analysisTransition <- if (identical(runningMode, "analysis")) {
+    new_analysis_transition_controller(seuratObj)
+  } else {
+    NULL
+  }
+  resetAnalysisUi <- if (identical(runningMode, "analysis")) {
+    function() {
+      shinyWidgets::updateSwitchInput(
+        session = session,
+        inputId = "renameCluster-subsetCells-subsetData",
+        value = FALSE
+      )
+    }
+  } else {
+    NULL
+  }
   clusterSettings <- list(
     hvgSelectMethod = reactive("vst"),
     clusterDims = reactive(30),
@@ -238,7 +254,9 @@ app_server <- function(input, output, session) {
     clusterSettings$clusterResolution,
     geneUpdateIndicator,
     metaUpdateIndicator,
-    reductionUpdateIndicator
+    reductionUpdateIndicator,
+    analysisTransition = analysisTransition,
+    resetAnalysisUi = resetAnalysisUi
   )
 
   if (identical(runningMode, "analysis")) {
@@ -502,7 +520,8 @@ app_server <- function(input, output, session) {
       geneUpdateIndicator,
       metaUpdateIndicator,
       reductionUpdateIndicator,
-      backend_root = session$userData$backendDir
+      backend_root = session$userData$backendDir,
+      analysisTransition = analysisTransition
     )
 
     ## Download Object

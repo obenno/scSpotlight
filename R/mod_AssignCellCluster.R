@@ -86,11 +86,11 @@ mod_AssignCellCluster_server <- function(
   geneUpdateIndicator,
   metaUpdateIndicator,
   reductionUpdateIndicator,
+  analysisTransition,
   backend_root = NULL
 ) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
-    seuratObj_orig <- reactiveVal(NULL)
 
     manuallySelectedCells <- reactive({
       ## Do not use req() here, or it will block the validation chain
@@ -173,12 +173,12 @@ mod_AssignCellCluster_server <- function(
     mod_SubsetCells_server(
       "subsetCells",
       seuratObj,
-      seuratObj_orig,
       selectedCells,
       geneUpdateIndicator,
       metaUpdateIndicator,
       reductionUpdateIndicator,
-      backend_root = backend_root
+      backend_root = backend_root,
+      analysisTransition = analysisTransition
     )
   })
 }

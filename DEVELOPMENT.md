@@ -286,7 +286,7 @@ local paths, or stack traces.
 
 The assignment and category-selection consistency contract keeps browser-owned rename filtering for responsive previews while moving persistence to a bounded server-validated intent. lasso selections take precedence over category selections. The browser sends bounded browser assignment intent through `renameCluster-assignmentIntent`: manual/lasso assignment carries selected cell IDs, and category assignment carries the current group/split levels and plot context. The server resolves assigned cells from canonical Seurat metadata, assignment mutates exactly one metadata column, and the browser receives a one-column scoped `meta_patch_ready` patch. Assignment must use no full JSON cell-level metadata transfer. Rename UI state must clear stale rename selections on group.by or split.by changes, metadata patch invalidation, explicit deselect, and clear stale rename selections after assignment completion.
 
-The subset and restore refresh semantics are part of the same Analysis Mode mutation safety seam. A subset uses safe_subset_seurat_object with validated current selected cells, preserves source-object cell order, and leaves app state untouched when no selected cells remain valid. The original object is stored once before the first active subset, and restore clears seuratObj_orig after replacing app state with that original object. invalid or repeated subset toggles do not mutate app state: empty, stale, or already-subsetted requests reset or no-op without incrementing refresh indicators. successful subset and restore increment geneUpdateIndicator, metaUpdateIndicator, and reductionUpdateIndicator so existing metadata, reduction, feature, expression, and plot refresh chains run. browser selected-cell, rename, assignment, expression cache, and feature state clear or reconcile after object replacement; selected cells are intersected with visible cell IDs, stale rename selectors and assignment payloads are cleared, expression cache and selected features are purged, and the implementation must reuse existing Phase 02 contracts (`meta_ready`, `reduction_ready`/`reductions_ready`, `expr_ready`, `meta_patch_ready`, `transfer_error`, and `clear_expr`) rather than adding a subset-specific browser message. There must be no final dense `scale.data` after subset or restore.
+The subset and restore refresh semantics are part of the same Analysis Mode mutation safety seam. A subset uses safe_subset_seurat_object with validated current selected cells, preserves source-object cell order, and leaves app state untouched when no selected cells remain valid. The original object is stored once by the Analysis Transition controller before the first active subset, and restore clears that controller-owned backup after replacing app state with the original object. invalid or repeated subset toggles do not mutate app state: empty, stale, or already-subsetted requests reset or no-op without incrementing refresh indicators. successful subset and restore increment geneUpdateIndicator, metaUpdateIndicator, and reductionUpdateIndicator so existing metadata, reduction, feature, expression, and plot refresh chains run. browser selected-cell, rename, assignment, expression cache, and feature state clear or reconcile after object replacement; selected cells are intersected with visible cell IDs, stale rename selectors and assignment payloads are cleared, expression cache and selected features are purged, and the implementation must reuse existing Phase 02 contracts (`meta_ready`, `reduction_ready`/`reductions_ready`, `expr_ready`, `meta_patch_ready`, `transfer_error`, and `clear_expr`) rather than adding a subset-specific browser message. There must be no final dense `scale.data` after subset or restore.
 
 ### Phase 03 gap-closure invariants
 
@@ -1128,3 +1128,42 @@ The repository now includes the per-repo configuration used by the engineering s
 - Confirmed the GitHub remote and existing agent instructions.
 - Confirmed the repository has no monorepo signals or prior Matt Pocock skill configuration.
 - Ran `git diff --check` after writing the configuration.
+
+## Architecture Research
+
+### 33. Million-cell architecture alternatives research
+
+- Added `docs/architecture-research-2026-08.md` as a primary-source research note comparing retention, hybridization, and replacement of the R/Shiny architecture.
+- The note records options and evidence only; it does not change the application source-of-truth boundaries or select an implementation plan.
+
+### 34. Versioned Subset/Restore Analysis Transition slice
+
+Decision:
+
+- The long-term architecture is hybrid: R/Seurat/BPCells remains the Analysis kernel, while a future language-neutral query interface and Python query process may be added later.
+- The first migration slice stays inside the existing R/Shiny runtime and does not introduce Python, TileDB-SOMA, durable Analysis Artifacts, a TypeScript migration, or a browser protocol migration.
+- Analysis state uses a server-owned monotonic logical Analysis Version per Session/Analysis lineage during Phase 1.
+- Each Analysis load receives a server-owned lineage ID in addition to its logical version counter, so a version-zero intent captured before a Dataset Artifact reset cannot mutate the replacement Analysis.
+- Filter changes View state only. Subset and Restore are Analysis Mutations.
+- Restore creates a new forward Analysis Version that reuses an earlier scientific state; it never rewinds the version counter.
+- Analysis Mutations are serialized and atomic. Stale, empty, invalid, cancelled, or failed requests publish no version and leave the active Analysis unchanged.
+- The Analysis Transition seam is the sole writer for Subset and Restore. Its Change-set remains server-internal and existing metadata, reduction, expression, cache, and transfer-error contracts remain the browser seam.
+- The controller is constructed only for Analysis Mode. Explore Mode continues to load its read-only artifact directly without invoking the Seurat-only transition reset path.
+
+Why:
+
+- This establishes a testable scientific-state model without paying the risk of a language or storage rewrite.
+- Monotonic versions prevent stale asynchronous work and browser caches from being mistaken for current Analysis state.
+- Reusing existing payload contracts keeps the first vertical slice small while preserving the low-memory and BPCells rules.
+
+Implementation and tracking:
+
+- The full specification is GitHub issue `#21`.
+- Child tickets `#22` through `#27` are linked under `#21` with native blocking relationships.
+- The domain vocabulary is recorded in the root `CONTEXT.md`.
+- `R/fct_analysis_transition.R` owns the deterministic transition evaluator and the Session-scoped controller. The controller owns the original Analysis backup, logical version state, last server-internal Change-set, reset operation, and re-entrant mutation guard.
+- `R/app_server.R` constructs one controller per Shiny Session. `R/mod_dataInput.R`, `R/mod_AssignCellCluster.R`, and `R/mod_SubsetCells.R` pass requests through that controller instead of writing Subset/Restore state directly.
+- A successful Analysis dataset reset also clears the nested Subset switch through an Analysis-only UI callback, keeping the visible control aligned with the new lineage.
+- `tests/testthat/test-subset-cells.R` verifies successful Subset/Restore lineage, Change-set publication, strict and cancelled intents, failed transitions, reset behavior, and re-entrant mutation rejection with deterministic Seurat fixtures.
+- Targeted validation passed with `pixi run Rscript -e "devtools::test(filter = 'subset-cells')"` and adjacent mutation/document/runtime tests passed with `pixi run Rscript -e "devtools::test(filter = 'analysis-mutation-safety|development-contract-docs|run-app-modes')"`.
+- Final validation passed 661 R tests with 40 warnings, 126 JavaScript tests, and the Phase 03 Playwright subset/restore flow; parse checks and `git diff --check` also passed.

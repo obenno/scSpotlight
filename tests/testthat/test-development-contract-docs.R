@@ -162,7 +162,7 @@ test_that("DEVELOPMENT documents Phase 03 subset and restore safety", {
     "subset and restore refresh semantics",
     "subset uses safe_subset_seurat_object",
     "original object is stored once",
-    "restore clears seuratObj_orig",
+    "restore clears that controller-owned backup",
     "invalid or repeated subset toggles do not mutate app state",
     "successful subset and restore increment geneUpdateIndicator, metaUpdateIndicator, and reductionUpdateIndicator",
     "browser selected-cell, rename, assignment, expression cache, and feature state clear or reconcile after object replacement",
