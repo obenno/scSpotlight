@@ -1,6 +1,7 @@
 node_modules
 .Rhistory
-docs
+docs/*
+!docs/agents/
+!docs/agents/**
 .pixi
 .codegraph/
-.planning/research/.cache/

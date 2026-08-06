@@ -1109,3 +1109,22 @@ When changing plot behavior in the future:
 2. Keep the interaction contract explicit for each floating panel.
 3. Re-run `pixi run test-js`.
 4. Rebuild the frontend bundle with `pixi run build-js` before manual browser verification.
+
+## Engineering Workflow Configuration
+
+### Scope
+
+The repository now includes the per-repo configuration used by the engineering skills for issue tracking, triage, and domain-document discovery.
+
+### Key Decisions
+
+- GitHub Issues are the issue tracker, operated through the `gh` CLI.
+- The canonical triage labels remain `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, and `wontfix`.
+- The repository uses the single-context domain documentation layout with root `CONTEXT.md` and `docs/adr/`.
+- The existing broad `docs` ignore rule was narrowed so `docs/agents/` configuration remains versioned while other generated documentation remains ignored.
+
+### Validation Performed
+
+- Confirmed the GitHub remote and existing agent instructions.
+- Confirmed the repository has no monorepo signals or prior Matt Pocock skill configuration.
+- Ran `git diff --check` after writing the configuration.
