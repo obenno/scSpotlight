@@ -1,10 +1,18 @@
 make_analysis_contract_object <- function() {
   counts <- Matrix::Matrix(
     c(
-      1, 0, 2,
-      0, 3, 0,
-      4, 0, 5,
-      0, 6, 1
+      1,
+      0,
+      2,
+      0,
+      3,
+      0,
+      4,
+      0,
+      5,
+      0,
+      6,
+      1
     ),
     nrow = 3,
     sparse = TRUE
@@ -24,8 +32,14 @@ make_analysis_contract_object <- function() {
   object[["umap"]] <- Seurat::CreateDimReducObject(
     embeddings = matrix(
       c(
-        1, 2, 3, 4,
-        5, 6, 7, 8
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
       ),
       nrow = 4,
       dimnames = list(colnames(counts), c("UMAP_1", "UMAP_2"))
@@ -36,8 +50,14 @@ make_analysis_contract_object <- function() {
   object[["pca"]] <- Seurat::CreateDimReducObject(
     embeddings = matrix(
       c(
-        11, 12, 13, 14,
-        21, 22, 23, 24
+        11,
+        12,
+        13,
+        14,
+        21,
+        22,
+        23,
+        24
       ),
       nrow = 4,
       dimnames = list(colnames(counts), c("PC_1", "PC_2"))
@@ -53,8 +73,14 @@ make_analysis_contract_object <- function() {
 test_that("Analysis Mode backend helpers expose Seurat/BPCells seams", {
   skip_if_not_installed("Seurat")
 
-  get_backend_metadata <- getFromNamespace("get_backend_metadata", "scSpotlight")
-  get_backend_features <- getFromNamespace("get_backend_features", "scSpotlight")
+  get_backend_metadata <- getFromNamespace(
+    "get_backend_metadata",
+    "scSpotlight"
+  )
+  get_backend_features <- getFromNamespace(
+    "get_backend_features",
+    "scSpotlight"
+  )
   get_backend_reduction_names <- getFromNamespace(
     "get_backend_reduction_names",
     "scSpotlight"
@@ -73,7 +99,10 @@ test_that("Analysis Mode backend helpers expose Seurat/BPCells seams", {
 
   metadata <- get_backend_metadata(object, cols = c("cluster", "quality"))
   expect_equal(rownames(metadata), colnames(object))
-  expect_equal(as.character(metadata$cluster), c("alpha", "beta", "alpha", "gamma"))
+  expect_equal(
+    as.character(metadata$cluster),
+    c("alpha", "beta", "alpha", "gamma")
+  )
   expect_equal(metadata$quality, c(0.1, Inf, NaN, 0.4))
 
   expect_equal(
@@ -89,7 +118,12 @@ test_that("Analysis Mode backend helpers expose Seurat/BPCells seams", {
 
   expect_equal(get_backend_pca_stdev(object), c(2.5, 1.25))
   expect_equal(
-    get_backend_expr(object, assay = "RNA", features = "GeneB", layer = "data")$GeneB,
+    get_backend_expr(
+      object,
+      assay = "RNA",
+      features = "GeneB",
+      layer = "data"
+    )$GeneB,
     c(0, 3, 0, 6)
   )
 })
@@ -159,9 +193,12 @@ test_that("Analysis Mode transfer adapters write Arrow IPC without mirrored Duck
   metadata_payload <- write_backend_metadata_transfer(metadata_transfer)
   metadata_table <- arrow::read_ipc_stream(metadata_transfer$filePath)
   expect_equal(metadata_payload$cols, c("cluster", "quality"))
-  expect_equal(as.vector(metadata_table$cluster), c("alpha", "beta", "alpha", "gamma"))
+  expect_equal(
+    as.vector(metadata_table$cluster),
+    c("alpha", "beta", "alpha", "gamma")
+  )
   expect_equal(as.numeric(metadata_table$quality), c(0.1, NA, NA, 0.4))
-  expect_equal(as.integer(metadata_table$cells), 0:(ncol(object) - 1L))
+  expect_equal(as.character(metadata_table$cells), colnames(object))
 
   reduction_transfer <- prepare_backend_reduction_transfer(
     object,
@@ -213,20 +250,37 @@ test_that("Analysis Mode transfer adapters write Arrow IPC without mirrored Duck
   expect_equal(expression_transfer$backend, "bpcells")
   expect_setequal(
     names(expression_transfer),
-    c("backend", "matrix_dir", "feature", "assay", "layer", "output_file", "payload")
+    c(
+      "backend",
+      "matrix_dir",
+      "feature",
+      "assay",
+      "layer",
+      "output_file",
+      "payload"
+    )
   )
   expect_true(dir.exists(expression_transfer$matrix_dir))
   expect_equal(expression_transfer$feature, "GeneC")
   expect_equal(expression_transfer$assay, "RNA")
   expect_equal(expression_transfer$layer, "data")
-  expect_false(any(c("object", "seuratObj", "data") %in% names(expression_transfer)))
+  expect_false(any(
+    c("object", "seuratObj", "data") %in% names(expression_transfer)
+  ))
   expect_false(any(c("query_plan", "duckdb") %in% names(expression_transfer)))
   expect_identical(
     names(expression_transfer$payload),
     c("geneName", "assay", "exprVersion", "exprFile", "resourcePrefix")
   )
-  expect_equal(expression_transfer$payload$exprFile, basename(expression_transfer$output_file))
-  expect_false(any(grepl("/", unlist(expression_transfer$payload), fixed = TRUE)))
+  expect_equal(
+    expression_transfer$payload$exprFile,
+    basename(expression_transfer$output_file)
+  )
+  expect_false(any(grepl(
+    "/",
+    unlist(expression_transfer$payload),
+    fixed = TRUE
+  )))
 
   expression_payload <- write_backend_expression_transfer(expression_transfer)
   expression_table <- arrow::read_ipc_stream(expression_transfer$output_file)
@@ -262,8 +316,14 @@ test_that("Analysis Mode source guards keep futures path-based and DuckDB-free",
     input_feature_source,
     fixed = TRUE
   )[[1]]
-  promise_body_source <- input_feature_source[seq(process_start, invoke_start - 1L)]
-  invoke_source <- input_feature_source[seq(invoke_start, length(input_feature_source))]
+  promise_body_source <- input_feature_source[seq(
+    process_start,
+    invoke_start - 1L
+  )]
+  invoke_source <- input_feature_source[seq(
+    invoke_start,
+    length(input_feature_source)
+  )]
 
   expect_true(any(grepl("future_promise", promise_body_source, fixed = TRUE)))
   expect_false(any(grepl("seuratObj\\(\\)", promise_body_source)))

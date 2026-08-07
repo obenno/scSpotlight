@@ -55,6 +55,15 @@ describe("metadata cache helpers", () => {
     expect(Array.from(split.s1)).toEqual([30]);
     expect(Array.from(split.s2)).toEqual([10, 50]);
   });
+
+  it("keeps Cell IDs as their compact ordered identity vector", () => {
+    const cells = {
+      type: "cell_id",
+      value: ["Cell-A", "Cell-B", "Cell-C"],
+    };
+
+    expect(expandMeta(cells)).toBe(cells.value);
+  });
 });
 
 describe("reglScatterCanvas adaptive deck.gl rendering", () => {

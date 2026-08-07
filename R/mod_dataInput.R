@@ -105,11 +105,17 @@ load_analysis_input_file <- function(
   status = function(...) NULL,
   notify = function(...) NULL
 ) {
-  if (!is.character(input_file) || length(input_file) != 1L || !nzchar(input_file)) {
+  if (
+    !is.character(input_file) || length(input_file) != 1L || !nzchar(input_file)
+  ) {
     stop("Expected a single Analysis input file path", call. = FALSE)
   }
   if (!file.exists(input_file)) {
-    stop("Analysis input file does not exist: ", basename(input_file), call. = FALSE)
+    stop(
+      "Analysis input file does not exist: ",
+      basename(input_file),
+      call. = FALSE
+    )
   }
 
   input_name <- input_name %||% basename(input_file)
@@ -583,6 +589,11 @@ mod_dataInput_server <- function(
           if (is.function(resetAnalysisUi)) {
             resetAnalysisUi()
           }
+          session$sendCustomMessage(
+            type = "clear_expr",
+            # Invalidate queued expression work from the prior Analysis epoch.
+            message = list(invalidateVersion = geneUpdateIndicator())
+          )
           show_load_warnings(inputFileName())
         }
 
@@ -1004,10 +1015,15 @@ list_zip_archive_entries <- function(filePath) {
   list(entries = entry_names, has_symlink = has_symlink)
 }
 
-assert_safe_archive_entries <- function(archive_entries, archive_type = c("tar", "zip")) {
+assert_safe_archive_entries <- function(
+  archive_entries,
+  archive_type = c("tar", "zip")
+) {
   archive_type <- match.arg(archive_type)
 
-  entries <- if (is.list(archive_entries) && !is.null(archive_entries$entries)) {
+  entries <- if (
+    is.list(archive_entries) && !is.null(archive_entries$entries)
+  ) {
     archive_entries$entries
   } else {
     archive_entries
@@ -1037,7 +1053,10 @@ decompress_matrix_input <- function(fileName, filePath) {
       str_detect(fileName, "\\.tar.bz2$") ||
       str_detect(fileName, "\\.tbz2$")
   ) {
-    assert_safe_archive_entries(list_tar_archive_entries(filePath), archive_type = "tar")
+    assert_safe_archive_entries(
+      list_tar_archive_entries(filePath),
+      archive_type = "tar"
+    )
     tmpMatrixDir <- tempfile(pattern = "matrixDir")
     dir.create(tmpMatrixDir)
     untar(tarfile = filePath, exdir = tmpMatrixDir)
@@ -1045,7 +1064,10 @@ decompress_matrix_input <- function(fileName, filePath) {
     if (!requireNamespace("zip", quietly = TRUE)) {
       stop("The 'zip' package is required to decompress zip archives.")
     }
-    assert_safe_archive_entries(list_zip_archive_entries(filePath), archive_type = "zip")
+    assert_safe_archive_entries(
+      list_zip_archive_entries(filePath),
+      archive_type = "zip"
+    )
     tmpMatrixDir <- tempfile(pattern = "matrixDir")
     dir.create(tmpMatrixDir)
     zip::unzip(zipfile = filePath, exdir = tmpMatrixDir)

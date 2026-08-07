@@ -104,6 +104,16 @@ describe("parseMetaFromArrow", () => {
     expect(meta.cluster.value["TypeB"]).toEqual([2, 3]);
     expect(meta.cluster.value["TypeC"]).toEqual([4]);
   });
+
+  it("parses UTF-8 cell IDs as an ordered identity vector", () => {
+    const table = tableFromArrays({
+      cells: ["Cell-A", "Cell-B", "Cell-A"],
+    });
+    const meta = parseMetaFromArrow(table);
+
+    expect(meta.cells.type).toBe("cell_id");
+    expect(meta.cells.value).toEqual(["Cell-A", "Cell-B", "Cell-A"]);
+  });
 });
 
 describe("readArrowIPC", () => {

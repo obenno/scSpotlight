@@ -63,14 +63,24 @@ test_that("subset switch rejects empty, invalid, and stale selections without mu
       session$setInputs(subsetData = TRUE)
       expect_identical(colnames(seurat_value()), colnames(object))
       expect_null(analysis_transition$state()$original_object)
-      expect_subset_indicator_values(gene_indicator, meta_indicator, reduction_indicator, 0)
+      expect_subset_indicator_values(
+        gene_indicator,
+        meta_indicator,
+        reduction_indicator,
+        0
+      )
 
       selected_cells(c("missing-cell", "also-missing"))
       session$setInputs(subsetData = FALSE)
       session$setInputs(subsetData = TRUE)
       expect_identical(colnames(seurat_value()), colnames(object))
       expect_null(analysis_transition$state()$original_object)
-      expect_subset_indicator_values(gene_indicator, meta_indicator, reduction_indicator, 0)
+      expect_subset_indicator_values(
+        gene_indicator,
+        meta_indicator,
+        reduction_indicator,
+        0
+      )
     }
   )
 })
@@ -106,14 +116,27 @@ test_that("valid subset stores the original once, preserves cell order, drops sc
         colnames(object)
       )
       expect_silent(assert_no_dense_scale_data(seurat_value()))
-      expect_subset_indicator_values(gene_indicator, meta_indicator, reduction_indicator, 1)
+      expect_subset_indicator_values(
+        gene_indicator,
+        meta_indicator,
+        reduction_indicator,
+        1
+      )
 
       stored_original <- analysis_transition$state()$original_object
       selected_cells(c("Cell2"))
       session$setInputs(subsetData = TRUE)
-      expect_identical(analysis_transition$state()$original_object, stored_original)
+      expect_identical(
+        analysis_transition$state()$original_object,
+        stored_original
+      )
       expect_identical(colnames(seurat_value()), c("Cell2", "Cell5"))
-      expect_subset_indicator_values(gene_indicator, meta_indicator, reduction_indicator, 1)
+      expect_subset_indicator_values(
+        gene_indicator,
+        meta_indicator,
+        reduction_indicator,
+        1
+      )
     }
   )
 })
@@ -141,17 +164,32 @@ test_that("restore replaces subset state with original, clears backup, and repea
       session$setInputs(subsetData = TRUE)
       expect_identical(colnames(seurat_value()), c("Cell1", "Cell3"))
       expect_false(is.null(analysis_transition$state()$original_object))
-      expect_subset_indicator_values(gene_indicator, meta_indicator, reduction_indicator, 1)
+      expect_subset_indicator_values(
+        gene_indicator,
+        meta_indicator,
+        reduction_indicator,
+        1
+      )
 
       session$setInputs(subsetData = FALSE)
       expect_identical(colnames(seurat_value()), colnames(object))
       expect_null(analysis_transition$state()$original_object)
-      expect_subset_indicator_values(gene_indicator, meta_indicator, reduction_indicator, 2)
+      expect_subset_indicator_values(
+        gene_indicator,
+        meta_indicator,
+        reduction_indicator,
+        2
+      )
 
       session$setInputs(subsetData = FALSE)
       expect_identical(colnames(seurat_value()), colnames(object))
       expect_null(analysis_transition$state()$original_object)
-      expect_subset_indicator_values(gene_indicator, meta_indicator, reduction_indicator, 2)
+      expect_subset_indicator_values(
+        gene_indicator,
+        meta_indicator,
+        reduction_indicator,
+        2
+      )
     }
   )
 })
@@ -182,31 +220,59 @@ test_that("browser selectedPoints cell IDs flow through assignment module into s
         colnames(shiny::isolate(seurat_value())),
         c("Cell1", "Cell3")
       )
-      expect_subset_indicator_values(gene_indicator, meta_indicator, reduction_indicator, 1)
+      expect_subset_indicator_values(
+        gene_indicator,
+        meta_indicator,
+        reduction_indicator,
+        1
+      )
     }
   )
 })
 
 test_that("subset module threads the session backend root into BPCells-safe subset backing", {
   subset_source <- paste(
-    readLines(testthat::test_path("..", "..", "R", "mod_SubsetCells.R"), warn = FALSE),
+    readLines(
+      testthat::test_path("..", "..", "R", "mod_SubsetCells.R"),
+      warn = FALSE
+    ),
     collapse = "\n"
   )
   app_source <- paste(
-    readLines(testthat::test_path("..", "..", "R", "app_server.R"), warn = FALSE),
+    readLines(
+      testthat::test_path("..", "..", "R", "app_server.R"),
+      warn = FALSE
+    ),
     collapse = "\n"
   )
 
   expect_true(
-    grepl("mod_SubsetCells_server\\s*<-\\s*function[\\s\\S]*analysisTransition", subset_source, perl = TRUE),
+    grepl(
+      "mod_SubsetCells_server\\s*<-\\s*function[\\s\\S]*analysisTransition",
+      subset_source,
+      perl = TRUE
+    ),
     info = "subset module should accept a session cleanup-root backend path"
   )
   expect_true(
-    grepl("analysisTransition\\$apply[\\s\\S]*backend_root", subset_source, perl = TRUE),
+    grepl(
+      "analysisTransition\\$apply[\\s\\S]*backend_root",
+      subset_source,
+      perl = TRUE
+    ),
     info = "Analysis Transition must receive the subset backend root"
   )
+  expect_match(
+    subset_source,
+    "message = list(invalidateVersion = geneUpdateIndicator())",
+    fixed = TRUE
+  )
   expect_true(
-    grepl("mod_AssignCellCluster_server[\\s\\S]*backend_root\\s*=\\s*session\\$userData\\$backendDir", app_source, perl = TRUE),
+    grepl(
+      "mod_AssignCellCluster_server[\\s\\S]*backend_root\\s*=\\s*session\\$userData\\$backendDir",
+      app_source,
+      perl = TRUE
+    ),
     info = "app_server should thread session$userData$backendDir into the assignment/subset module tree"
   )
   expect_true(
@@ -316,6 +382,142 @@ test_that("Analysis Transition publishes monotonic versions for Subset and Resto
       source_version = 0L,
       operation = "restore"
     )
+  )
+})
+
+test_that("category Subset intents resolve canonical metadata in source cell order", {
+  object <- make_subset_object()
+  object$batch <- factor(c("batch1", "batch2", "batch1", "batch2", "batch1"))
+  seurat_value <- shiny::reactiveVal(object)
+  analysis_transition <- make_analysis_transition(seurat_value)
+
+  result <- analysis_transition$apply(
+    intent = list(
+      operation = "subset",
+      expected_version = 0L,
+      lineage_id = 1L,
+      context = list(groupBy = "cluster", splitBy = "batch"),
+      category = list(
+        groupBy = "cluster",
+        groupLevels = "A",
+        splitBy = "batch",
+        splitLevels = "batch1"
+      )
+    )
+  )
+
+  expect_true(result$committed)
+  expect_identical(
+    colnames(shiny::isolate(seurat_value())),
+    c("Cell1", "Cell3", "Cell5")
+  )
+  expect_identical(analysis_transition$version(), 1L)
+})
+
+test_that("category Subset intents reject stale or mismatched context without mutation", {
+  object <- make_subset_object()
+  object$batch <- factor(c("batch1", "batch2", "batch1", "batch2", "batch1"))
+  seurat_value <- shiny::reactiveVal(object)
+  analysis_transition <- make_analysis_transition(seurat_value)
+
+  result <- analysis_transition$apply(
+    intent = list(
+      operation = "subset",
+      expected_version = 0L,
+      lineage_id = 1L,
+      context = list(groupBy = "other", splitBy = "batch"),
+      category = list(
+        groupBy = "cluster",
+        groupLevels = "A",
+        splitBy = "batch",
+        splitLevels = "batch1"
+      )
+    )
+  )
+
+  expect_false(result$committed)
+  expect_identical(result$reason_code, "invalid_category_context")
+  expect_identical(colnames(shiny::isolate(seurat_value())), colnames(object))
+  expect_identical(analysis_transition$version(), 0L)
+})
+
+test_that("Subset module uses server category context when no lasso selection is active", {
+  object <- make_subset_object()
+  object$batch <- factor(c("batch1", "batch2", "batch1", "batch2", "batch1"))
+  seurat_value <- shiny::reactiveVal(object)
+  analysis_transition <- make_analysis_transition(seurat_value)
+  selected_cells <- shiny::reactiveVal(character(0))
+  gene_indicator <- shiny::reactiveVal(0)
+  meta_indicator <- shiny::reactiveVal(0)
+  reduction_indicator <- shiny::reactiveVal(0)
+  testServer(
+    mod_SubsetCells_server,
+    args = list(
+      seuratObj = seurat_value,
+      selectedCells = selected_cells,
+      geneUpdateIndicator = gene_indicator,
+      metaUpdateIndicator = meta_indicator,
+      reductionUpdateIndicator = reduction_indicator,
+      analysisTransition = analysis_transition,
+      categoryContext = shiny::reactive(list(
+        groupBy = "cluster",
+        groupLevels = "A",
+        splitBy = "batch",
+        splitLevels = "batch1",
+        metaVersion = 0L
+      ))
+    ),
+    {
+      session$setInputs(subsetData = TRUE)
+    }
+  )
+
+  expect_identical(
+    colnames(shiny::isolate(seurat_value())),
+    c("Cell1", "Cell3", "Cell5")
+  )
+  expect_identical(analysis_transition$version(), 1L)
+  expect_subset_indicator_values(
+    gene_indicator,
+    meta_indicator,
+    reduction_indicator,
+    1
+  )
+})
+
+test_that("Subset module rejects a stale category context without mutation", {
+  object <- make_subset_object()
+  object$batch <- factor(c("batch1", "batch2", "batch1", "batch2", "batch1"))
+  seurat_value <- shiny::reactiveVal(object)
+  analysis_transition <- make_analysis_transition(seurat_value)
+  selected_cells <- shiny::reactiveVal(character(0))
+  gene_indicator <- shiny::reactiveVal(0)
+  meta_indicator <- shiny::reactiveVal(0)
+  reduction_indicator <- shiny::reactiveVal(0)
+
+  testServer(
+    mod_SubsetCells_server,
+    args = list(
+      seuratObj = seurat_value,
+      selectedCells = selected_cells,
+      geneUpdateIndicator = gene_indicator,
+      metaUpdateIndicator = meta_indicator,
+      reductionUpdateIndicator = reduction_indicator,
+      analysisTransition = analysis_transition,
+      categoryContext = shiny::reactive(list(invalid = TRUE))
+    ),
+    {
+      session$setInputs(subsetData = TRUE)
+    }
+  )
+
+  expect_identical(analysis_transition$version(), 0L)
+  expect_identical(colnames(shiny::isolate(seurat_value())), colnames(object))
+  expect_subset_indicator_values(
+    gene_indicator,
+    meta_indicator,
+    reduction_indicator,
+    0
   )
 })
 
@@ -543,7 +745,11 @@ test_that("the Analysis Transition controller rejects re-entrant mutations", {
   reset_result <- NULL
 
   testthat::local_mocked_bindings(
-    apply_analysis_transition = function(current_state, intent, backend_root = NULL) {
+    apply_analysis_transition = function(
+      current_state,
+      intent,
+      backend_root = NULL
+    ) {
       reset_result <<- analysis_transition$reset(object)
       nested_result <<- analysis_transition$apply(
         intent = list(
@@ -665,7 +871,12 @@ test_that("Subset adapter rejects non-boolean switch values without mutation", {
         colnames(shiny::isolate(seurat_value())),
         colnames(object)
       )
-      expect_subset_indicator_values(gene_indicator, meta_indicator, reduction_indicator, 0)
+      expect_subset_indicator_values(
+        gene_indicator,
+        meta_indicator,
+        reduction_indicator,
+        0
+      )
     }
   )
 })

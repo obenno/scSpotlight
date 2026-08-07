@@ -286,7 +286,38 @@ local paths, or stack traces.
 
 The assignment and category-selection consistency contract keeps browser-owned rename filtering for responsive previews while moving persistence to a bounded server-validated intent. lasso selections take precedence over category selections. The browser sends bounded browser assignment intent through `renameCluster-assignmentIntent`: manual/lasso assignment carries selected cell IDs, and category assignment carries the current group/split levels and plot context. The server resolves assigned cells from canonical Seurat metadata, assignment mutates exactly one metadata column, and the browser receives a one-column scoped `meta_patch_ready` patch. Assignment must use no full JSON cell-level metadata transfer. Rename UI state must clear stale rename selections on group.by or split.by changes, metadata patch invalidation, explicit deselect, and clear stale rename selections after assignment completion.
 
-The subset and restore refresh semantics are part of the same Analysis Mode mutation safety seam. A subset uses safe_subset_seurat_object with validated current selected cells, preserves source-object cell order, and leaves app state untouched when no selected cells remain valid. The original object is stored once by the Analysis Transition controller before the first active subset, and restore clears that controller-owned backup after replacing app state with the original object. invalid or repeated subset toggles do not mutate app state: empty, stale, or already-subsetted requests reset or no-op without incrementing refresh indicators. successful subset and restore increment geneUpdateIndicator, metaUpdateIndicator, and reductionUpdateIndicator so existing metadata, reduction, feature, expression, and plot refresh chains run. browser selected-cell, rename, assignment, expression cache, and feature state clear or reconcile after object replacement; selected cells are intersected with visible cell IDs, stale rename selectors and assignment payloads are cleared, expression cache and selected features are purged, and the implementation must reuse existing Phase 02 contracts (`meta_ready`, `reduction_ready`/`reductions_ready`, `expr_ready`, `meta_patch_ready`, `transfer_error`, and `clear_expr`) rather than adding a subset-specific browser message. There must be no final dense `scale.data` after subset or restore.
+Category-based Subset requests use a separate bounded browser input,
+`renameCluster-categorySelectionContext`. It carries only the active group/split
+columns, selected levels, and browser-observed `metaVersion`; it never carries a
+category-expanded Cell-ID list. `R/mod_AssignCellCluster.R` accepts that context
+only when its group, split, and metadata version match server-trusted current
+values. `R/mod_SubsetCells.R` then passes the validated context to the Analysis
+Transition seam, where `resolve_analysis_category_cells()` resolves canonical
+Cell IDs from current Seurat metadata in source `colnames()` order. A present
+manual/lasso selection is authoritative and must never be reinterpreted as a
+category selection after it becomes stale.
+
+The subset and restore refresh semantics are part of the same Analysis Mode mutation safety seam. A subset uses safe_subset_seurat_object with validated current selected cells, preserves source-object cell order, and leaves app state untouched when no selected cells remain valid. The original object is stored once by the Analysis Transition controller before the first active subset, and restore clears that controller-owned backup after replacing app state with the original object. invalid or repeated subset toggles do not mutate app state: empty, stale, or already-subsetted requests reset or no-op without incrementing refresh indicators. successful subset and restore increment geneUpdateIndicator, metaUpdateIndicator, and reductionUpdateIndicator so existing metadata, reduction, feature, expression, and plot refresh chains run.
+
+Every full or patch metadata IPC stream carries ordered canonical Cell IDs in its
+`cells` column. The browser decodes this as an identity vector rather than a
+category map, so Cell IDs are never expanded into one category bucket per cell.
+Before a positional `meta_patch_ready` merge, the browser requires the patch
+Cell-ID sequence to exactly match the current sequence; a mismatched or
+reordered Cell-ID sequence is rejected without mutating metadata. A full
+metadata refresh is an object replacement only when that ordered Cell-ID
+population changes. Metadata-only refreshes retain same-version expression
+availability.
+
+The rule is: browser selected-cell, rename, assignment, expression cache, and feature state clear or reconcile after object replacement. The server sends `clear_expr`
+with the replaced `geneUpdateIndicator` expression epoch before incrementing
+the indicator. The client rejects expression payloads at or below that
+invalidated epoch and also uses a per-request generation token, so a delayed
+fetch/decode completion cannot apply after a Subset, Restore, or Analysis
+dataset replacement. The implementation must reuse existing Phase 02 contracts
+(`meta_ready`, `reduction_ready`/`reductions_ready`, `expr_ready`,
+`meta_patch_ready`, `transfer_error`, and `clear_expr`) rather than adding a
+subset-specific browser message. There must be no final dense `scale.data` after subset or restore.
 
 ### Phase 03 gap-closure invariants
 
@@ -306,8 +337,8 @@ The machine-readable payload contract is `inst/protocol/browser-payload-contract
 
 The manifest currently defines these browser message contracts:
 
-- `meta_ready`: full metadata Arrow IPC notification with `metaFile` and `metaVersion`.
-- `meta_patch_ready`: column-scoped metadata patch notification with `metaFile`, `metaVersion`, and `cols`.
+- `meta_ready`: full metadata Arrow IPC notification with `metaFile`, `metaVersion`, and an ordered canonical `cells` Cell-ID column.
+- `meta_patch_ready`: column-scoped metadata patch notification with `metaFile`, `metaVersion`, `cols`, and the same ordered canonical `cells` Cell-ID column.
 - `reduction_ready`: single-reduction Arrow IPC notification with `reductionFile`, `reductionName`, and `reductionVersion`.
 - `reductions_ready`: batched reduction prefetch notification with active reduction selection and versioned entries.
 - `pca_ready`: PCA standard deviation Arrow IPC notification with `stdevFile` and `reductionVersion`.
@@ -366,10 +397,12 @@ typed `expr` vector, or updating sparkline state. Expression cache keys remain
 `inputFeatures-cacheMissFeature` request for the missing gene, not a full
 metadata or dataset reload.
 
-Metadata patches remain column-scoped. `meta_patch_ready` must include `cols`,
-the browser applies only those decoded columns, and `ScatterModel` validates
-patch shape, length, and type before merge. Malformed or stale patches do not
-mutate existing metadata. Valid patches refresh the main scatter only when
+Metadata patches remain column-scoped. `meta_patch_ready` must include `cols`
+and ordered canonical Cell IDs. The browser applies only those decoded columns,
+and `ScatterModel` validates patch shape, length, and type before merge. The
+browser validates the Cell-ID sequence before that positional merge, so a
+mismatched or reordered Cell-ID sequence, malformed patch, or stale patch does
+not mutate existing metadata. Valid patches refresh the main scatter only when
 patched columns affect active metadata-backed plot state such as `group.by`,
 `split.by`, or selected VlnPlot metadata.
 
@@ -767,17 +800,30 @@ Schema:
 - `cell_idx`: zero-based integer cell id.
 - `cell_id`: original cell barcode/name.
 
-`cell_idx` is the canonical row id across the bundle. It must be dense and ordered from `0` to `cell_count - 1`.
+`cell_idx` is the dense, unique zero-based join key across bundle tables, with
+values from `0` to `cell_count - 1`. `cell_id` is the canonical
+Cell ID exposed to Analysis and browser code, and `cells.parquet` is the sole
+canonical source of those IDs. The loader validates that Cell IDs are non-empty
+and unique and that the cells table matches `manifest.json` `cell_count`.
 
 ### `metadata.parquet`
 
 Schema:
 
 - one column per metadata field.
-- row position is aligned to `cell_idx`.
-- row names are not stored.
+- `.scspotlight_cell_idx`: required zero-based join key into `cells.parquet`.
+- row names and the client-facing `cells` column are not stored.
 
-Metadata is transferred to the browser as Arrow IPC after the transfer path adds the client-facing `cells` column. Do not add `cells` to the canonical Parquet metadata unless the schema is intentionally changed. Factors and logical columns are stored as character-like values; numeric columns must replace `NaN` and infinite values with missing values before writing. Explore Mode metadata transfers must stream from `metadata.parquet` through DuckDB/Arrow IPC chunks instead of materializing the full metadata frame in R.
+The loader and direct metadata transfer path validate that metadata contains one
+valid, unique `.scspotlight_cell_idx` for every row in `cells.parquet`; they do
+not trust Parquet row position. Metadata is joined to `cells.parquet` and
+transferred to the browser as Arrow IPC with the client-facing ordered `cells`
+Cell-ID column. Do not add `cells` to canonical `metadata.parquet` unless the
+schema is intentionally changed. Factors and logical columns are stored as
+character-like values; numeric columns must replace `NaN` and infinite values
+with missing values before writing. Explore Mode metadata transfers must stream
+the DuckDB join through Arrow IPC chunks instead of materializing the full
+metadata frame in R.
 
 ### `features.parquet`
 
@@ -834,6 +880,7 @@ Expression queries must use DuckDB. The app selects the correct block from `feat
 - `R/fct_explore_bundle.R` owns bundle loading and Parquet/DuckDB queries.
 - `R/fct_bpcells_backend.R` exposes backend-agnostic helpers so app modules can work with either Seurat/BPCells objects or Explore bundles.
 - Explore Mode transfer futures should receive paths/query plans only, not live bundle objects or eager data frames. Metadata, reductions, and expression all stream DuckDB fetch batches into Arrow IPC writers to keep server-side peak memory bounded by chunk size.
+- Before an Explore metadata transfer, validate the dense unique `cells.parquet` index and Cell IDs plus the complete unique metadata index join. The IPC writer then joins on `.scspotlight_cell_idx` and emits canonical Cell IDs in `cells`.
 
 ## Scatter Interaction Notes
 
@@ -1166,4 +1213,61 @@ Implementation and tracking:
 - A successful Analysis dataset reset also clears the nested Subset switch through an Analysis-only UI callback, keeping the visible control aligned with the new lineage.
 - `tests/testthat/test-subset-cells.R` verifies successful Subset/Restore lineage, Change-set publication, strict and cancelled intents, failed transitions, reset behavior, and re-entrant mutation rejection with deterministic Seurat fixtures.
 - Targeted validation passed with `pixi run Rscript -e "devtools::test(filter = 'subset-cells')"` and adjacent mutation/document/runtime tests passed with `pixi run Rscript -e "devtools::test(filter = 'analysis-mutation-safety|development-contract-docs|run-app-modes')"`.
-- Final validation passed 661 R tests with 40 warnings, 126 JavaScript tests, and the Phase 03 Playwright subset/restore flow; parse checks and `git diff --check` also passed.
+- This checkout has no checked-in deterministic Playwright/end-to-end harness or representative 1M+ benchmark fixture. Issue #27 live-browser and large-dataset evidence therefore remains separate work and must not be inferred from unit or module-level integration tests.
+
+### 35. Canonical Cell-ID and expression-epoch hardening
+
+Decision:
+
+- Arrow metadata `cells` is an ordered canonical Cell-ID vector in both
+  Analysis and Explore Mode, not a zero-based numeric row index and not a
+  categorical metadata column.
+- A metadata patch is position-safe only when its Cell-ID vector exactly
+  matches the active vector.
+- Analysis object replacement invalidates the preceding expression epoch even
+  if no prior expression payload has reached the browser cache.
+- `cells.parquet` is the authoritative Cell-ID table for Explore bundles;
+  metadata references it only through `.scspotlight_cell_idx`.
+
+Why:
+
+- Stable Cell IDs keep lasso, category Subset, Restore reconciliation, and
+  partial metadata patches independent of browser array positions.
+- Treating unique Cell IDs as categories would allocate one category bucket per
+  cell and is not viable for million-cell metadata.
+- Cache-only invalidation could allow a queued old expression job to apply when
+  a replacement occurred before that job populated the cache.
+- Trusting metadata row order in an Explore bundle could silently attach
+  annotations to the wrong cells.
+
+Implementation notes:
+
+- `R/mod_UpdateMetaData.R` fails closed when metadata lacks explicit canonical
+  row names, and `R/fct_explore_bundle.R` joins validated Explore metadata to
+  `cells.parquet` before emitting IPC.
+- `srcjs/modules/arrowReader.js` decodes `cells` as `cell_id`; text metadata
+  remains category encoded. `expandMeta()` returns the ordered Cell-ID vector
+  directly, including the cluster-only scatter path.
+- `srcjs/index.js` rejects a mismatched or reordered Cell-ID sequence in
+  `meta_patch_ready`. A full `meta_ready` only clears expression state when the
+  Cell-ID population/order changes.
+- `R/mod_SubsetCells.R` and `R/mod_dataInput.R` send the previous numeric
+  `geneUpdateIndicator` through `clear_expr`. `srcjs/index.js` blocks
+  expression payloads at or below that invalidated expression epoch and checks
+  the current request generation after every asynchronous phase.
+- `R/mod_AssignCellCluster.R` validates browser category context against the
+  server-owned group, split, and metadata version before the Subset module
+  builds the transition intent.
+- Explore reduction transfers validate dense, unique `cell_idx` coverage before
+  emitting position-based coordinates. Requested Explore expression rows are
+  validated for unique in-range Cell indexes and finite values before streaming
+  their dense Arrow IPC vector.
+
+Validation performed for this hardening slice:
+
+- `pixi run Rscript -e "devtools::test(filter = 'explore-bundle|subset-cells|development-contract-docs|browser-payload-contracts|analysis-backend-contract|metadata-cleaning')"` passed 423 tests.
+- `pixi run Rscript -e "devtools::test()"` passed 684 tests with 40 existing small-fixture/underlying-library warnings.
+- `pixi run npm test` passed 15 test files and 135 tests.
+- `pixi run npm run build` completed successfully and regenerated
+  `inst/app/www/index.js` plus `inst/app/www/index.js.map`.
+- `git diff --check` passed.

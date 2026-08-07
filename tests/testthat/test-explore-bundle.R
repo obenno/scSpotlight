@@ -369,7 +369,7 @@ test_that("backend transfer adapter writes Explore bundle IPC payloads", {
   meta_table <- arrow::read_ipc_stream(meta_transfer$filePath)
   expect_equal(meta_payload$cols, "cluster")
   expect_equal(as.vector(meta_table$cluster), c("a", "b", "a"))
-  expect_equal(as.integer(meta_table$cells), 0:2)
+  expect_equal(as.character(meta_table$cells), c("c1", "c2", "c3"))
 
   chunked_meta_file <- file.path(transfer_dir, "meta", "chunked_meta")
   extract_explore_metadata_to_ipc(
@@ -380,7 +380,7 @@ test_that("backend transfer adapter writes Explore bundle IPC payloads", {
   )
   chunked_meta_table <- arrow::read_ipc_stream(chunked_meta_file)
   expect_equal(as.vector(chunked_meta_table$cluster), c("a", "b", "a"))
-  expect_equal(as.integer(chunked_meta_table$cells), 0:2)
+  expect_equal(as.character(chunked_meta_table$cells), c("c1", "c2", "c3"))
 
   pca_payload <- write_backend_pca_stdev_transfer(
     bundle,
@@ -430,17 +430,20 @@ test_that("backend transfer adapter writes Explore bundle IPC payloads", {
       "payload"
     )
   )
-  expect_false(any(c(
-    "bundle",
-    "data",
-    "connection",
-    "con",
-    "dbi",
-    "block_paths",
-    "expression_blocks",
-    "expr",
-    "vector"
-  ) %in% names(expression_transfer)))
+  expect_false(any(
+    c(
+      "bundle",
+      "data",
+      "connection",
+      "con",
+      "dbi",
+      "block_paths",
+      "expression_blocks",
+      "expr",
+      "vector"
+    ) %in%
+      names(expression_transfer)
+  ))
   expect_true(file.exists(expression_transfer$block_path))
   expect_equal(expression_transfer$feature_idx, 1L)
   expect_equal(expression_transfer$cell_count, 3L)
@@ -448,11 +451,21 @@ test_that("backend transfer adapter writes Explore bundle IPC payloads", {
     names(expression_transfer$payload),
     c("geneName", "assay", "exprVersion", "exprFile")
   )
-  expect_equal(expression_transfer$payload$exprFile, basename(expression_transfer$output_file))
-  expect_false(any(grepl("/", unlist(expression_transfer$payload), fixed = TRUE)))
+  expect_equal(
+    expression_transfer$payload$exprFile,
+    basename(expression_transfer$output_file)
+  )
+  expect_false(any(grepl(
+    "/",
+    unlist(expression_transfer$payload),
+    fixed = TRUE
+  )))
   expression_payload <- write_backend_expression_transfer(expression_transfer)
   expression_table <- arrow::read_ipc_stream(expression_transfer$output_file)
-  expect_identical(names(expression_payload), c("geneName", "assay", "exprVersion", "exprFile"))
+  expect_identical(
+    names(expression_payload),
+    c("geneName", "assay", "exprVersion", "exprFile")
+  )
   expect_equal(expression_payload$geneName, "g2")
   expect_identical(names(expression_table), "expr")
   expect_equal(as.numeric(expression_table$expr), c(0, 2, 1))
@@ -487,12 +500,28 @@ test_that("Explore expression transfer resources are scoped and closed", {
   )[[1]]
   extract_source <- explore_source[seq(extract_start, next_symbol - 1L)]
 
-  expect_true(any(grepl("DBI::dbConnect(duckdb::duckdb(), dbdir = \":memory:\")", extract_source, fixed = TRUE)))
-  expect_true(any(grepl("DBI::dbDisconnect(con, shutdown = TRUE)", extract_source, fixed = TRUE)))
+  expect_true(any(grepl(
+    "DBI::dbConnect(duckdb::duckdb(), dbdir = \":memory:\")",
+    extract_source,
+    fixed = TRUE
+  )))
+  expect_true(any(grepl(
+    "DBI::dbDisconnect(con, shutdown = TRUE)",
+    extract_source,
+    fixed = TRUE
+  )))
   expect_true(any(grepl("DBI::dbClearResult", extract_source, fixed = TRUE)))
   expect_true(any(grepl("WHERE feature_idx", extract_source, fixed = TRUE)))
-  expect_true(any(grepl("arrow::schema(expr = arrow::float32())", extract_source, fixed = TRUE)))
-  expect_false(any(grepl("explore_bundle_expr_vector", extract_source, fixed = TRUE)))
+  expect_true(any(grepl(
+    "arrow::schema(expr = arrow::float32())",
+    extract_source,
+    fixed = TRUE
+  )))
+  expect_false(any(grepl(
+    "explore_bundle_expr_vector",
+    extract_source,
+    fixed = TRUE
+  )))
 
   adapter_source <- readLines(adapter_path, warn = FALSE)
   prepare_start <- grep(
@@ -506,8 +535,16 @@ test_that("Explore expression transfer resources are scoped and closed", {
     fixed = TRUE
   )[[1]]
   prepare_source <- adapter_source[seq(prepare_start, write_start - 1L)]
-  expect_true(any(grepl("explore_bundle_expression_query_plan", prepare_source, fixed = TRUE)))
-  expect_false(any(grepl("extract_explore_bundle_expr_to_ipc", prepare_source, fixed = TRUE)))
+  expect_true(any(grepl(
+    "explore_bundle_expression_query_plan",
+    prepare_source,
+    fixed = TRUE
+  )))
+  expect_false(any(grepl(
+    "extract_explore_bundle_expr_to_ipc",
+    prepare_source,
+    fixed = TRUE
+  )))
 })
 
 test_that("Explore expression transfer streams dense chunks from sparse rows", {
@@ -546,6 +583,65 @@ test_that("Explore expression transfer streams dense chunks from sparse rows", {
   expect_equal(as.numeric(expression_table$expr), c(2, 0, 0, 4, 0, 0, 6))
 })
 
+test_that("Explore transfers reject malformed reduction and expression cell indexes", {
+  skip_if_not_installed("arrow")
+  skip_if_not_installed("duckdb")
+
+  extract_explore_reduction_to_ipc <- getFromNamespace(
+    "extract_explore_reduction_to_ipc",
+    "scSpotlight"
+  )
+  extract_explore_query_expr_to_ipc <- getFromNamespace(
+    "extract_explore_query_expr_to_ipc",
+    "scSpotlight"
+  )
+
+  work_dir <- tempfile("explore_invalid_transfer_indexes_")
+  dir.create(work_dir)
+  on.exit(unlink(work_dir, recursive = TRUE, force = TRUE), add = TRUE)
+
+  reduction_path <- file.path(work_dir, "reduction.parquet")
+  arrow::write_parquet(
+    data.frame(
+      cell_idx = c(0L, 0L, 2L),
+      UMAP_1 = c(1, 2, 3),
+      UMAP_2 = c(4, 5, 6)
+    ),
+    reduction_path
+  )
+  expect_error(
+    extract_explore_reduction_to_ipc(
+      reduction_path = reduction_path,
+      x_col = "UMAP_1",
+      y_col = "UMAP_2",
+      output_file = file.path(work_dir, "reduction.arrow"),
+      expected_cell_count = 3L
+    ),
+    "dense, unique cell_idx",
+    fixed = TRUE
+  )
+
+  expression_path <- file.path(work_dir, "block_00000.parquet")
+  arrow::write_parquet(
+    data.frame(
+      feature_idx = c(1L, 1L, 1L),
+      cell_idx = c(0L, 0L, 3L),
+      value = c(1, 2, 3)
+    ),
+    expression_path
+  )
+  expect_error(
+    extract_explore_query_expr_to_ipc(
+      block_path = expression_path,
+      feature_idx = 1L,
+      cell_count = 3L,
+      output_file = file.path(work_dir, "expr.arrow")
+    ),
+    "duplicate, invalid, or non-finite",
+    fixed = TRUE
+  )
+})
+
 test_that("Explore metadata transfer keeps categorical schemas stable across chunks", {
   skip_if_not_installed("arrow")
   skip_if_not_installed("duckdb")
@@ -571,6 +667,13 @@ test_that("Explore metadata transfer keeps categorical schemas stable across chu
     ),
     metadata_path
   )
+  arrow::write_parquet(
+    data.frame(
+      cell_idx = 0:3,
+      cell_id = c("cell-a", "cell-b", "cell-c", "cell-d")
+    ),
+    file.path(work_dir, "cells.parquet")
+  )
 
   output_file <- file.path(work_dir, "metadata.arrow")
   extract_explore_metadata_to_ipc(
@@ -583,7 +686,51 @@ test_that("Explore metadata transfer keeps categorical schemas stable across chu
   expect_equal(as.vector(metadata_table$cluster), c("a", "b", "c", "a"))
   expect_equal(as.vector(metadata_table$sample), c("s1", "s1", "s2", "s3"))
   expect_equal(as.numeric(metadata_table$nCount), c(1, 2, 3, 4))
-  expect_equal(as.integer(metadata_table$cells), 0:3)
+  expect_equal(
+    as.character(metadata_table$cells),
+    c("cell-a", "cell-b", "cell-c", "cell-d")
+  )
+})
+
+test_that("Explore metadata transfer rejects invalid canonical cell indexes", {
+  skip_if_not_installed("arrow")
+  skip_if_not_installed("duckdb")
+
+  extract_explore_metadata_to_ipc <- getFromNamespace(
+    "extract_explore_metadata_to_ipc",
+    "scSpotlight"
+  )
+
+  work_dir <- tempfile("explore_invalid_cells_")
+  dir.create(work_dir)
+  on.exit(unlink(work_dir, recursive = TRUE, force = TRUE), add = TRUE)
+
+  metadata_path <- file.path(work_dir, "metadata.parquet")
+  arrow::write_parquet(
+    data.frame(
+      cluster = c("a", "b"),
+      .scspotlight_cell_idx = c(0L, 1L),
+      check.names = FALSE,
+      stringsAsFactors = FALSE
+    ),
+    metadata_path
+  )
+  arrow::write_parquet(
+    data.frame(
+      cell_idx = c(0L, 0L),
+      cell_id = c("cell-a", "cell-b")
+    ),
+    file.path(work_dir, "cells.parquet")
+  )
+
+  expect_error(
+    extract_explore_metadata_to_ipc(
+      metadata_path,
+      file.path(work_dir, "metadata.arrow")
+    ),
+    "dense, unique cell_idx",
+    fixed = TRUE
+  )
 })
 
 test_that("Explore transfers preserve explicit cell order", {
@@ -613,12 +760,22 @@ test_that("Explore transfers preserve explicit cell order", {
     ),
     metadata_path
   )
+  arrow::write_parquet(
+    data.frame(
+      cell_idx = 0:2,
+      cell_id = c("cell-0", "cell-1", "cell-2")
+    ),
+    file.path(work_dir, "cells.parquet")
+  )
   metadata_output <- file.path(work_dir, "metadata.arrow")
   extract_explore_metadata_to_ipc(metadata_path, metadata_output)
   metadata_table <- arrow::read_ipc_stream(metadata_output)
 
   expect_equal(as.vector(metadata_table$cluster), c("early", "middle", "late"))
-  expect_equal(as.integer(metadata_table$cells), 0:2)
+  expect_equal(
+    as.character(metadata_table$cells),
+    c("cell-0", "cell-1", "cell-2")
+  )
   expect_false(".scspotlight_cell_idx" %in% names(metadata_table))
 
   reduction_path <- file.path(work_dir, "reduction.parquet")
@@ -674,14 +831,27 @@ test_that("Explore bundle loader rejects incomplete bundles", {
     file.path(bundle_dir, "manifest.json"),
     auto_unbox = TRUE
   )
-  arrow::write_parquet(data.frame(cell_idx = 0L, cell_id = "c1"), file.path(bundle_dir, "cells.parquet"))
   arrow::write_parquet(
-    data.frame(feature_idx = 0L, feature = "g1", assay = "RNA", layer = "data", block = 0L),
+    data.frame(cell_idx = 0L, cell_id = "c1"),
+    file.path(bundle_dir, "cells.parquet")
+  )
+  arrow::write_parquet(
+    data.frame(
+      feature_idx = 0L,
+      feature = "g1",
+      assay = "RNA",
+      layer = "data",
+      block = 0L
+    ),
     file.path(bundle_dir, "features.parquet")
   )
   dir.create(file.path(bundle_dir, "expression"))
   arrow::write_parquet(
-    data.frame(feature_idx = integer(), cell_idx = integer(), value = numeric()),
+    data.frame(
+      feature_idx = integer(),
+      cell_idx = integer(),
+      value = numeric()
+    ),
     file.path(bundle_dir, "expression", "block_00000.parquet")
   )
 

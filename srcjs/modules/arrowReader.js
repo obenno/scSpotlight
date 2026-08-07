@@ -103,12 +103,39 @@ function isIntegerArray(arr) {
   return true;
 }
 
+function isTextType(typeId) {
+  return typeId === Type.Utf8 || typeId === Type.LargeUtf8;
+}
+
+function parseTextColumn(col) {
+  const categoryMap = {};
+  const values = col.toArray();
+  values.forEach((value, index) => {
+    if (value == null) {
+      return;
+    }
+    const label = String(value);
+    if (!categoryMap[label]) {
+      categoryMap[label] = [];
+    }
+    categoryMap[label].push(index);
+  });
+  return { type: "category", value: categoryMap };
+}
+
+function parseCellIdColumn(col) {
+  return {
+    type: "cell_id",
+    value: Array.from(col.toArray(), (value) => (value == null ? null : String(value))),
+  };
+}
+
 /**
  * Parse an Arrow table containing cell metadata into the format expected
  * by ScatterModel.setData({ cellMetaData }).
  *
  * Numeric columns → { type: "number", value: Int32Array | Float32Array }
- * Dictionary (factor) columns → { type: "category", value: { catName: [0-based indices] } }
+ * Text and dictionary (factor) columns → { type: "category", value: { catName: [0-based indices] } }
  *
  * @param {import("apache-arrow").Table} table
  * @returns {Object} metadata object keyed by column name
@@ -120,7 +147,10 @@ export function parseMetaFromArrow(table) {
     const col = table.getChild(field.name);
     const typeId = field.type.typeId;
 
-    if (typeId === Type.Dictionary) {
+    if (field.name === "cells") {
+      // Cell IDs are identities, not categorical metadata. Avoid one bucket per ID.
+      out.cells = parseCellIdColumn(col);
+    } else if (typeId === Type.Dictionary) {
       // Category column — Arrow dictionary encoding.
       // Decode via dictionary/index buffers directly to avoid per-row col.get().
       const catMap = {};
@@ -154,6 +184,8 @@ export function parseMetaFromArrow(table) {
       }
 
       out[field.name] = { type: "category", value: catMap };
+    } else if (isTextType(typeId)) {
+      out[field.name] = parseTextColumn(col);
     } else {
       // Numeric column
       const dataArray = col.toArray();

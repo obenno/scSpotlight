@@ -16,16 +16,31 @@ mod_UpdateMetaData_ui <- function(id) {
 #'
 #' @noRd
 clean_meta_frame <- function(d) {
-  d <- d %>%
-    dplyr::mutate(cells = seq_len(nrow(d)) - 1L) %>%
-    tibble::as_tibble()
+  cell_ids <- rownames(d)
+  if (
+    is.null(cell_ids) ||
+      length(cell_ids) != nrow(d) ||
+      .row_names_info(d, type = 1L) < 0L ||
+      any(is.na(cell_ids) | !nzchar(cell_ids))
+  ) {
+    stop(
+      "Metadata transfer requires canonical Cell IDs in row names.",
+      call. = FALSE
+    )
+  }
+
+  d <- tibble::as_tibble(d)
+  d$cells <- as.character(cell_ids)
 
   for (col in colnames(d)) {
     if (is.numeric(d[[col]])) {
       v <- d[[col]]
       v[is.nan(v) | is.infinite(v)] <- NA
       d[[col]] <- v
-    } else if (is.character(d[[col]]) || is.logical(d[[col]])) {
+    } else if (
+      col != "cells" &&
+        (is.character(d[[col]]) || is.logical(d[[col]]))
+    ) {
       d[[col]] <- as.factor(d[[col]])
     }
   }

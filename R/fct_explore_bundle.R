@@ -31,6 +31,231 @@ explore_parquet_columns <- function(path) {
   ))
 }
 
+validate_scspotlight_explore_cells_file <- function(
+  cells_path,
+  expected_cell_count = NULL
+) {
+  if (!file.exists(cells_path)) {
+    stop("Explore bundle cells.parquet is missing: ", cells_path)
+  }
+
+  required_cols <- c("cell_idx", "cell_id")
+  missing_cols <- setdiff(required_cols, explore_parquet_columns(cells_path))
+  if (length(missing_cols)) {
+    stop(
+      "Explore bundle cells.parquet is missing required column(s): ",
+      paste(missing_cols, collapse = ", ")
+    )
+  }
+
+  con <- DBI::dbConnect(duckdb::duckdb(), dbdir = ":memory:")
+  on.exit(DBI::dbDisconnect(con, shutdown = TRUE), add = TRUE)
+  sql_path <- duckdb_parquet_sql_path(cells_path)
+  cell_idx <- duckdb_quote_identifier("cell_idx")
+  cell_id <- duckdb_quote_identifier("cell_id")
+  summary <- DBI::dbGetQuery(
+    con,
+    sprintf(
+      paste(
+        "SELECT",
+        "COUNT(*) AS row_count,",
+        "COUNT(DISTINCT TRY_CAST(%1$s AS BIGINT)) AS distinct_index_count,",
+        "MIN(TRY_CAST(%1$s AS BIGINT)) AS min_index,",
+        "MAX(TRY_CAST(%1$s AS BIGINT)) AS max_index,",
+        "SUM(CASE WHEN TRY_CAST(%1$s AS DOUBLE) IS NULL",
+        "OR TRY_CAST(%1$s AS DOUBLE) <> FLOOR(TRY_CAST(%1$s AS DOUBLE))",
+        "THEN 1 ELSE 0 END) AS invalid_index_count,",
+        "SUM(CASE WHEN %2$s IS NULL",
+        "OR TRIM(CAST(%2$s AS VARCHAR)) = '' THEN 1 ELSE 0 END)",
+        "AS invalid_id_count,",
+        "COUNT(DISTINCT CAST(%2$s AS VARCHAR)) AS distinct_id_count",
+        "FROM read_parquet('%3$s')",
+        sep = " "
+      ),
+      cell_idx,
+      cell_id,
+      sql_path
+    )
+  )
+
+  row_count <- as.numeric(summary$row_count[[1]])
+  distinct_index_count <- as.numeric(summary$distinct_index_count[[1]])
+  min_index <- as.numeric(summary$min_index[[1]])
+  max_index <- as.numeric(summary$max_index[[1]])
+  invalid_index_count <- as.numeric(summary$invalid_index_count[[1]])
+  invalid_id_count <- as.numeric(summary$invalid_id_count[[1]])
+  distinct_id_count <- as.numeric(summary$distinct_id_count[[1]])
+  expected_cell_count <- if (is.null(expected_cell_count)) {
+    row_count
+  } else {
+    as.numeric(expected_cell_count[[1]])
+  }
+
+  if (
+    !is.finite(row_count) ||
+      !is.finite(expected_cell_count) ||
+      row_count != expected_cell_count ||
+      row_count < 1 ||
+      invalid_index_count != 0 ||
+      distinct_index_count != row_count ||
+      min_index != 0 ||
+      max_index != row_count - 1 ||
+      invalid_id_count != 0 ||
+      distinct_id_count != row_count
+  ) {
+    stop(
+      paste(
+        "Explore bundle cells.parquet must contain a dense, unique cell_idx",
+        "and non-empty unique Cell IDs."
+      ),
+      call. = FALSE
+    )
+  }
+
+  invisible(row_count)
+}
+
+validate_scspotlight_explore_metadata_cell_index <- function(
+  metadata_path,
+  cells_path,
+  expected_cell_count
+) {
+  metadata_cols <- explore_parquet_columns(metadata_path)
+  if (!".scspotlight_cell_idx" %in% metadata_cols) {
+    stop(
+      "Explore bundle metadata.parquet is missing required column: ",
+      ".scspotlight_cell_idx"
+    )
+  }
+
+  con <- DBI::dbConnect(duckdb::duckdb(), dbdir = ":memory:")
+  on.exit(DBI::dbDisconnect(con, shutdown = TRUE), add = TRUE)
+  metadata_sql_path <- duckdb_parquet_sql_path(metadata_path)
+  cells_sql_path <- duckdb_parquet_sql_path(cells_path)
+  metadata_idx <- duckdb_quote_identifier(".scspotlight_cell_idx")
+  cell_idx <- duckdb_quote_identifier("cell_idx")
+  summary <- DBI::dbGetQuery(
+    con,
+    sprintf(
+      paste(
+        "SELECT",
+        "COUNT(*) AS metadata_count,",
+        "COUNT(DISTINCT TRY_CAST(meta_src.%1$s AS BIGINT))",
+        "AS distinct_index_count,",
+        "SUM(CASE WHEN TRY_CAST(meta_src.%1$s AS DOUBLE) IS NULL",
+        "OR TRY_CAST(meta_src.%1$s AS DOUBLE) <>",
+        "FLOOR(TRY_CAST(meta_src.%1$s AS DOUBLE))",
+        "THEN 1 ELSE 0 END) AS invalid_index_count,",
+        "SUM(CASE WHEN cell_index.%2$s IS NULL THEN 1 ELSE 0 END)",
+        "AS missing_cell_count",
+        "FROM read_parquet('%3$s') AS meta_src",
+        "LEFT JOIN read_parquet('%4$s') AS cell_index",
+        "ON TRY_CAST(meta_src.%1$s AS BIGINT) = cell_index.%2$s",
+        sep = " "
+      ),
+      metadata_idx,
+      cell_idx,
+      metadata_sql_path,
+      cells_sql_path
+    )
+  )
+
+  metadata_count <- as.numeric(summary$metadata_count[[1]])
+  distinct_index_count <- as.numeric(summary$distinct_index_count[[1]])
+  invalid_index_count <- as.numeric(summary$invalid_index_count[[1]])
+  missing_cell_count <- as.numeric(summary$missing_cell_count[[1]])
+  expected_cell_count <- as.numeric(expected_cell_count)
+  if (
+    !is.finite(metadata_count) ||
+      metadata_count != expected_cell_count ||
+      distinct_index_count != expected_cell_count ||
+      invalid_index_count != 0 ||
+      missing_cell_count != 0
+  ) {
+    stop(
+      paste(
+        "Explore bundle metadata.parquet must contain exactly one valid cell",
+        "index for every canonical Cell ID."
+      ),
+      call. = FALSE
+    )
+  }
+
+  invisible(TRUE)
+}
+
+validate_scspotlight_explore_reduction_cell_index <- function(
+  reduction_path,
+  expected_cell_count = NULL
+) {
+  if (!file.exists(reduction_path)) {
+    stop("Explore bundle reduction file is missing: ", reduction_path)
+  }
+
+  if (!"cell_idx" %in% explore_parquet_columns(reduction_path)) {
+    stop(
+      "Explore bundle reduction is missing required column cell_idx: ",
+      reduction_path
+    )
+  }
+
+  con <- DBI::dbConnect(duckdb::duckdb(), dbdir = ":memory:")
+  on.exit(DBI::dbDisconnect(con, shutdown = TRUE), add = TRUE)
+  sql_path <- duckdb_parquet_sql_path(reduction_path)
+  cell_idx <- duckdb_quote_identifier("cell_idx")
+  summary <- DBI::dbGetQuery(
+    con,
+    sprintf(
+      paste(
+        "SELECT",
+        "COUNT(*) AS row_count,",
+        "COUNT(DISTINCT TRY_CAST(%1$s AS BIGINT)) AS distinct_index_count,",
+        "MIN(TRY_CAST(%1$s AS BIGINT)) AS min_index,",
+        "MAX(TRY_CAST(%1$s AS BIGINT)) AS max_index,",
+        "SUM(CASE WHEN TRY_CAST(%1$s AS DOUBLE) IS NULL",
+        "OR TRY_CAST(%1$s AS DOUBLE) <> FLOOR(TRY_CAST(%1$s AS DOUBLE))",
+        "THEN 1 ELSE 0 END) AS invalid_index_count",
+        "FROM read_parquet('%2$s')",
+        sep = " "
+      ),
+      cell_idx,
+      sql_path
+    )
+  )
+
+  row_count <- as.numeric(summary$row_count[[1]])
+  distinct_index_count <- as.numeric(summary$distinct_index_count[[1]])
+  min_index <- as.numeric(summary$min_index[[1]])
+  max_index <- as.numeric(summary$max_index[[1]])
+  invalid_index_count <- as.numeric(summary$invalid_index_count[[1]])
+  expected_cell_count <- if (is.null(expected_cell_count)) {
+    row_count
+  } else {
+    as.numeric(expected_cell_count[[1]])
+  }
+
+  if (
+    !is.finite(row_count) ||
+      !is.finite(expected_cell_count) ||
+      row_count != expected_cell_count ||
+      row_count < 1 ||
+      invalid_index_count != 0 ||
+      distinct_index_count != row_count ||
+      min_index != 0 ||
+      max_index != row_count - 1
+  ) {
+    stop(
+      paste(
+        "Explore bundle reduction must contain a dense, unique cell_idx",
+        "for every canonical Cell ID."
+      ),
+      call. = FALSE
+    )
+  }
+
+  invisible(row_count)
+}
+
 is_scspotlight_explore_bundle <- function(object) {
   inherits(object, "scspotlight_explore_bundle")
 }
@@ -137,13 +362,25 @@ validate_scspotlight_explore_bundle_files <- function(bundle_root, manifest) {
     )
   }
 
-  metadata_cols <- explore_parquet_columns(file.path(bundle_root, "metadata.parquet"))
+  metadata_cols <- explore_parquet_columns(file.path(
+    bundle_root,
+    "metadata.parquet"
+  ))
   if (!".scspotlight_cell_idx" %in% metadata_cols) {
     stop(
       "Explore bundle metadata.parquet is missing required column: ",
       ".scspotlight_cell_idx"
     )
   }
+  cell_count <- validate_scspotlight_explore_cells_file(
+    file.path(bundle_root, "cells.parquet"),
+    expected_cell_count = manifest$cell_count
+  )
+  validate_scspotlight_explore_metadata_cell_index(
+    file.path(bundle_root, "metadata.parquet"),
+    file.path(bundle_root, "cells.parquet"),
+    expected_cell_count = cell_count
+  )
 
   reductions <- as.character(manifest$reductions %||% character())
   if (!length(reductions)) {
@@ -170,6 +407,10 @@ validate_scspotlight_explore_bundle_files <- function(bundle_root, manifest) {
         reductions[[i]]
       )
     }
+    validate_scspotlight_explore_reduction_cell_index(
+      reduction_files[[i]],
+      expected_cell_count = cell_count
+    )
   }
 
   features_path <- file.path(bundle_root, "features.parquet")
@@ -462,7 +703,8 @@ read_explore_conversion_source <- function(input_file, backend_root = NULL) {
   }
 
   if (grepl("\\.[Hh]5[Aa][Dd]$", input_file)) {
-    backend_root <- backend_root %||% tempfile("scspotlight_explore_h5ad_backend_")
+    backend_root <- backend_root %||%
+      tempfile("scspotlight_explore_h5ad_backend_")
     dir.create(backend_root, recursive = TRUE, showWarnings = FALSE)
     return(import_h5ad_as_seurat_bpcells(
       input_file,
@@ -613,23 +855,45 @@ explore_bundle_metadata <- function(bundle, cols = NULL) {
   if (".scspotlight_cell_idx" %in% colnames(meta)) {
     meta <- meta[order(meta$.scspotlight_cell_idx), , drop = FALSE]
   }
+  cells <- as.data.frame(
+    arrow::read_parquet(explore_bundle_cells_path(bundle)),
+    stringsAsFactors = FALSE
+  )
+  cell_ids <- as.character(
+    cells$cell_id[match(meta$.scspotlight_cell_idx, cells$cell_idx)]
+  )
+  if (any(is.na(cell_ids) | !nzchar(cell_ids))) {
+    stop(
+      "Explore bundle metadata could not be joined to canonical Cell IDs.",
+      call. = FALSE
+    )
+  }
   meta$.scspotlight_cell_idx <- NULL
+  meta$.scspotlight_cell_id <- NULL
   if (isTruthy(cols)) {
     cols <- intersect(cols, colnames(meta))
     meta <- meta[, cols, drop = FALSE]
   }
+  rownames(meta) <- cell_ids
   meta
 }
 
 clean_meta_transfer_chunk <- function(d) {
   d <- as.data.frame(d, stringsAsFactors = FALSE)
 
+  if ("cells" %in% colnames(d)) {
+    d$cells <- as.character(d$cells)
+  }
+
   for (col in colnames(d)) {
     if (is.numeric(d[[col]])) {
       v <- d[[col]]
       v[is.nan(v) | is.infinite(v)] <- NA
       d[[col]] <- v
-    } else if (is.character(d[[col]]) || is.logical(d[[col]])) {
+    } else if (
+      col != "cells" &&
+        (is.character(d[[col]]) || is.logical(d[[col]]))
+    ) {
       d[[col]] <- as.factor(d[[col]])
     }
   }
@@ -667,7 +931,8 @@ explore_bundle_metadata_query_plan <- function(bundle, cols = NULL) {
       winslash = "/",
       mustWork = TRUE
     ),
-    cols = cols
+    cols = cols,
+    cell_count = explore_bundle_cell_count(bundle)
   )
 }
 
@@ -675,7 +940,8 @@ extract_explore_metadata_to_ipc <- function(
   metadata_path,
   output_file,
   cols = NULL,
-  chunk_size = scspotlight_metadata_transfer_chunk_size
+  chunk_size = scspotlight_metadata_transfer_chunk_size,
+  expected_cell_count = NULL
 ) {
   if (!file.exists(metadata_path)) {
     stop("Metadata Parquet file not found: ", metadata_path)
@@ -703,16 +969,72 @@ extract_explore_metadata_to_ipc <- function(
   if (isTruthy(cols)) {
     selected_cols <- intersect(cols, selected_cols)
   }
-  selected_cols <- setdiff(selected_cols, c("cells", ".scspotlight_cell_idx"))
-  order_expr <- duckdb_quote_identifier(".scspotlight_cell_idx")
-  select_expr <- c(
-    vapply(selected_cols, duckdb_quote_identifier, character(1)),
-    sprintf("CAST(%s AS INTEGER) AS cells", order_expr)
+  selected_cols <- setdiff(
+    selected_cols,
+    c("cells", ".scspotlight_cell_idx", ".scspotlight_cell_id")
   )
-  sql <- sprintf(
-    "SELECT %s FROM read_parquet('%s') ORDER BY %s",
-    paste(select_expr, collapse = ", "),
+  metadata_alias <- "meta_src"
+  cell_alias <- "cell_index"
+  order_expr <- sprintf(
+    "%s.%s",
+    metadata_alias,
+    duckdb_quote_identifier(".scspotlight_cell_idx")
+  )
+  select_expr <- c(
+    vapply(
+      selected_cols,
+      function(column) {
+        sprintf(
+          "%s.%s",
+          metadata_alias,
+          duckdb_quote_identifier(column)
+        )
+      },
+      character(1)
+    )
+  )
+
+  cells_path <- file.path(dirname(metadata_path), "cells.parquet")
+  if (is.null(expected_cell_count)) {
+    cell_count <- validate_scspotlight_explore_cells_file(cells_path)
+    validate_scspotlight_explore_metadata_cell_index(
+      metadata_path,
+      cells_path,
+      expected_cell_count = cell_count
+    )
+  } else {
+    cell_count <- suppressWarnings(as.integer(expected_cell_count[[1]]))
+    if (is.na(cell_count) || cell_count < 1L || !file.exists(cells_path)) {
+      stop(
+        "Explore metadata transfer requires validated canonical Cell IDs.",
+        call. = FALSE
+      )
+    }
+  }
+  from_expr <- sprintf(
+    paste(
+      "read_parquet('%s') AS %s",
+      "INNER JOIN read_parquet('%s') AS %s",
+      "ON %s = %s.%s"
+    ),
     sql_path,
+    metadata_alias,
+    duckdb_parquet_sql_path(cells_path),
+    cell_alias,
+    order_expr,
+    cell_alias,
+    duckdb_quote_identifier("cell_idx")
+  )
+  cell_id_expr <- sprintf(
+    "CAST(%s.%s AS VARCHAR)",
+    cell_alias,
+    duckdb_quote_identifier("cell_id")
+  )
+  select_expr <- c(select_expr, sprintf("%s AS cells", cell_id_expr))
+  sql <- sprintf(
+    "SELECT %s FROM %s ORDER BY %s",
+    paste(select_expr, collapse = ", "),
+    from_expr,
     order_expr
   )
 
@@ -761,7 +1083,7 @@ extract_explore_metadata_to_ipc <- function(
 
   if (!wrote_chunk) {
     empty <- clean_meta_transfer_chunk(
-      cbind(schema[selected_cols], cells = integer())
+      cbind(schema[selected_cols], cells = character())
     )
     table <- metadata_transfer_arrow_table(empty)
     writer <- arrow::RecordBatchStreamWriter$create(sink, table$schema)
@@ -820,6 +1142,11 @@ explore_bundle_reduction_query_plan <- function(
   if (length(keep) == 1L) {
     keep <- c(keep, NA_character_)
   }
+  cell_count <- explore_bundle_cell_count(bundle)
+  validate_scspotlight_explore_reduction_cell_index(
+    reduction_path,
+    expected_cell_count = cell_count
+  )
 
   list(
     reduction_path = normalizePath(
@@ -828,7 +1155,8 @@ explore_bundle_reduction_query_plan <- function(
       mustWork = TRUE
     ),
     x_col = keep[[1]],
-    y_col = keep[[2]]
+    y_col = keep[[2]],
+    cell_count = cell_count
   )
 }
 
@@ -837,7 +1165,8 @@ extract_explore_reduction_to_ipc <- function(
   x_col,
   y_col = NA_character_,
   output_file,
-  chunk_size = scspotlight_reduction_transfer_chunk_size
+  chunk_size = scspotlight_reduction_transfer_chunk_size,
+  expected_cell_count = NULL
 ) {
   if (!file.exists(reduction_path)) {
     stop("Reduction Parquet file not found: ", reduction_path)
@@ -846,6 +1175,10 @@ extract_explore_reduction_to_ipc <- function(
   if (is.na(chunk_size) || chunk_size < 1L) {
     chunk_size <- scspotlight_reduction_transfer_chunk_size
   }
+  validate_scspotlight_explore_reduction_cell_index(
+    reduction_path,
+    expected_cell_count = expected_cell_count
+  )
 
   con <- DBI::dbConnect(duckdb::duckdb(), dbdir = ":memory:")
   on.exit(DBI::dbDisconnect(con, shutdown = TRUE), add = TRUE)
@@ -956,6 +1289,106 @@ explore_read_expression_sparse_duckdb <- function(block_path, feature_idx) {
   )
 }
 
+validate_scspotlight_explore_expression_feature_rows <- function(
+  block_path,
+  feature_idx,
+  cell_count
+) {
+  if (!file.exists(block_path)) {
+    stop("Expression block Parquet file not found: ", block_path)
+  }
+  feature_idx <- suppressWarnings(as.integer(feature_idx[[1]]))
+  cell_count <- suppressWarnings(as.integer(cell_count[[1]]))
+  if (is.na(feature_idx) || is.na(cell_count) || cell_count < 0L) {
+    stop(
+      "Explore expression validation requires valid feature and cell indexes."
+    )
+  }
+
+  required_cols <- c("feature_idx", "cell_idx", "value")
+  missing_cols <- setdiff(required_cols, explore_parquet_columns(block_path))
+  if (length(missing_cols)) {
+    stop(
+      "Explore expression block is missing required column(s): ",
+      paste(missing_cols, collapse = ", ")
+    )
+  }
+
+  con <- DBI::dbConnect(duckdb::duckdb(), dbdir = ":memory:")
+  on.exit(DBI::dbDisconnect(con, shutdown = TRUE), add = TRUE)
+  sql_path <- duckdb_parquet_sql_path(block_path)
+  feature_col <- duckdb_quote_identifier("feature_idx")
+  cell_col <- duckdb_quote_identifier("cell_idx")
+  value_col <- duckdb_quote_identifier("value")
+  summary <- DBI::dbGetQuery(
+    con,
+    paste0(
+      "SELECT COUNT(*) AS row_count, ",
+      "COUNT(DISTINCT TRY_CAST(",
+      cell_col,
+      " AS BIGINT)) AS distinct_cell_count, ",
+      "SUM(CASE WHEN TRY_CAST(",
+      cell_col,
+      " AS DOUBLE) IS NULL ",
+      "OR TRY_CAST(",
+      cell_col,
+      " AS DOUBLE) <> FLOOR(TRY_CAST(",
+      cell_col,
+      " AS DOUBLE)) ",
+      "OR TRY_CAST(",
+      cell_col,
+      " AS BIGINT) < 0 ",
+      "OR TRY_CAST(",
+      cell_col,
+      " AS BIGINT) >= ",
+      cell_count,
+      " THEN 1 ELSE 0 END) AS invalid_cell_count, ",
+      "SUM(CASE WHEN TRY_CAST(",
+      value_col,
+      " AS DOUBLE) IS NULL ",
+      "OR NOT isfinite(TRY_CAST(",
+      value_col,
+      " AS DOUBLE)) THEN 1 ELSE 0 END) AS invalid_value_count ",
+      "FROM read_parquet('",
+      sql_path,
+      "') ",
+      "WHERE ",
+      feature_col,
+      " = ",
+      feature_idx
+    )
+  )
+
+  row_count <- as.numeric(summary$row_count[[1]])
+  distinct_cell_count <- as.numeric(summary$distinct_cell_count[[1]])
+  invalid_cell_count <- as.numeric(summary$invalid_cell_count[[1]])
+  invalid_value_count <- as.numeric(summary$invalid_value_count[[1]])
+  if (is.na(invalid_cell_count)) {
+    invalid_cell_count <- 0
+  }
+  if (is.na(invalid_value_count)) {
+    invalid_value_count <- 0
+  }
+
+  if (
+    !is.finite(row_count) ||
+      !is.finite(distinct_cell_count) ||
+      invalid_cell_count != 0 ||
+      invalid_value_count != 0 ||
+      distinct_cell_count != row_count
+  ) {
+    stop(
+      paste(
+        "Explore expression block contains duplicate, invalid, or non-finite",
+        "values for the requested feature."
+      ),
+      call. = FALSE
+    )
+  }
+
+  invisible(TRUE)
+}
+
 explore_bundle_expression_query_plan <- function(
   bundle,
   feature,
@@ -983,6 +1416,11 @@ explore_expr_vector_from_query <- function(
   feature_idx,
   cell_count
 ) {
+  validate_scspotlight_explore_expression_feature_rows(
+    block_path,
+    feature_idx,
+    cell_count
+  )
   sparse <- explore_read_expression_sparse_duckdb(block_path, feature_idx)
   expr <- numeric(as.integer(cell_count))
   if (nrow(sparse)) {
@@ -1028,6 +1466,11 @@ extract_explore_query_expr_to_ipc <- function(
   if (is.na(chunk_size) || chunk_size < 1L) {
     chunk_size <- scspotlight_expression_transfer_chunk_size
   }
+  validate_scspotlight_explore_expression_feature_rows(
+    block_path,
+    feature_idx,
+    cell_count
+  )
 
   dir.create(dirname(output_file), recursive = TRUE, showWarnings = FALSE)
   if (file.exists(output_file)) {

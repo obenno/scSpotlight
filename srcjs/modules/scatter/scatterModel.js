@@ -300,7 +300,7 @@ export class ScatterModel {
           zData.panelTitles[0] = group_by;
           zData.colorData[0] = catColors;
           zData.zType[0] = "category";
-          zData.cells[0] = metaData.cells.value;
+          zData.cells[0] = expandMeta(metaData.cells);
         }
         break;
       }

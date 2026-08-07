@@ -30,7 +30,8 @@ mod_SubsetCells_server <- function(
   metaUpdateIndicator,
   reductionUpdateIndicator,
   analysisTransition,
-  backend_root = NULL
+  backend_root = NULL,
+  categoryContext = NULL
 ) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
@@ -68,10 +69,19 @@ mod_SubsetCells_server <- function(
     }
 
     increment_subset_refresh_indicators <- function() {
-      message("Subset/restore refreshed gene, metadata, and reduction indicators...")
+      message(
+        "Subset/restore refreshed gene, metadata, and reduction indicators..."
+      )
       geneUpdateIndicator(geneUpdateIndicator() + 1)
       metaUpdateIndicator(metaUpdateIndicator() + 1)
       reductionUpdateIndicator(reductionUpdateIndicator() + 1)
+    }
+
+    read_category_context <- function() {
+      if (is.function(categoryContext)) {
+        return(categoryContext())
+      }
+      categoryContext
     }
 
     notify_transition_failure <- function(reason_code, operation) {
@@ -79,6 +89,7 @@ mod_SubsetCells_server <- function(
         reason_code,
         no_valid_cells = "Please select current cells before subsetting.",
         already_subsetted = "Dataset is already subsetted. Restore before subsetting again.",
+        invalid_category_context = "Category selection is stale. Refresh the plot and try again.",
         subset_failed = "Unable to subset selected cells safely.",
         original_state_failed = "Unable to preserve the original dataset safely.",
         restore_failed = "Unable to restore the original dataset safely.",
@@ -129,19 +140,54 @@ mod_SubsetCells_server <- function(
 
       transition_context <- analysisTransition$intent_context()
       operation <- if (isTRUE(subset_value)) "subset" else "restore"
-      subset_backend_root <- if (isTRUE(subset_value) && isTruthy(backend_root)) {
+      subset_backend_root <- if (
+        isTRUE(subset_value) && isTruthy(backend_root)
+      ) {
         file.path(backend_root, "subset")
       } else {
         NULL
       }
 
+      requested_cells <- if (identical(operation, "subset")) {
+        selectedCells()
+      } else {
+        character(0)
+      }
+      requested_cells <- as.character(requested_cells %||% character(0))
+      requested_cells <- requested_cells[
+        !is.na(requested_cells) & nzchar(requested_cells)
+      ]
+
+      intent <- list(
+        operation = operation,
+        expected_version = transition_context$expected_version,
+        lineage_id = transition_context$lineage_id,
+        cells = requested_cells
+      )
+
+      if (identical(operation, "subset") && !length(requested_cells)) {
+        category <- read_category_context()
+        if (!is.null(category)) {
+          if (isTRUE(category$invalid)) {
+            intent$context <- list()
+            intent$category <- list()
+          } else {
+            intent$context <- list(
+              groupBy = category$groupBy %||% "None",
+              splitBy = category$splitBy %||% "None"
+            )
+            intent$category <- list(
+              groupBy = category$groupBy %||% "None",
+              groupLevels = category$groupLevels %||% character(0),
+              splitBy = category$splitBy %||% "None",
+              splitLevels = category$splitLevels %||% character(0)
+            )
+          }
+        }
+      }
+
       result <- analysisTransition$apply(
-        intent = list(
-          operation = operation,
-          expected_version = transition_context$expected_version,
-          lineage_id = transition_context$lineage_id,
-          cells = if (identical(operation, "subset")) selectedCells() else character(0)
-        ),
+        intent = intent,
         backend_root = subset_backend_root
       )
 
@@ -156,6 +202,12 @@ mod_SubsetCells_server <- function(
       } else {
         notify_subset_status("Restored the original dataset.")
       }
+      session$sendCustomMessage(
+        type = "clear_expr",
+        # Invalidate the just-replaced Analysis epoch, including jobs that have
+        # not yet reached the browser cache.
+        message = list(invalidateVersion = geneUpdateIndicator())
+      )
       increment_subset_refresh_indicators()
     })
   })

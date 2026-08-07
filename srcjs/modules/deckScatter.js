@@ -2045,7 +2045,7 @@ export const expandMeta = (metaList) => {
   }
 
   let out = null;
-  if (metaList.type === "number") {
+  if (metaList.type === "number" || metaList.type === "cell_id") {
     out = metaList.value;
   } else if (metaList.type === "category") {
     const totalLength = Object.values(metaList.value).reduce(

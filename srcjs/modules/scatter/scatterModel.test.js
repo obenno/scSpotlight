@@ -68,7 +68,7 @@ function createFixture() {
       Y: [7, 6, 5, 4, 3, 2, 1, 0],
     },
     cellMetaData: {
-      cells: { value: cells },
+      cells: { type: "cell_id", value: cells },
       group: {
         value: ["A", "A", "B", "B", "A", "B", "A", "B"],
       },
@@ -229,6 +229,16 @@ describe("ScatterModel mode derivation", () => {
 });
 
 describe("ScatterModel panel data assembly", () => {
+  it("keeps canonical Cell IDs indexable in cluster-only mode", () => {
+    const model = buildModel();
+    model.setConfig({ selectedFeatures: [], moduleScore: false });
+    model.derivePlotMetaData("group", null, false);
+    const plot = model.buildPlotData();
+
+    expect(plot.cells[0]).toEqual(["c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8"]);
+    expect(plot.cells[0][3]).toBe("c4");
+  });
+
   it("keeps cell ids indexable in no-split expression mode", () => {
     const model = buildModel();
     model.setConfig({ selectedFeatures: ["GeneA"], moduleScore: false });

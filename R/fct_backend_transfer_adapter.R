@@ -22,17 +22,22 @@ transfer_error_context_fields <- list(
 
 sanitize_transfer_error_value <- function(value) {
   value <- as.character(value)
-  value <- vapply(value, function(item) {
-    if (is.na(item) || !nzchar(item)) {
-      return(NA_character_)
-    }
+  value <- vapply(
+    value,
+    function(item) {
+      if (is.na(item) || !nzchar(item)) {
+        return(NA_character_)
+      }
 
-    if (grepl("[/\\\\]", item)) {
-      item <- basename(item)
-    }
+      if (grepl("[/\\\\]", item)) {
+        item <- basename(item)
+      }
 
-    item
-  }, character(1), USE.NAMES = FALSE)
+      item
+    },
+    character(1),
+    USE.NAMES = FALSE
+  )
 
   value[!is.na(value) & nzchar(value)]
 }
@@ -112,6 +117,7 @@ prepare_backend_metadata_transfer <- function(
       backend = "explore_bundle",
       metadata_path = query_plan$metadata_path,
       cols = query_plan$cols,
+      cell_count = query_plan$cell_count,
       filePath = file.path(dir_path, file_name),
       payload = payload
     ))
@@ -131,7 +137,8 @@ write_backend_metadata_transfer <- function(transfer) {
     extract_explore_metadata_to_ipc(
       metadata_path = transfer$metadata_path,
       output_file = transfer$filePath,
-      cols = transfer$cols
+      cols = transfer$cols,
+      expected_cell_count = transfer$cell_count
     )
     return(transfer$payload)
   }
@@ -205,6 +212,7 @@ prepare_backend_reduction_transfer <- function(
       reduction_path = query_plan$reduction_path,
       x_col = query_plan$x_col,
       y_col = query_plan$y_col,
+      cell_count = query_plan$cell_count,
       filePath = file.path(dir_path, file_name),
       payload = payload
     ))
@@ -224,7 +232,8 @@ write_backend_reduction_transfer <- function(transfer) {
       reduction_path = transfer$reduction_path,
       x_col = transfer$x_col,
       y_col = transfer$y_col,
-      output_file = transfer$filePath
+      output_file = transfer$filePath,
+      expected_cell_count = transfer$cell_count
     )
     return(transfer$payload)
   }

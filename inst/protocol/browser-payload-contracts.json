@@ -68,11 +68,11 @@
   "ipc_columns": {
     "meta_ready": {
       "required": ["cells"],
-      "notes": "Full metadata payload includes zero-based cells plus metadata columns."
+      "notes": "Full metadata payload includes ordered canonical Cell IDs plus metadata columns."
     },
     "meta_patch_ready": {
       "required": ["cells"],
-      "notes": "Patch payload includes zero-based cells plus only the requested cols."
+      "notes": "Patch payload includes ordered canonical Cell IDs plus only the requested cols; the browser rejects a mismatched or reordered Cell-ID sequence."
     },
     "reduction_ready": {
       "required": ["X", "Y"]

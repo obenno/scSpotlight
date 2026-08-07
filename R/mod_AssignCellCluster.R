@@ -87,7 +87,10 @@ mod_AssignCellCluster_server <- function(
   metaUpdateIndicator,
   reductionUpdateIndicator,
   analysisTransition,
-  backend_root = NULL
+  backend_root = NULL,
+  groupBy = NULL,
+  splitBy = NULL,
+  currentMetadataVersion = NULL
 ) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
@@ -119,7 +122,7 @@ mod_AssignCellCluster_server <- function(
       if (!length(cells) || anyDuplicated(cells)) {
         return(NULL)
       }
-      all_cells <- rownames(seuratObj()[[]])
+      all_cells <- colnames(seuratObj())
       if (any(!cells %in% all_cells)) {
         return(NULL)
       }
@@ -144,6 +147,69 @@ mod_AssignCellCluster_server <- function(
       },
       ignoreNULL = FALSE
     )
+
+    categoryContext <- reactive({
+      ## A present browser selection is authoritative, even when it no longer
+      ## matches the active object. Do not reinterpret stale lasso data as a
+      ## category subset.
+      if (isTruthy(selectedPoints()) || isTruthy(input$selectedCellsPayload)) {
+        return(NULL)
+      }
+
+      context <- input$categorySelectionContext
+      if (is.null(context)) {
+        return(NULL)
+      }
+      invalid_context <- function() list(invalid = TRUE)
+      if (!is.list(context)) {
+        return(invalid_context())
+      }
+
+      normalize_value <- function(value, default = "None") {
+        if (is.null(value) || length(value) == 0L) {
+          return(default)
+        }
+        if (
+          length(value) != 1L ||
+            (!is.character(value) && !is.factor(value)) ||
+            is.na(value[[1]])
+        ) {
+          return(NULL)
+        }
+        value <- trimws(as.character(value[[1]]))
+        if (!nzchar(value)) default else value
+      }
+
+      submitted_group <- normalize_value(context$groupBy)
+      submitted_split <- normalize_value(context$splitBy)
+      current_group <- normalize_value(
+        if (is.function(groupBy)) groupBy() else groupBy
+      )
+      current_split <- normalize_value(
+        if (is.function(splitBy)) splitBy() else splitBy
+      )
+      submitted_version <- normalize_analysis_version(context$metaVersion)
+      current_version <- if (is.function(currentMetadataVersion)) {
+        normalize_analysis_version(currentMetadataVersion())
+      } else {
+        normalize_analysis_version(currentMetadataVersion)
+      }
+      if (
+        is.null(submitted_group) ||
+          is.null(submitted_split) ||
+          is.null(current_group) ||
+          is.null(current_split) ||
+          is.null(submitted_version) ||
+          is.null(current_version) ||
+          !identical(submitted_group, current_group) ||
+          !identical(submitted_split, current_split) ||
+          !identical(submitted_version, current_version)
+      ) {
+        return(invalid_context())
+      }
+
+      context
+    })
 
     observeEvent(input$assign, {
       message("Triggered...")
@@ -178,7 +244,8 @@ mod_AssignCellCluster_server <- function(
       metaUpdateIndicator,
       reductionUpdateIndicator,
       backend_root = backend_root,
-      analysisTransition = analysisTransition
+      analysisTransition = analysisTransition,
+      categoryContext = categoryContext
     )
   })
 }

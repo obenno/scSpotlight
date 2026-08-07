@@ -27,10 +27,18 @@ read_browser_payload_contract <- function() {
 make_browser_payload_contract_object <- function() {
   counts <- Matrix::Matrix(
     c(
-      1, 0, 2,
-      0, 3, 0,
-      4, 0, 5,
-      0, 6, 1
+      1,
+      0,
+      2,
+      0,
+      3,
+      0,
+      4,
+      0,
+      5,
+      0,
+      6,
+      1
     ),
     nrow = 3,
     sparse = TRUE
@@ -50,8 +58,14 @@ make_browser_payload_contract_object <- function() {
   object[["umap"]] <- Seurat::CreateDimReducObject(
     embeddings = matrix(
       c(
-        1, 2, 3, 4,
-        5, 6, 7, 8
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
       ),
       nrow = 4,
       dimnames = list(colnames(counts), c("UMAP_1", "UMAP_2"))
@@ -62,8 +76,14 @@ make_browser_payload_contract_object <- function() {
   object[["pca"]] <- Seurat::CreateDimReducObject(
     embeddings = matrix(
       c(
-        11, 12, 13, 14,
-        21, 22, 23, 24
+        11,
+        12,
+        13,
+        14,
+        21,
+        22,
+        23,
+        24
       ),
       nrow = 4,
       dimnames = list(colnames(counts), c("PC_1", "PC_2"))
@@ -80,7 +100,10 @@ flatten_payload_fields <- function(payload) {
   unlist(payload, recursive = TRUE, use.names = TRUE)
 }
 
-add_test_resource_prefix <- function(payload, resource_prefix = "data-test-session") {
+add_test_resource_prefix <- function(
+  payload,
+  resource_prefix = "data-test-session"
+) {
   payload$resourcePrefix <- resource_prefix
   payload
 }
@@ -99,18 +122,24 @@ expect_browser_payload_hides_local_paths <- function(contract, payload) {
   expect_false(any(payload_leaf_names(payload) %in% forbidden_fields))
 
   if (length(flattened_payload)) {
-    path_like <- vapply(flattened_payload, function(value) {
-      if (!is.character(value) || !length(value) || is.na(value)) {
-        return(FALSE)
-      }
-      grepl("^(~|/|[A-Za-z]:[\\\\/])", value) ||
-        grepl("[\\\\/]", value)
-    }, logical(1))
+    path_like <- vapply(
+      flattened_payload,
+      function(value) {
+        if (!is.character(value) || !length(value) || is.na(value)) {
+          return(FALSE)
+        }
+        grepl("^(~|/|[A-Za-z]:[\\\\/])", value) ||
+          grepl("[\\\\/]", value)
+      },
+      logical(1)
+    )
     expect_false(any(path_like))
 
     flattened_names <- names(flattened_payload)
     for (file_field in file_fields) {
-      matching <- flattened_payload[sub("^.*\\.", "", flattened_names) == file_field]
+      matching <- flattened_payload[
+        sub("^.*\\.", "", flattened_names) == file_field
+      ]
       for (value in matching) {
         if (is.null(value) || is.na(value)) {
           next
@@ -143,12 +172,15 @@ expect_payload_satisfies_contract <- function(contract, message_name, payload) {
 test_that("browser payload manifest enumerates XFER-05 message contracts", {
   contract <- read_browser_payload_contract()
 
-  expect_true(all(c(
-    "messages",
-    "ipc_columns",
-    "cache_versions",
-    "browser_path_policy"
-  ) %in% names(contract)))
+  expect_true(all(
+    c(
+      "messages",
+      "ipc_columns",
+      "cache_versions",
+      "browser_path_policy"
+    ) %in%
+      names(contract)
+  ))
   expect_setequal(names(contract$messages), browser_payload_messages)
 
   for (message_name in browser_payload_messages) {
@@ -183,8 +215,18 @@ test_that("browser payload manifest enumerates XFER-05 message contracts", {
     c("payloadType", "reasonCode", "version")
   )
   expect_true(all(
-    c("resourcePrefix", "reductionName", "activeReduction", "geneName", "assay", "cols") %in%
-      unlist(contract$messages$transfer_error$optional_fields, use.names = FALSE)
+    c(
+      "resourcePrefix",
+      "reductionName",
+      "activeReduction",
+      "geneName",
+      "assay",
+      "cols"
+    ) %in%
+      unlist(
+        contract$messages$transfer_error$optional_fields,
+        use.names = FALSE
+      )
   ))
 })
 
@@ -213,8 +255,18 @@ test_that("transfer error payload helper satisfies the browser path policy", {
 
   payloads <- list(
     make_transfer_error_payload("metadata", "write_failed", 100L, raw_context),
-    make_transfer_error_payload("reduction", "decode_failed", 101L, raw_context),
-    make_transfer_error_payload("reductions", "fetch_failed", 102L, raw_context),
+    make_transfer_error_payload(
+      "reduction",
+      "decode_failed",
+      101L,
+      raw_context
+    ),
+    make_transfer_error_payload(
+      "reductions",
+      "fetch_failed",
+      102L,
+      raw_context
+    ),
     make_transfer_error_payload("pca", "write_failed", 103L, raw_context),
     make_transfer_error_payload(
       "metadata_patch",
@@ -232,29 +284,38 @@ test_that("transfer error payload helper satisfies the browser path policy", {
 
   for (payload in payloads) {
     expect_payload_satisfies_contract(contract, "transfer_error", payload)
-    expect_true(payload$payloadType %in% c(
-      "metadata",
-      "metadata_patch",
-      "reduction",
-      "reductions",
-      "pca",
-      "expression"
-    ))
+    expect_true(
+      payload$payloadType %in%
+        c(
+          "metadata",
+          "metadata_patch",
+          "reduction",
+          "reductions",
+          "pca",
+          "expression"
+        )
+    )
     expect_equal(payload$reasonCode, as.character(payload$reasonCode))
-    expect_false(any(payload_leaf_names(payload) %in% c(
-      "filePath",
-      "output_file",
-      "matrix_dir",
-      "path",
-      "trace",
-      "stack",
-      "message",
-      "conditionMessage"
-    )))
+    expect_false(any(
+      payload_leaf_names(payload) %in%
+        c(
+          "filePath",
+          "output_file",
+          "matrix_dir",
+          "path",
+          "trace",
+          "stack",
+          "message",
+          "conditionMessage"
+        )
+    ))
 
     flattened <- unname(flatten_payload_fields(payload))
     character_values <- flattened[vapply(flattened, is.character, logical(1))]
-    expect_false(any(grepl("raw condition|secret-frame|/tmp/scspotlight", character_values)))
+    expect_false(any(grepl(
+      "raw condition|secret-frame|/tmp/scspotlight",
+      character_values
+    )))
   }
 
   expect_equal(payloads[[1]]$payloadType, "metadata")
@@ -321,7 +382,7 @@ test_that("R browser payload producers satisfy the contract manifest", {
     layers = "data"
   )
 
-    metadata_transfer <- prepare_backend_metadata_transfer(
+  metadata_transfer <- prepare_backend_metadata_transfer(
     object,
     dir_path = file.path(transfer_dir, "meta"),
     meta_version = 10L,
@@ -330,8 +391,10 @@ test_that("R browser payload producers satisfy the contract manifest", {
   metadata_payload <- write_backend_metadata_transfer(metadata_transfer)
   expect_payload_satisfies_contract(contract, "meta_ready", metadata_payload)
   metadata_table <- arrow::read_ipc_stream(metadata_transfer$filePath)
-  expect_true(all(contract$ipc_columns$meta_ready$required %in% names(metadata_table)))
-  expect_equal(as.integer(metadata_table$cells), 0:(ncol(object) - 1L))
+  expect_true(all(
+    contract$ipc_columns$meta_ready$required %in% names(metadata_table)
+  ))
+  expect_equal(as.character(metadata_table$cells), colnames(object))
 
   patch_transfer <- prepare_backend_metadata_transfer(
     object,
@@ -346,7 +409,7 @@ test_that("R browser payload producers satisfy the contract manifest", {
   patch_table <- arrow::read_ipc_stream(patch_transfer$filePath)
   expect_true(all(c("cells", "cluster") %in% names(patch_table)))
   expect_false("quality" %in% names(patch_table))
-  expect_equal(as.integer(patch_table$cells), 0:(ncol(object) - 1L))
+  expect_equal(as.character(patch_table$cells), colnames(object))
 
   reduction_transfer <- prepare_backend_reduction_transfer(
     object,
@@ -356,9 +419,15 @@ test_that("R browser payload producers satisfy the contract manifest", {
     resource_prefix = "data-test-session"
   )
   reduction_payload <- write_backend_reduction_transfer(reduction_transfer)
-  expect_payload_satisfies_contract(contract, "reduction_ready", reduction_payload)
+  expect_payload_satisfies_contract(
+    contract,
+    "reduction_ready",
+    reduction_payload
+  )
   reduction_table <- arrow::read_ipc_stream(reduction_transfer$filePath)
-  expect_true(all(contract$ipc_columns$reduction_ready$required %in% names(reduction_table)))
+  expect_true(all(
+    contract$ipc_columns$reduction_ready$required %in% names(reduction_table)
+  ))
   expect_identical(names(reduction_table), c("X", "Y"))
 
   reductions_ready_payload <- list(
@@ -383,7 +452,9 @@ test_that("R browser payload producers satisfy the contract manifest", {
   pca_table <- arrow::read_ipc_stream(
     file.path(transfer_dir, "reduction", pca_payload$stdevFile)
   )
-  expect_true(all(contract$ipc_columns$pca_ready$required %in% names(pca_table)))
+  expect_true(all(
+    contract$ipc_columns$pca_ready$required %in% names(pca_table)
+  ))
   expect_identical(names(pca_table), "stdev")
 
   expression_transfer <- prepare_backend_expression_transfer(
@@ -402,7 +473,9 @@ test_that("R browser payload producers satisfy the contract manifest", {
     c("geneName", "assay", "exprVersion", "exprFile", "resourcePrefix")
   )
   expression_table <- arrow::read_ipc_stream(expression_transfer$output_file)
-  expect_true(all(contract$ipc_columns$expr_ready$required %in% names(expression_table)))
+  expect_true(all(
+    contract$ipc_columns$expr_ready$required %in% names(expression_table)
+  ))
   expect_identical(names(expression_table), "expr")
 
   expect_payload_satisfies_contract(
@@ -425,7 +498,9 @@ test_that("R browser payload producers satisfy the contract manifest", {
     expression_payload
   )
   for (payload in payloads) {
-    expect_false(any(c("filePath", "output_file", "matrix_dir") %in% names(payload)))
+    expect_false(any(
+      c("filePath", "output_file", "matrix_dir") %in% names(payload)
+    ))
   }
 })
 
@@ -436,7 +511,10 @@ test_that("assignment metadata mutation reuses existing scoped patch contract", 
 
   app_server_path <- testthat::test_path("..", "..", "R", "app_server.R")
   expect_true(file.exists(app_server_path))
-  app_server_source <- paste(readLines(app_server_path, warn = FALSE), collapse = "\n")
+  app_server_source <- paste(
+    readLines(app_server_path, warn = FALSE),
+    collapse = "\n"
+  )
 
   expect_true(
     grepl("renameCluster-assignmentIntent", app_server_source, fixed = TRUE),
@@ -472,7 +550,10 @@ test_that("browser IPC payload contracts require a session resource prefix", {
     message_contract <- contract$messages[[message_name]]
     expect_true(
       "resourcePrefix" %in% message_contract$required_fields,
-      info = paste(message_name, "must include the session-scoped resource prefix")
+      info = paste(
+        message_name,
+        "must include the session-scoped resource prefix"
+      )
     )
   }
 
@@ -482,7 +563,10 @@ test_that("browser IPC payload contracts require a session resource prefix", {
   )
 
   index_source <- paste(
-    readLines(testthat::test_path("..", "..", "srcjs", "index.js"), warn = FALSE),
+    readLines(
+      testthat::test_path("..", "..", "srcjs", "index.js"),
+      warn = FALSE
+    ),
     collapse = "\n"
   )
   expect_match(

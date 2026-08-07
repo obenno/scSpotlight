@@ -20,7 +20,10 @@ validate_assignment_intent <- function(
     "metadata_vector"
   )
   if (any(full_vector_fields %in% names(intent))) {
-    stop("Assignment intent must not include a full metadata vector", call. = FALSE)
+    stop(
+      "Assignment intent must not include a full metadata vector",
+      call. = FALSE
+    )
   }
 
   col_name <- trimws(as.character(intent$newMetaCol %||% ""))
@@ -51,7 +54,10 @@ validate_assignment_intent <- function(
   intent_group <- normalize_context_value(intent_context$groupBy)
   intent_split <- normalize_context_value(intent_context$splitBy)
 
-  if (!identical(intent_group, current_group) || !identical(intent_split, current_split)) {
+  if (
+    !identical(intent_group, current_group) ||
+      !identical(intent_split, current_split)
+  ) {
     stop("stale assignment context", call. = FALSE)
   }
 
@@ -61,8 +67,12 @@ validate_assignment_intent <- function(
     }
     as.character(value[[1]])
   }
-  current_version <- normalize_context_version(current_context$metaVersion %||% NULL)
-  intent_version <- normalize_context_version(intent_context$metaVersion %||% NULL)
+  current_version <- normalize_context_version(
+    current_context$metaVersion %||% NULL
+  )
+  intent_version <- normalize_context_version(
+    intent_context$metaVersion %||% NULL
+  )
   if (is.null(current_version) || is.null(intent_version)) {
     stop("stale assignment context", call. = FALSE)
   }
@@ -521,7 +531,10 @@ app_server <- function(input, output, session) {
       metaUpdateIndicator,
       reductionUpdateIndicator,
       backend_root = session$userData$backendDir,
-      analysisTransition = analysisTransition
+      analysisTransition = analysisTransition,
+      groupBy = categoryInfo$group.by,
+      splitBy = categoryInfo$split.by,
+      currentMetadataVersion = currentMetadataVersion
     )
 
     ## Download Object

@@ -58,6 +58,7 @@ vi.mock("./modules/deckScatter.js", () => {
     if (!meta) return [];
     if (Array.isArray(meta)) return meta;
     if (Array.isArray(meta.value)) return meta.value;
+    if (meta.type === "cell_id" && meta.value) return meta.value;
     if (meta.type === "category" && meta.value && typeof meta.value === "object") {
       const entries = Object.entries(meta.value);
       const size = entries.reduce((max, [, indices]) => {
@@ -320,7 +321,10 @@ const resetReglInstance = () => {
 };
 
 const setCategoryMeta = (columnName, mapping) => {
-  testState.reglInstance.origData.cellMetaData.cells = ["c1", "c2", "c3"];
+  testState.reglInstance.origData.cellMetaData.cells = {
+    type: "cell_id",
+    value: ["c1", "c2", "c3"],
+  };
   testState.reglInstance.origData.cellMetaData[columnName] = {
     type: "category",
     value: mapping,
@@ -534,6 +538,13 @@ describe("rename cluster client selection", () => {
       },
     });
     expect(latestInputValue("renameCluster-selectedCellsPayload")).toBeUndefined();
+    expect(latestInputValue("renameCluster-categorySelectionContext")).toMatchObject({
+      groupBy: "clusterA",
+      groupLevels: ["A"],
+      splitBy: "batch",
+      splitLevels: ["batch1"],
+      metaVersion: null,
+    });
     expect(latestInputValue("newMetaColData")).toBeUndefined();
   });
 
@@ -626,6 +637,7 @@ describe("rename cluster client selection", () => {
     selectValues("renameCluster-chosenSplit", ["other1"]);
     arrowReader.readArrowIPC.mockResolvedValue({ table: "patch" });
     arrowReader.parseMetaFromArrow.mockReturnValue({
+      cells: { type: "cell_id", value: ["c1", "c2", "c3"] },
       clusterA: { type: "category", value: { C: [0, 1], D: [2] } },
     });
     testState.handlers.meta_patch_ready({
@@ -637,6 +649,7 @@ describe("rename cluster client selection", () => {
       expect(document.getElementById("renameCluster-chosenGroup").selectedOptions).toHaveLength(0);
       expect(testState.reglInstance.plotData.selectedCells).toEqual([]);
       expect(latestInputValue("renameCluster-selectedCellsPayload")).toBeNull();
+      expect(latestInputValue("renameCluster-categorySelectionContext")).toBeNull();
       expect(latestInputValue("renameCluster-assignmentIntent")).toBeNull();
     });
 
@@ -658,7 +671,7 @@ describe("rename cluster client selection", () => {
   it("clears subset-stale browser state on full object replacement", async () => {
     const arrowReader = await resetArrowReaderMocks();
     testState.reglInstance.origData.cellMetaData = {
-      cells: { type: "category", value: { c1: [0], c2: [1], c3: [2] } },
+      cells: { type: "cell_id", value: ["c1", "c2", "c3"] },
       clusterA: { type: "category", value: { A: [0, 1], B: [2] } },
     };
     testState.reglInstance.origData.expressionData = {
@@ -680,7 +693,7 @@ describe("rename cluster client selection", () => {
 
     arrowReader.readArrowIPC.mockResolvedValue({ table: "subset-meta" });
     arrowReader.parseMetaFromArrow.mockReturnValue({
-      cells: { type: "category", value: { c2: [0], c4: [1] } },
+      cells: { type: "cell_id", value: ["c2", "c4"] },
       clusterB: { type: "category", value: { C: [0], D: [1] } },
     });
 
@@ -698,38 +711,59 @@ describe("rename cluster client selection", () => {
     });
   });
 
-  it("reconciles selection only to visible cell IDs after object replacement", async () => {
+  it("clears lasso selection after an object replacement", async () => {
     const arrowReader = await resetArrowReaderMocks();
     testState.reglInstance.origData.cellMetaData = {
-      cells: { type: "category", value: { c1: [0], c2: [1], c3: [2] } },
+      cells: { type: "cell_id", value: ["c1", "c2", "c3"] },
       clusterA: { type: "category", value: { A: [0, 1], B: [2] } },
     };
     testState.reglInstance.setSelectedCells(["c1", "c2", "c3"], { source: "lasso" });
     arrowReader.readArrowIPC.mockResolvedValue({ table: "restore-meta" });
     arrowReader.parseMetaFromArrow.mockReturnValue({
-      cells: { type: "category", value: { c2: [0], c4: [1] } },
+      cells: { type: "cell_id", value: ["c2", "c4"] },
       clusterA: { type: "category", value: { A: [0], C: [1] } },
     });
 
     testState.handlers.meta_ready({ metaFile: "restore-meta-ipc", metaVersion: 3 });
 
     await vi.waitFor(() => {
-      expect(testState.reglInstance.plotData.selectedCells).toEqual(["c2"]);
+      expect(testState.reglInstance.plotData.selectedCells).toEqual([]);
+      expect(latestInputValue("selectedPoints")).toBeNull();
       expect(latestInputValue("renameCluster-selectedCellsPayload")).toBeNull();
       expect(latestInputValue("renameCluster-assignmentIntent")).toBeNull();
     });
+  });
+
+  it("clears server selection transport when a replacement keeps the same Cell IDs", () => {
+    setCategoryMeta("clusterA", { A: [0, 1], B: [2] });
+    testState.handlers.reglScatter_plot({
+      group_by: "clusterA",
+      split_by: "None",
+      moduleScore: null,
+    });
+    testState.reglInstance.setSelectedCells(["c1", "c3"], { source: "lasso" });
+
+    testState.handlers.reglScatter_plot({
+      group_by: "clusterA",
+      split_by: "None",
+      moduleScore: null,
+    });
+
+    expect(testState.reglInstance.plotData.selectedCells).toEqual([]);
+    expect(latestInputValue("selectedPoints")).toBeNull();
+    expect(document.getElementById("renameCluster-chosenGroup").selectedOptions).toHaveLength(0);
   });
 
   it("keeps existing transfer_error and stale gates unchanged during subset refreshes", async () => {
     const arrowReader = await resetArrowReaderMocks();
     arrowReader.readArrowIPC.mockResolvedValue({ table: "current" });
     arrowReader.parseMetaFromArrow.mockReturnValue({
-      cells: { type: "category", value: { c1: [0] } },
+      cells: { type: "cell_id", value: ["c1"] },
     });
 
     testState.handlers.meta_ready({ metaFile: "meta-v4", metaVersion: 4 });
     await vi.waitFor(() => {
-      expect(testState.reglInstance.origData.cellMetaData.cells.value).toEqual({ c1: [0] });
+      expect(testState.reglInstance.origData.cellMetaData.cells.value).toEqual(["c1"]);
     });
 
     testState.handlers.transfer_error({
@@ -740,6 +774,45 @@ describe("rename cluster client selection", () => {
 
     expect(getPlotTransferError()).toBeNull();
     expect(Object.keys(testState.handlers)).not.toContain("subset_restore_ready");
+  });
+
+  it("ignores stale expression errors after object replacement clears expression state", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    addFeatureSparkLine("GeneA");
+    arrowReader.fetchArrowIPCBuffer.mockResolvedValueOnce(encodeLabelBuffer("gene-a-v12"));
+    arrowReader.decodeArrowIPC.mockImplementation((buffer) => ({
+      label: decodeLabelBuffer(buffer),
+    }));
+    arrowReader.getFloat32Column.mockReturnValue(new Float32Array([12]));
+
+    testState.handlers.expr_ready({
+      exprFile: "gene-a-v12",
+      geneName: "GeneA",
+      assay: "RNA",
+      exprVersion: 12,
+    });
+    await vi.waitFor(() => {
+      expect(testState.reglInstance.origData.expressionData.GeneA).toBeDefined();
+    });
+
+    arrowReader.readArrowIPC.mockResolvedValue({ table: "replacement-meta" });
+    arrowReader.parseMetaFromArrow.mockReturnValue({
+      cells: { type: "cell_id", value: ["c2"] },
+    });
+    testState.handlers.meta_ready({ metaFile: "replacement-meta", metaVersion: 4 });
+    await vi.waitFor(() => {
+      expect(testState.reglInstance.origData.expressionData).toEqual({});
+    });
+
+    testState.handlers.transfer_error({
+      payloadType: "expression",
+      reasonCode: "write_failed",
+      version: 12,
+      geneName: "GeneA",
+      assay: "RNA",
+    });
+
+    expect(getPlotTransferError()).toBeNull();
   });
 
   it("rejects invalid assignment inputs before sending Shiny assignment intent", () => {
@@ -946,20 +1019,16 @@ describe("rename cluster client selection", () => {
 
     testState.handlers.meta_ready({ metaFile: "meta-v7", metaVersion: 7 });
     testState.handlers.meta_ready({ metaFile: "meta-v8", metaVersion: 8 });
-    currentMeta.resolve({ cells: { type: "number", value: new Int32Array([0, 1]) } });
+    currentMeta.resolve({ cells: { type: "cell_id", value: ["c1", "c2"] } });
 
     await vi.waitFor(() => {
-      expect(testState.reglInstance.origData.cellMetaData.cells.value).toEqual(
-        new Int32Array([0, 1]),
-      );
+      expect(testState.reglInstance.origData.cellMetaData.cells.value).toEqual(["c1", "c2"]);
     });
 
-    staleMeta.resolve({ cells: { type: "number", value: new Int32Array([9, 9]) } });
+    staleMeta.resolve({ cells: { type: "cell_id", value: ["stale1", "stale2"] } });
     await Promise.resolve();
     await Promise.resolve();
-    expect(testState.reglInstance.origData.cellMetaData.cells.value).toEqual(
-      new Int32Array([0, 1]),
-    );
+    expect(testState.reglInstance.origData.cellMetaData.cells.value).toEqual(["c1", "c2"]);
 
     arrowReader.readArrowIPC.mockReset();
     arrowReader.fetchArrowIPCBuffer.mockImplementation((url) => {
@@ -1147,7 +1216,7 @@ describe("rename cluster client selection", () => {
   it("meta_ready fetches metaFile metadata and reports metaProcessed", async () => {
     const arrowReader = await resetArrowReaderMocks();
     const parsedMeta = {
-      cells: { type: "category", value: { Cell1: [0], Cell2: [1], Cell3: [2] } },
+      cells: { type: "cell_id", value: ["Cell1", "Cell2", "Cell3"] },
       cluster: { type: "category", value: { alpha: [0, 2], beta: [1] } },
       nCount: { type: "number", value: new Float32Array([1, 2, 3]) },
     };
@@ -1167,7 +1236,7 @@ describe("rename cluster client selection", () => {
   it("meta_ready builds fetch URLs from the session resourcePrefix", async () => {
     const arrowReader = await resetArrowReaderMocks();
     const parsedMeta = {
-      cells: { type: "category", value: { Cell1: [0], Cell2: [1], Cell3: [2] } },
+      cells: { type: "cell_id", value: ["Cell1", "Cell2", "Cell3"] },
       cluster: { type: "category", value: { alpha: [0, 2], beta: [1] } },
     };
     arrowReader.readArrowIPC.mockResolvedValue({ table: "prefixed-meta" });
@@ -1194,12 +1263,13 @@ describe("rename cluster client selection", () => {
   it("meta_patch_ready fetches patch metadata and reports changed cols", async () => {
     const arrowReader = await resetArrowReaderMocks();
     testState.reglInstance.origData.cellMetaData = {
-      cells: { type: "category", value: { Cell1: [0], Cell2: [1], Cell3: [2] } },
+      cells: { type: "cell_id", value: ["Cell1", "Cell2", "Cell3"] },
       cluster: { type: "category", value: { old: [0, 1, 2] } },
       batch: { type: "category", value: { A: [0], B: [1, 2] } },
     };
     testState.reglInstance.plotMetaData.group_by = "cluster";
     const parsedPatch = {
+      cells: { type: "cell_id", value: ["Cell1", "Cell2", "Cell3"] },
       cluster: { type: "category", value: { alpha: [0, 2], beta: [1] } },
     };
     arrowReader.readArrowIPC.mockResolvedValue({ table: "patch" });
@@ -1233,7 +1303,7 @@ describe("rename cluster client selection", () => {
     const arrowReader = await resetArrowReaderMocks();
     const existingCluster = { type: "category", value: { old: [0, 1, 2] } };
     testState.reglInstance.origData.cellMetaData = {
-      cells: { type: "category", value: { Cell1: [0], Cell2: [1], Cell3: [2] } },
+      cells: { type: "cell_id", value: ["Cell1", "Cell2", "Cell3"] },
       cluster: existingCluster,
       batch: { type: "category", value: { A: [0], B: [1, 2] } },
       score: { type: "number", value: new Float32Array([1, 2, 3]) },
@@ -1241,7 +1311,7 @@ describe("rename cluster client selection", () => {
     testState.reglInstance.plotMetaData.group_by = "cluster";
     testState.reglInstance.plotMetaData.selectedMeta = "meta:score";
     const parsedPatch = {
-      cells: { type: "category", value: { Cell1: [0], Cell2: [1], Cell3: [2] } },
+      cells: { type: "cell_id", value: ["Cell1", "Cell2", "Cell3"] },
       cluster: { type: "category", value: { stale: [0, 1, 2] } },
       batch: { type: "category", value: { A: [0, 2], B: [1] } },
     };
@@ -1274,7 +1344,7 @@ describe("rename cluster client selection", () => {
     const arrowReader = await resetArrowReaderMocks();
     const existingBatch = { type: "category", value: { A: [0], B: [1, 2] } };
     testState.reglInstance.origData.cellMetaData = {
-      cells: { type: "category", value: { Cell1: [0], Cell2: [1], Cell3: [2] } },
+      cells: { type: "cell_id", value: ["Cell1", "Cell2", "Cell3"] },
       batch: existingBatch,
     };
     arrowReader.readArrowIPC.mockResolvedValue({ table: "bad-patch" });
@@ -1300,11 +1370,37 @@ describe("rename cluster client selection", () => {
     });
   });
 
+  it("meta_patch_ready rejects reordered Cell IDs before merging by position", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    const existingBatch = { type: "category", value: { A: [0], B: [1, 2] } };
+    testState.reglInstance.origData.cellMetaData = {
+      cells: { type: "cell_id", value: ["Cell1", "Cell2", "Cell3"] },
+      batch: existingBatch,
+    };
+    arrowReader.readArrowIPC.mockResolvedValue({ table: "reordered-patch" });
+    arrowReader.parseMetaFromArrow.mockReturnValue({
+      cells: { type: "cell_id", value: ["Cell2", "Cell1", "Cell3"] },
+      batch: { type: "category", value: { A: [0, 2], B: [1] } },
+    });
+
+    testState.handlers.meta_patch_ready({
+      metaFile: "reordered-meta-patch-ipc",
+      metaVersion: 412,
+      cols: ["batch"],
+    });
+
+    await vi.waitFor(() => {
+      expect(testState.reglInstance.updateCellMetaDataPatchCalls).toHaveLength(0);
+      expect(testState.reglInstance.origData.cellMetaData.batch).toBe(existingBatch);
+      expect(getPlotTransferError().textContent).toContain("Metadata update could not apply");
+    });
+  });
+
   it("delayed stale meta_patch_ready results are ignored after fetch", async () => {
     const arrowReader = await resetArrowReaderMocks();
     const staleRead = createDeferred();
     testState.reglInstance.origData.cellMetaData = {
-      cells: { type: "category", value: { Cell1: [0], Cell2: [1], Cell3: [2] } },
+      cells: { type: "cell_id", value: ["Cell1", "Cell2", "Cell3"] },
       cluster: { type: "category", value: { old: [0, 1, 2] } },
     };
     testState.reglInstance.plotMetaData.group_by = "cluster";
@@ -1312,6 +1408,7 @@ describe("rename cluster client selection", () => {
       .mockImplementationOnce(() => staleRead.promise)
       .mockResolvedValueOnce({ table: "current" });
     arrowReader.parseMetaFromArrow.mockImplementation((table) => ({
+      cells: { type: "cell_id", value: ["Cell1", "Cell2", "Cell3"] },
       cluster: {
         type: "category",
         value: table.table === "current" ? { current: [0, 1, 2] } : { stale: [0, 1, 2] },
@@ -1439,7 +1536,7 @@ describe("rename cluster client selection", () => {
   it("renders VlnPlot dropdown labels as text nodes", () => {
     const maliciousLabel = '<img src=x onerror="window.__xss = true">';
     testState.reglInstance.origData.cellMetaData = {
-      cells: { type: "category", value: { c1: [0] } },
+      cells: { type: "cell_id", value: ["c1"] },
       [maliciousLabel]: { type: "number", value: new Float32Array([1]) },
     };
 
@@ -1528,6 +1625,9 @@ describe("rename cluster client selection", () => {
 
   it("expr_ready and expr_cached honor assay/gene versioned cache keys", async () => {
     const arrowReader = await resetArrowReaderMocks();
+    addFeatureSparkLine("GeneA");
+    addFeatureSparkLine("GeneB");
+    addFeatureSparkLine("MissingGene");
     arrowReader.fetchArrowIPCBuffer.mockImplementation((url) =>
       Promise.resolve(encodeLabelBuffer(url)),
     );
@@ -1663,21 +1763,98 @@ describe("rename cluster client selection", () => {
     ]);
   });
 
+  it("ignores a delayed expr_ready payload after a full object replacement", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    const delayedExpression = createDeferred();
+    addFeatureSparkLine("GeneA");
+    arrowReader.fetchArrowIPCBuffer.mockReturnValue(delayedExpression.promise);
+    arrowReader.readArrowIPC.mockResolvedValue({ table: "replacement-meta" });
+    arrowReader.parseMetaFromArrow.mockReturnValue({
+      cells: { type: "cell_id", value: ["c2"] },
+      cluster: { type: "category", value: { B: [0] } },
+    });
+
+    testState.handlers.expr_ready({
+      exprFile: "gene-a-before-replacement",
+      geneName: "GeneA",
+      assay: "RNA",
+      exprVersion: 9000,
+    });
+    testState.handlers.meta_ready({ metaFile: "replacement-meta", metaVersion: 10000 });
+
+    await vi.waitFor(() => {
+      expect(document.getElementById("featureSparkLine").children).toHaveLength(0);
+      expect(testState.reglInstance.origData.expressionData).toEqual({});
+    });
+
+    delayedExpression.resolve(encodeLabelBuffer("gene-a-before-replacement"));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(testState.reglInstance.origData.expressionData.GeneA).toBeUndefined();
+    expect(testState.reglInstance.updateExpressionDataCalls).toHaveLength(0);
+  });
+
+  it("keeps same-version expression requests available after a metadata-only refresh", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    addFeatureSparkLine("GeneA");
+    addFeatureSparkLine("GeneB");
+    arrowReader.readArrowIPC.mockResolvedValue({ table: "same-cells-meta" });
+    arrowReader.parseMetaFromArrow.mockReturnValue({
+      cells: { type: "cell_id", value: ["c1", "c2", "c3"] },
+      cluster: { type: "category", value: { A: [0, 1], B: [2] } },
+    });
+    arrowReader.fetchArrowIPCBuffer.mockResolvedValue(encodeLabelBuffer("gene-b-same-version"));
+    arrowReader.decodeArrowIPC.mockImplementation((buffer) => ({
+      label: decodeLabelBuffer(buffer),
+    }));
+    arrowReader.getFloat32Column.mockReturnValue(new Float32Array([1, 2, 3]));
+
+    testState.reglInstance.origData.cellMetaData = {
+      cells: { type: "cell_id", value: ["c1", "c2", "c3"] },
+      cluster: { type: "category", value: { A: [0, 1], B: [2] } },
+    };
+    testState.handlers.expr_ready({
+      exprFile: "gene-a-same-version",
+      geneName: "GeneA",
+      assay: "RNA",
+      exprVersion: 9100,
+    });
+    await vi.waitFor(() => {
+      expect(testState.reglInstance.origData.expressionData.GeneA).toBeDefined();
+    });
+
+    testState.handlers.meta_ready({ metaFile: "same-cells-meta", metaVersion: 10001 });
+    await vi.waitFor(() => {
+      expect(testState.reglInstance.origData.cellMetaData.cells.value).toEqual(["c1", "c2", "c3"]);
+    });
+
+    testState.handlers.expr_ready({
+      exprFile: "gene-b-same-version",
+      geneName: "GeneB",
+      assay: "RNA",
+      exprVersion: 9100,
+    });
+    await vi.waitFor(() => {
+      expect(testState.reglInstance.origData.expressionData.GeneB).toBeDefined();
+    });
+  });
+
   it("expr_ready failures show scoped expression copy and preserve category metadata", async () => {
     const arrowReader = await resetArrowReaderMocks();
     addFeatureSparkLine("GeneFail");
     const existingMeta = {
-      cells: { type: "category", value: { Cell1: [0], Cell2: [1], Cell3: [2] } },
+      cells: { type: "cell_id", value: ["Cell1", "Cell2", "Cell3"] },
       cluster: { type: "category", value: { A: [0, 1], B: [2] } },
     };
     testState.reglInstance.origData.cellMetaData = existingMeta;
     arrowReader.fetchArrowIPCBuffer.mockRejectedValue(new Error("boom"));
 
     testState.handlers.expr_ready({
-      exprFile: "gene-fail-v510",
+      exprFile: "gene-fail-v20000",
       geneName: "GeneFail",
       assay: "RNA",
-      exprVersion: 510,
+      exprVersion: 20000,
     });
 
     await vi.waitFor(() => {
@@ -1693,10 +1870,11 @@ describe("rename cluster client selection", () => {
   });
 
   it("transfer_error uses scoped expression and metadata patch failure copy", () => {
+    addFeatureSparkLine("GeneErr");
     testState.handlers.transfer_error({
       payloadType: "expression",
       reasonCode: "write_failed",
-      version: 520,
+      version: 100000,
       geneName: "GeneErr",
       assay: "RNA",
     });
@@ -1707,11 +1885,48 @@ describe("rename cluster client selection", () => {
     testState.handlers.transfer_error({
       payloadType: "metadata_patch",
       reasonCode: "write_failed",
-      version: 521,
+      version: 20001,
       cols: ["Phase", "S.Score"],
     });
 
     expect(getPlotTransferError().textContent).toContain("Metadata update could not apply");
     expect(getPlotTransferError().textContent).toContain("Phase, S.Score");
+  });
+
+  it("rejects an old expression epoch after explicit server invalidation", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    addFeatureSparkLine("GeneA");
+    testState.handlers.clear_expr({ invalidateVersion: 200000 });
+    addFeatureSparkLine("GeneA");
+    arrowReader.fetchArrowIPCBuffer.mockResolvedValue(
+      encodeLabelBuffer("gene-a-current"),
+    );
+    arrowReader.decodeArrowIPC.mockImplementation((buffer) => ({
+      label: decodeLabelBuffer(buffer),
+    }));
+    arrowReader.getFloat32Column.mockReturnValue(new Float32Array([1, 2]));
+
+    testState.handlers.expr_ready({
+      exprFile: "gene-a-old",
+      geneName: "GeneA",
+      assay: "RNA",
+      exprVersion: 200000,
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(arrowReader.fetchArrowIPCBuffer).not.toHaveBeenCalled();
+    expect(testState.reglInstance.origData.expressionData.GeneA).toBeUndefined();
+
+    testState.handlers.expr_ready({
+      exprFile: "gene-a-current",
+      geneName: "GeneA",
+      assay: "RNA",
+      exprVersion: 200001,
+    });
+
+    await vi.waitFor(() => {
+      expect(testState.reglInstance.origData.expressionData.GeneA).toBeDefined();
+    });
   });
 });
