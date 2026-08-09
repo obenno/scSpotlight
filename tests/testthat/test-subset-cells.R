@@ -1070,6 +1070,36 @@ test_that("failed transitions preserve the active Analysis and publish no versio
   expect_false(analysis_transition$is_busy())
 })
 
+test_that("unexpected transition failures preserve state and release the Session lock", {
+  object <- make_subset_object()
+  seurat_value <- shiny::reactiveVal(object)
+  analysis_transition <- make_analysis_transition(seurat_value)
+
+  testthat::local_mocked_bindings(
+    apply_analysis_transition = function(...) {
+      stop("forced transition failure", call. = FALSE)
+    },
+    .package = "scSpotlight"
+  )
+
+  result <- analysis_transition$apply(
+    intent = list(
+      operation = "subset",
+      expected_version = 0L,
+      lineage_id = 1L,
+      cells = "Cell1"
+    )
+  )
+
+  expect_false(result$committed)
+  expect_identical(result$reason_code, "transition_failed")
+  expect_identical(colnames(shiny::isolate(seurat_value())), colnames(object))
+  expect_identical(analysis_transition$version(), 0L)
+  expect_null(analysis_transition$state()$original_object)
+  expect_null(analysis_transition$change_set())
+  expect_false(analysis_transition$is_busy())
+})
+
 test_that("the Analysis Transition controller rejects re-entrant mutations", {
   object <- make_subset_object()
   seurat_value <- shiny::reactiveVal(object)

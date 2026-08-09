@@ -1681,6 +1681,48 @@ describe("rename cluster client selection", () => {
     });
   });
 
+  it("ignores stale reduction transfer errors after a newer reduction commits", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    arrowReader.fetchArrowIPCBuffer.mockImplementation((url) => (
+      Promise.resolve(encodeLabelBuffer(url))
+    ));
+    arrowReader.decodeArrowIPC.mockImplementation((buffer) => ({
+      url: decodeLabelBuffer(buffer),
+    }));
+    arrowReader.getFloat32Column.mockImplementation((table, colName) => {
+      const value = numericValueFromResourceUrl(table.url);
+      return new Float32Array([colName === "X" ? value : value + 0.5]);
+    });
+
+    testState.handlers.reduction_ready({
+      reductionFile: "umap-v202",
+      reductionName: "umap",
+      reductionVersion: 202,
+    });
+    await vi.waitFor(() => {
+      expect(Array.from(testState.reglInstance.origData.reductionData.X)).toEqual([202]);
+    });
+
+    testState.handlers.reduction_ready({
+      reductionFile: "pca-v203",
+      reductionName: "pca",
+      reductionVersion: 203,
+    });
+    await vi.waitFor(() => {
+      expect(Array.from(testState.reglInstance.origData.reductionData.X)).toEqual([203]);
+    });
+
+    testState.handlers.transfer_error({
+      payloadType: "reduction",
+      reasonCode: "write_failed",
+      version: 202,
+      reductionName: "umap",
+    });
+
+    expect(getPlotTransferError()).toBeNull();
+    expect(Array.from(testState.reglInstance.origData.reductionData.X)).toEqual([203]);
+  });
+
   it("expr_ready and expr_cached honor assay/gene versioned cache keys", async () => {
     const arrowReader = await resetArrowReaderMocks();
     addFeatureSparkLine("GeneA");
