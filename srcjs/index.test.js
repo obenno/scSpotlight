@@ -510,13 +510,15 @@ describe("rename cluster client selection", () => {
     });
   });
 
-  it("sends bounded lasso assignment intent ahead of category selections", () => {
+  it("sends a versioned lasso selection payload and bounded assignment intent", () => {
     setCategoryMeta("clusterA", { A: [0, 1], B: [2] });
     setCategoryMeta("batch", { batch1: [0, 2], batch2: [1] });
     testState.handlers.reglScatter_plot({
       group_by: "clusterA",
       split_by: "batch",
       moduleScore: null,
+      analysisVersion: 17,
+      analysisLineageId: 4,
     });
 
     selectValues("renameCluster-chosenGroup", ["A"]);
@@ -524,8 +526,16 @@ describe("rename cluster client selection", () => {
     expect(testState.reglInstance.plotData.selectedCells).toEqual(["c1"]);
 
     testState.reglInstance.setSelectedCells(["c2", "c3"], { source: "lasso" });
+    testState.reglInstance.selectionHandlers.onSelect({ selectedCells: ["c2", "c3"] });
     setAssignmentInputs({ colName: "safe_assignment", value: "manual selection" });
     clickAssign();
+
+    expect(latestInputValue("renameCluster-selectedCellsPayload")).toMatchObject({
+      cells: ["c2", "c3"],
+      metaVersion: null,
+      analysisVersion: 17,
+      analysisLineageId: 4,
+    });
 
     expect(latestInputValue("renameCluster-assignmentIntent")).toMatchObject({
       type: "selected_cells",
@@ -536,14 +546,6 @@ describe("rename cluster client selection", () => {
         groupBy: "clusterA",
         splitBy: "batch",
       },
-    });
-    expect(latestInputValue("renameCluster-selectedCellsPayload")).toBeUndefined();
-    expect(latestInputValue("renameCluster-categorySelectionContext")).toMatchObject({
-      groupBy: "clusterA",
-      groupLevels: ["A"],
-      splitBy: "batch",
-      splitLevels: ["batch1"],
-      metaVersion: null,
     });
     expect(latestInputValue("newMetaColData")).toBeUndefined();
   });
@@ -649,18 +651,38 @@ describe("rename cluster client selection", () => {
       expect(document.getElementById("renameCluster-chosenGroup").selectedOptions).toHaveLength(0);
       expect(testState.reglInstance.plotData.selectedCells).toEqual([]);
       expect(latestInputValue("renameCluster-selectedCellsPayload")).toBeNull();
-      expect(latestInputValue("renameCluster-categorySelectionContext")).toBeNull();
       expect(latestInputValue("renameCluster-assignmentIntent")).toBeNull();
     });
 
     testState.reglInstance.setSelectedCells(["c1"], { source: "lasso" });
+    testState.reglInstance.selectionHandlers.onSelect({ selectedCells: ["c1"] });
     setAssignmentInputs({ colName: "safe_assignment", value: "manual selection" });
     clickAssign();
-    testState.handlers.addNewMeta({ colName: "safe_assignment", colValue: "manual selection" });
-    expect(latestInputValue("renameCluster-selectedCellsPayload")).toBeNull();
-    expect(latestInputValue("renameCluster-assignmentIntent")).toBeNull();
+    expect(latestInputValue("renameCluster-selectedCellsPayload")).toMatchObject({
+      cells: ["c1"],
+      metaVersion: 1,
+    });
+
+    arrowReader.readArrowIPC.mockResolvedValue({ table: "assignment-patch" });
+    arrowReader.parseMetaFromArrow.mockReturnValue({
+      cells: { type: "cell_id", value: ["c1", "c2", "c3"] },
+      safe_assignment: { type: "category", value: { "manual selection": [0], unknown: [1, 2] } },
+    });
+    testState.handlers.meta_patch_ready({
+      metaFile: "assignment-patch-ipc",
+      metaVersion: 2,
+      cols: ["safe_assignment"],
+    });
+
+    await vi.waitFor(() => {
+      expect(testState.reglInstance.plotData.selectedCells).toEqual([]);
+      expect(testState.reglInstance.selectionSource).toBe(null);
+      expect(latestInputValue("renameCluster-selectedCellsPayload")).toBeNull();
+      expect(latestInputValue("renameCluster-assignmentIntent")).toBeNull();
+    });
 
     testState.reglInstance.setSelectedCells(["c2"], { source: "lasso" });
+    testState.reglInstance.selectionHandlers.onSelect({ selectedCells: ["c2"] });
     clickAssign();
     testState.handlers.reglScatter_deselect({});
     expect(testState.reglInstance.plotData.selectedCells).toEqual([]);
@@ -728,7 +750,6 @@ describe("rename cluster client selection", () => {
 
     await vi.waitFor(() => {
       expect(testState.reglInstance.plotData.selectedCells).toEqual([]);
-      expect(latestInputValue("selectedPoints")).toBeNull();
       expect(latestInputValue("renameCluster-selectedCellsPayload")).toBeNull();
       expect(latestInputValue("renameCluster-assignmentIntent")).toBeNull();
     });
@@ -750,7 +771,7 @@ describe("rename cluster client selection", () => {
     });
 
     expect(testState.reglInstance.plotData.selectedCells).toEqual([]);
-    expect(latestInputValue("selectedPoints")).toBeNull();
+    expect(latestInputValue("renameCluster-selectedCellsPayload")).toBeNull();
     expect(document.getElementById("renameCluster-chosenGroup").selectedOptions).toHaveLength(0);
   });
 

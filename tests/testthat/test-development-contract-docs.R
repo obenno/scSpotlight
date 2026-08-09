@@ -224,7 +224,11 @@ test_that("DEVELOPMENT documents Phase 03 gap-closure invariants", {
       "Single assignment activation:",
       "normal assignment activation emits a single renameCluster-assignmentIntent",
       "Cell-ID lasso and subset flow:",
-      "browser selectedPoints are canonical cell IDs rather than numeric row indices",
+      "renameCluster-selectedCellsPayload",
+      "Analysis Version, and lineage tokens",
+      "Analysis Transition rejects lasso/manual selections",
+      "Successful metadata patches clear the visible lasso",
+      "mixed-validity, metadata-stale, version-stale, and lineage-stale requests publish no Analysis Version",
       "Session-root BPCells subset backing:",
       "subset backing must use the session backend root for BPCells-safe output",
       "IPC payload URLs use a session-scoped resourcePrefix plus basename instead of global /data paths"

@@ -82,133 +82,63 @@ mod_AssignCellCluster_ui <- function(id) {
 mod_AssignCellCluster_server <- function(
   id,
   seuratObj,
-  selectedPoints,
   geneUpdateIndicator,
   metaUpdateIndicator,
   reductionUpdateIndicator,
   analysisTransition,
   backend_root = NULL,
-  groupBy = NULL,
-  splitBy = NULL,
   currentMetadataVersion = NULL
 ) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
-    manuallySelectedCells <- reactive({
-      ## Do not use req() here, or it will block the validation chain
-      if (isTruthy(selectedPoints()) && isTruthy(seuratObj())) {
-        all_cells <- colnames(seuratObj())
-        requested_cells <- as.character(selectedPoints())
-        requested_cells <- requested_cells[
-          !is.na(requested_cells) & nzchar(requested_cells)
-        ]
-        requested_cells <- unique(requested_cells)
-        cells <- all_cells[all_cells %in% requested_cells]
-      } else {
-        cells <- NULL
-      }
-      message("cells is: ", paste0(cells, collapse = ","))
-      cells
-    })
-
-    selectedCellsPayload <- reactive({
+    selectionIntent <- reactive({
+      reject <- function(reason_code) list(reason_code = reason_code)
       payload <- input$selectedCellsPayload
-      if (!isTruthy(payload) || !isTruthy(seuratObj())) {
-        return(NULL)
+      if (is.null(payload)) {
+        return(reject("no_valid_cells"))
       }
-      cells <- as.character(payload)
-      cells <- cells[nzchar(cells)]
-      if (!length(cells) || anyDuplicated(cells)) {
-        return(NULL)
-      }
-      all_cells <- colnames(seuratObj())
-      if (any(!cells %in% all_cells)) {
-        return(NULL)
-      }
-      cells
-    })
-
-    selectedCells <- eventReactive(
-      list(
-        manuallySelectedCells(),
-        selectedCellsPayload()
-      ),
-      {
-        if (isTruthy(manuallySelectedCells())) {
-          cells <- manuallySelectedCells()
-        } else if (isTruthy(selectedCellsPayload())) {
-          cells <- selectedCellsPayload()
-        } else {
-          cells <- NULL
-        }
-        ##message("selectedCells: ", cells)
-        cells
-      },
-      ignoreNULL = FALSE
-    )
-
-    categoryContext <- reactive({
-      ## A present browser selection is authoritative, even when it no longer
-      ## matches the active object. Do not reinterpret stale lasso data as a
-      ## category subset.
-      if (isTruthy(selectedPoints()) || isTruthy(input$selectedCellsPayload)) {
-        return(NULL)
+      if (!is.list(payload)) {
+        return(reject("invalid_intent"))
       }
 
-      context <- input$categorySelectionContext
-      if (is.null(context)) {
-        return(NULL)
-      }
-      invalid_context <- function() list(invalid = TRUE)
-      if (!is.list(context)) {
-        return(invalid_context())
-      }
-
-      normalize_value <- function(value, default = "None") {
-        if (is.null(value) || length(value) == 0L) {
-          return(default)
-        }
-        if (
-          length(value) != 1L ||
-            (!is.character(value) && !is.factor(value)) ||
-            is.na(value[[1]])
-        ) {
-          return(NULL)
-        }
-        value <- trimws(as.character(value[[1]]))
-        if (!nzchar(value)) default else value
+      cells <- payload$cells %||% character(0)
+      if (
+        !is.character(cells) ||
+          is.list(cells) ||
+          !is.atomic(cells) ||
+          !length(cells) ||
+          any(is.na(cells) | !nzchar(cells)) ||
+          anyDuplicated(cells)
+      ) {
+        return(reject("no_valid_cells"))
       }
 
-      submitted_group <- normalize_value(context$groupBy)
-      submitted_split <- normalize_value(context$splitBy)
-      current_group <- normalize_value(
-        if (is.function(groupBy)) groupBy() else groupBy
-      )
-      current_split <- normalize_value(
-        if (is.function(splitBy)) splitBy() else splitBy
-      )
-      submitted_version <- normalize_analysis_version(context$metaVersion)
-      current_version <- if (is.function(currentMetadataVersion)) {
+      metadata_version <- normalize_analysis_version(payload$metaVersion)
+      current_metadata_version <- if (is.function(currentMetadataVersion)) {
         normalize_analysis_version(currentMetadataVersion())
       } else {
         normalize_analysis_version(currentMetadataVersion)
       }
       if (
-        is.null(submitted_group) ||
-          is.null(submitted_split) ||
-          is.null(current_group) ||
-          is.null(current_split) ||
-          is.null(submitted_version) ||
-          is.null(current_version) ||
-          !identical(submitted_group, current_group) ||
-          !identical(submitted_split, current_split) ||
-          !identical(submitted_version, current_version)
+        is.null(metadata_version) ||
+          is.null(current_metadata_version) ||
+          !identical(metadata_version, current_metadata_version)
       ) {
-        return(invalid_context())
+        return(reject("stale_analysis_version"))
       }
 
-      context
+      expected_version <- normalize_analysis_version(payload$analysisVersion)
+      lineage_id <- normalize_analysis_version(payload$analysisLineageId)
+      if (is.null(expected_version) || is.null(lineage_id) || lineage_id < 1L) {
+        return(reject("invalid_intent"))
+      }
+
+      list(
+        cells = cells,
+        expected_version = expected_version,
+        lineage_id = lineage_id
+      )
     })
 
     observeEvent(input$assign, {
@@ -239,13 +169,12 @@ mod_AssignCellCluster_server <- function(
     mod_SubsetCells_server(
       "subsetCells",
       seuratObj,
-      selectedCells,
+      selectionIntent,
       geneUpdateIndicator,
       metaUpdateIndicator,
       reductionUpdateIndicator,
       backend_root = backend_root,
-      analysisTransition = analysisTransition,
-      categoryContext = categoryContext
+      analysisTransition = analysisTransition
     )
   })
 }

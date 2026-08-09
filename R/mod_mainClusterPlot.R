@@ -41,7 +41,8 @@ mod_mainClusterPlot_server <- function(
   scatterUpdateIndicator,
   group.by,
   split.by,
-  moduleScore
+  moduleScore,
+  analysisTransition = NULL
 ) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
@@ -84,6 +85,11 @@ mod_mainClusterPlot_server <- function(
           split_by = split_by,
           moduleScore = moduleScore()
         )
+        if (!is.null(analysisTransition)) {
+          analysis_context <- analysisTransition$intent_context()
+          d$analysisVersion <- analysis_context$expected_version
+          d$analysisLineageId <- analysis_context$lineage_id
+        }
         message("invoking regl")
         reglScatter_plot(d, session)
       },

@@ -48,117 +48,6 @@ new_analysis_transition_state <- function(version = 0L, lineage_id = 1L) {
   )
 }
 
-normalize_analysis_context_value <- function(value, default = "None") {
-  if (is.null(value) || length(value) == 0L) {
-    return(default)
-  }
-  if (
-    length(value) != 1L ||
-      (!is.character(value) && !is.factor(value)) ||
-      is.na(value[[1]])
-  ) {
-    return(NULL)
-  }
-
-  value <- trimws(as.character(value[[1]]))
-  if (!nzchar(value)) default else value
-}
-
-normalize_analysis_context_levels <- function(value) {
-  if (is.null(value) || length(value) == 0L) {
-    return(character(0))
-  }
-  if (is.list(value) || !is.atomic(value)) {
-    return(NULL)
-  }
-
-  value <- trimws(as.character(value))
-  value <- value[!is.na(value) & nzchar(value) & value != "None"]
-  unique(value)
-}
-
-resolve_analysis_category_cells <- function(object, intent) {
-  invalid <- function() list(reason_code = "invalid_category_context")
-  if (!is.list(intent$context) || !is.list(intent$category)) {
-    return(invalid())
-  }
-
-  context_group <- normalize_analysis_context_value(intent$context$groupBy)
-  context_split <- normalize_analysis_context_value(intent$context$splitBy)
-  category_group <- normalize_analysis_context_value(intent$category$groupBy)
-  category_split <- normalize_analysis_context_value(intent$category$splitBy)
-  if (
-    is.null(context_group) ||
-      is.null(context_split) ||
-      is.null(category_group) ||
-      is.null(category_split) ||
-      identical(context_group, "None") ||
-      !identical(context_group, category_group) ||
-      !identical(context_split, category_split)
-  ) {
-    return(invalid())
-  }
-
-  group_levels <- normalize_analysis_context_levels(intent$category$groupLevels)
-  if (is.null(group_levels) || !length(group_levels)) {
-    return(invalid())
-  }
-
-  meta <- tryCatch(object[[]], error = function(...) NULL)
-  object_cells <- colnames(object)
-  if (
-    !is.data.frame(meta) ||
-      !length(object_cells) ||
-      nrow(meta) != length(object_cells) ||
-      !context_group %in% colnames(meta)
-  ) {
-    return(invalid())
-  }
-
-  meta_cells <- rownames(meta)
-  if (
-    is.null(meta_cells) ||
-      length(meta_cells) != nrow(meta) ||
-      !identical(as.character(meta_cells), as.character(object_cells))
-  ) {
-    return(invalid())
-  }
-
-  group_values <- as.character(meta[[context_group]])
-  available_group_levels <- unique(group_values[!is.na(group_values)])
-  if (any(!group_levels %in% available_group_levels)) {
-    return(invalid())
-  }
-  matched <- !is.na(group_values) & group_values %in% group_levels
-
-  if (!identical(context_split, "None")) {
-    split_levels <- normalize_analysis_context_levels(
-      intent$category$splitLevels
-    )
-    if (
-      is.null(split_levels) ||
-        !length(split_levels) ||
-        !context_split %in% colnames(meta)
-    ) {
-      return(invalid())
-    }
-
-    split_values <- as.character(meta[[context_split]])
-    available_split_levels <- unique(split_values[!is.na(split_values)])
-    if (any(!split_levels %in% available_split_levels)) {
-      return(invalid())
-    }
-    matched <- matched & !is.na(split_values) & split_values %in% split_levels
-  }
-
-  selected_cells <- object_cells[matched]
-  if (!length(selected_cells)) {
-    return(list(reason_code = "no_valid_cells"))
-  }
-
-  list(reason_code = NULL, cells = selected_cells)
-}
-
 #' Apply one atomic Analysis Mutation
 #'
 #' @noRd
@@ -248,25 +137,15 @@ apply_analysis_transition <- function(
     ) {
       return(reject("invalid_intent"))
     }
-    had_requested_cells <- length(raw_cells) > 0L
-    requested_cells <- as.character(raw_cells)
-    requested_cells <- requested_cells[
-      !is.na(requested_cells) & nzchar(requested_cells)
-    ]
-    requested_cells <- unique(requested_cells)
-
-    if (!had_requested_cells && !is.null(intent$category)) {
-      category_result <- resolve_analysis_category_cells(object, intent)
-      if (!is.null(category_result$reason_code)) {
-        return(reject(category_result$reason_code))
-      }
-      requested_cells <- category_result$cells
-    }
-
-    valid_cells <- object_cells[object_cells %in% requested_cells]
-    if (!length(valid_cells)) {
+    if (
+      !length(raw_cells) ||
+        any(is.na(raw_cells) | !nzchar(raw_cells)) ||
+        anyDuplicated(raw_cells) ||
+        any(!raw_cells %in% object_cells)
+    ) {
       return(reject("no_valid_cells"))
     }
+    valid_cells <- object_cells[object_cells %in% raw_cells]
 
     subset_object <- tryCatch(
       safe_subset_seurat_object(

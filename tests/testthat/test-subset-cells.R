@@ -34,6 +34,23 @@ make_analysis_transition <- function(seurat_value) {
   )(seurat_value)
 }
 
+make_subset_selection_intent <- function(
+  cells = character(0),
+  expected_version = 0L,
+  lineage_id = 1L,
+  reason_code = NULL
+) {
+  intent <- list(
+    cells = cells,
+    expected_version = expected_version,
+    lineage_id = lineage_id
+  )
+  if (!is.null(reason_code)) {
+    intent$reason_code <- reason_code
+  }
+  intent
+}
+
 expect_subset_indicator_values <- function(gene, meta, reduction, expected) {
   expect_identical(shiny::isolate(gene()), expected)
   expect_identical(shiny::isolate(meta()), expected)
@@ -44,7 +61,7 @@ test_that("subset switch rejects empty, invalid, and stale selections without mu
   object <- make_subset_object()
   seurat_value <- shiny::reactiveVal(object)
   analysis_transition <- make_analysis_transition(seurat_value)
-  selected_cells <- shiny::reactiveVal(character(0))
+  selection_intent <- shiny::reactiveVal(make_subset_selection_intent())
   gene_indicator <- shiny::reactiveVal(0)
   meta_indicator <- shiny::reactiveVal(0)
   reduction_indicator <- shiny::reactiveVal(0)
@@ -53,7 +70,7 @@ test_that("subset switch rejects empty, invalid, and stale selections without mu
     mod_SubsetCells_server,
     args = list(
       seuratObj = seurat_value,
-      selectedCells = selected_cells,
+      selectionIntent = selection_intent,
       geneUpdateIndicator = gene_indicator,
       metaUpdateIndicator = meta_indicator,
       reductionUpdateIndicator = reduction_indicator,
@@ -70,7 +87,23 @@ test_that("subset switch rejects empty, invalid, and stale selections without mu
         0
       )
 
-      selected_cells(c("missing-cell", "also-missing"))
+      selection_intent(make_subset_selection_intent(
+        c("missing-cell", "also-missing")
+      ))
+      session$setInputs(subsetData = FALSE)
+      session$setInputs(subsetData = TRUE)
+      expect_identical(colnames(seurat_value()), colnames(object))
+      expect_null(analysis_transition$state()$original_object)
+      expect_subset_indicator_values(
+        gene_indicator,
+        meta_indicator,
+        reduction_indicator,
+        0
+      )
+
+      selection_intent(make_subset_selection_intent(
+        c("Cell1", "missing-cell")
+      ))
       session$setInputs(subsetData = FALSE)
       session$setInputs(subsetData = TRUE)
       expect_identical(colnames(seurat_value()), colnames(object))
@@ -89,7 +122,9 @@ test_that("valid subset stores the original once, preserves cell order, drops sc
   object <- make_subset_object()
   seurat_value <- shiny::reactiveVal(object)
   analysis_transition <- make_analysis_transition(seurat_value)
-  selected_cells <- shiny::reactiveVal(c("Cell5", "Cell2", "missing", "Cell2"))
+  selection_intent <- shiny::reactiveVal(make_subset_selection_intent(
+    c("Cell5", "Cell2")
+  ))
   gene_indicator <- shiny::reactiveVal(0)
   meta_indicator <- shiny::reactiveVal(0)
   reduction_indicator <- shiny::reactiveVal(0)
@@ -102,7 +137,7 @@ test_that("valid subset stores the original once, preserves cell order, drops sc
     mod_SubsetCells_server,
     args = list(
       seuratObj = seurat_value,
-      selectedCells = selected_cells,
+      selectionIntent = selection_intent,
       geneUpdateIndicator = gene_indicator,
       metaUpdateIndicator = meta_indicator,
       reductionUpdateIndicator = reduction_indicator,
@@ -124,7 +159,7 @@ test_that("valid subset stores the original once, preserves cell order, drops sc
       )
 
       stored_original <- analysis_transition$state()$original_object
-      selected_cells(c("Cell2"))
+      selection_intent(make_subset_selection_intent(c("Cell2")))
       session$setInputs(subsetData = TRUE)
       expect_identical(
         analysis_transition$state()$original_object,
@@ -145,7 +180,9 @@ test_that("restore replaces subset state with original, clears backup, and repea
   object <- make_subset_object()
   seurat_value <- shiny::reactiveVal(object)
   analysis_transition <- make_analysis_transition(seurat_value)
-  selected_cells <- shiny::reactiveVal(c("Cell1", "Cell3"))
+  selection_intent <- shiny::reactiveVal(make_subset_selection_intent(
+    c("Cell1", "Cell3")
+  ))
   gene_indicator <- shiny::reactiveVal(0)
   meta_indicator <- shiny::reactiveVal(0)
   reduction_indicator <- shiny::reactiveVal(0)
@@ -154,7 +191,7 @@ test_that("restore replaces subset state with original, clears backup, and repea
     mod_SubsetCells_server,
     args = list(
       seuratObj = seurat_value,
-      selectedCells = selected_cells,
+      selectionIntent = selection_intent,
       geneUpdateIndicator = gene_indicator,
       metaUpdateIndicator = meta_indicator,
       reductionUpdateIndicator = reduction_indicator,
@@ -194,11 +231,11 @@ test_that("restore replaces subset state with original, clears backup, and repea
   )
 })
 
-test_that("browser selectedPoints cell IDs flow through assignment module into subset selection", {
+test_that("browser Cell ID payloads flow through assignment module into subset selection", {
   object <- make_subset_object()
   seurat_value <- shiny::reactiveVal(object)
   analysis_transition <- make_analysis_transition(seurat_value)
-  selected_points <- shiny::reactiveVal(c("Cell1", "Cell3"))
+  metadata_version <- shiny::reactiveVal(0L)
   gene_indicator <- shiny::reactiveVal(0)
   meta_indicator <- shiny::reactiveVal(0)
   reduction_indicator <- shiny::reactiveVal(0)
@@ -207,13 +244,19 @@ test_that("browser selectedPoints cell IDs flow through assignment module into s
     mod_AssignCellCluster_server,
     args = list(
       seuratObj = seurat_value,
-      selectedPoints = selected_points,
       geneUpdateIndicator = gene_indicator,
       metaUpdateIndicator = meta_indicator,
       reductionUpdateIndicator = reduction_indicator,
-      analysisTransition = analysis_transition
+      analysisTransition = analysis_transition,
+      currentMetadataVersion = metadata_version
     ),
     {
+      session$setInputs(selectedCellsPayload = list(
+        cells = c("Cell3", "Cell1"),
+        metaVersion = 0L,
+        analysisVersion = 0L,
+        analysisLineageId = 1L
+      ))
       session$setInputs("subsetCells-subsetData" = TRUE)
 
       expect_identical(
@@ -225,6 +268,137 @@ test_that("browser selectedPoints cell IDs flow through assignment module into s
         meta_indicator,
         reduction_indicator,
         1
+      )
+    }
+  )
+})
+
+test_that("Analysis plot messages carry the current selection identity", {
+  object <- make_subset_object()
+  seurat_value <- shiny::reactiveVal(object)
+  analysis_transition <- make_analysis_transition(seurat_value)
+  reduction_processed <- shiny::reactiveVal(TRUE)
+  meta_processed <- shiny::reactiveVal(TRUE)
+  plot_refresh_indicator <- shiny::reactiveVal(0)
+  scatter_update_indicator <- shiny::reactiveVal(0)
+  plot_message <- NULL
+
+  testthat::local_mocked_bindings(
+    reglScatter_plot = function(plotMetaData, session) {
+      plot_message <<- plotMetaData
+    },
+    .package = "scSpotlight"
+  )
+
+  testServer(
+    mod_mainClusterPlot_server,
+    args = list(
+      reductionProcessed = reduction_processed,
+      metaProcessed = meta_processed,
+      plotRefreshIndicator = plot_refresh_indicator,
+      scatterUpdateIndicator = scatter_update_indicator,
+      group.by = shiny::reactive("cluster"),
+      split.by = shiny::reactive("None"),
+      moduleScore = shiny::reactive(FALSE),
+      analysisTransition = analysis_transition
+    ),
+    {
+      session$flushReact()
+      plot_refresh_indicator(1)
+      session$flushReact()
+    }
+  )
+
+  expect_identical(
+    plot_message,
+    list(
+      group_by = "cluster",
+      split_by = NULL,
+      moduleScore = FALSE,
+      analysisVersion = 0L,
+      analysisLineageId = 1L
+    )
+  )
+})
+
+test_that("browser Cell ID payloads reject empty, mixed, and stale selections", {
+  object <- make_subset_object()
+  seurat_value <- shiny::reactiveVal(object)
+  analysis_transition <- make_analysis_transition(seurat_value)
+  metadata_version <- shiny::reactiveVal(0L)
+  gene_indicator <- shiny::reactiveVal(0)
+  meta_indicator <- shiny::reactiveVal(0)
+  reduction_indicator <- shiny::reactiveVal(0)
+
+  testServer(
+    mod_AssignCellCluster_server,
+    args = list(
+      seuratObj = seurat_value,
+      geneUpdateIndicator = gene_indicator,
+      metaUpdateIndicator = meta_indicator,
+      reductionUpdateIndicator = reduction_indicator,
+      analysisTransition = analysis_transition,
+      currentMetadataVersion = metadata_version
+    ),
+    {
+      session$setInputs(selectedCellsPayload = list(
+        cells = character(0),
+        metaVersion = 0L,
+        analysisVersion = 0L,
+        analysisLineageId = 1L
+      ))
+      session$setInputs("subsetCells-subsetData" = TRUE)
+      expect_identical(colnames(shiny::isolate(seurat_value())), colnames(object))
+      expect_identical(analysis_transition$version(), 0L)
+
+      session$setInputs("subsetCells-subsetData" = FALSE)
+      session$setInputs(selectedCellsPayload = list(
+        cells = c("Cell1", "missing-cell"),
+        metaVersion = 0L,
+        analysisVersion = 0L,
+        analysisLineageId = 1L
+      ))
+      session$setInputs("subsetCells-subsetData" = TRUE)
+      expect_identical(colnames(shiny::isolate(seurat_value())), colnames(object))
+      expect_identical(analysis_transition$version(), 0L)
+
+      session$setInputs("subsetCells-subsetData" = FALSE)
+      session$setInputs(selectedCellsPayload = list(
+        cells = "Cell1",
+        metaVersion = 0L,
+        analysisVersion = 1L,
+        analysisLineageId = 1L
+      ))
+      session$setInputs("subsetCells-subsetData" = TRUE)
+      expect_identical(colnames(shiny::isolate(seurat_value())), colnames(object))
+      expect_identical(analysis_transition$version(), 0L)
+
+      session$setInputs("subsetCells-subsetData" = FALSE)
+      session$setInputs(selectedCellsPayload = list(
+        cells = "Cell1",
+        metaVersion = 1L,
+        analysisVersion = 0L,
+        analysisLineageId = 1L
+      ))
+      session$setInputs("subsetCells-subsetData" = TRUE)
+      expect_identical(colnames(shiny::isolate(seurat_value())), colnames(object))
+      expect_identical(analysis_transition$version(), 0L)
+
+      session$setInputs("subsetCells-subsetData" = FALSE)
+      session$setInputs(selectedCellsPayload = list(
+        cells = "Cell1",
+        metaVersion = 0L,
+        analysisVersion = 0L,
+        analysisLineageId = 2L
+      ))
+      session$setInputs("subsetCells-subsetData" = TRUE)
+      expect_identical(colnames(shiny::isolate(seurat_value())), colnames(object))
+      expect_identical(analysis_transition$version(), 0L)
+      expect_subset_indicator_values(
+        gene_indicator,
+        meta_indicator,
+        reduction_indicator,
+        0
       )
     }
   )
@@ -385,142 +559,6 @@ test_that("Analysis Transition publishes monotonic versions for Subset and Resto
   )
 })
 
-test_that("category Subset intents resolve canonical metadata in source cell order", {
-  object <- make_subset_object()
-  object$batch <- factor(c("batch1", "batch2", "batch1", "batch2", "batch1"))
-  seurat_value <- shiny::reactiveVal(object)
-  analysis_transition <- make_analysis_transition(seurat_value)
-
-  result <- analysis_transition$apply(
-    intent = list(
-      operation = "subset",
-      expected_version = 0L,
-      lineage_id = 1L,
-      context = list(groupBy = "cluster", splitBy = "batch"),
-      category = list(
-        groupBy = "cluster",
-        groupLevels = "A",
-        splitBy = "batch",
-        splitLevels = "batch1"
-      )
-    )
-  )
-
-  expect_true(result$committed)
-  expect_identical(
-    colnames(shiny::isolate(seurat_value())),
-    c("Cell1", "Cell3", "Cell5")
-  )
-  expect_identical(analysis_transition$version(), 1L)
-})
-
-test_that("category Subset intents reject stale or mismatched context without mutation", {
-  object <- make_subset_object()
-  object$batch <- factor(c("batch1", "batch2", "batch1", "batch2", "batch1"))
-  seurat_value <- shiny::reactiveVal(object)
-  analysis_transition <- make_analysis_transition(seurat_value)
-
-  result <- analysis_transition$apply(
-    intent = list(
-      operation = "subset",
-      expected_version = 0L,
-      lineage_id = 1L,
-      context = list(groupBy = "other", splitBy = "batch"),
-      category = list(
-        groupBy = "cluster",
-        groupLevels = "A",
-        splitBy = "batch",
-        splitLevels = "batch1"
-      )
-    )
-  )
-
-  expect_false(result$committed)
-  expect_identical(result$reason_code, "invalid_category_context")
-  expect_identical(colnames(shiny::isolate(seurat_value())), colnames(object))
-  expect_identical(analysis_transition$version(), 0L)
-})
-
-test_that("Subset module uses server category context when no lasso selection is active", {
-  object <- make_subset_object()
-  object$batch <- factor(c("batch1", "batch2", "batch1", "batch2", "batch1"))
-  seurat_value <- shiny::reactiveVal(object)
-  analysis_transition <- make_analysis_transition(seurat_value)
-  selected_cells <- shiny::reactiveVal(character(0))
-  gene_indicator <- shiny::reactiveVal(0)
-  meta_indicator <- shiny::reactiveVal(0)
-  reduction_indicator <- shiny::reactiveVal(0)
-  testServer(
-    mod_SubsetCells_server,
-    args = list(
-      seuratObj = seurat_value,
-      selectedCells = selected_cells,
-      geneUpdateIndicator = gene_indicator,
-      metaUpdateIndicator = meta_indicator,
-      reductionUpdateIndicator = reduction_indicator,
-      analysisTransition = analysis_transition,
-      categoryContext = shiny::reactive(list(
-        groupBy = "cluster",
-        groupLevels = "A",
-        splitBy = "batch",
-        splitLevels = "batch1",
-        metaVersion = 0L
-      ))
-    ),
-    {
-      session$setInputs(subsetData = TRUE)
-    }
-  )
-
-  expect_identical(
-    colnames(shiny::isolate(seurat_value())),
-    c("Cell1", "Cell3", "Cell5")
-  )
-  expect_identical(analysis_transition$version(), 1L)
-  expect_subset_indicator_values(
-    gene_indicator,
-    meta_indicator,
-    reduction_indicator,
-    1
-  )
-})
-
-test_that("Subset module rejects a stale category context without mutation", {
-  object <- make_subset_object()
-  object$batch <- factor(c("batch1", "batch2", "batch1", "batch2", "batch1"))
-  seurat_value <- shiny::reactiveVal(object)
-  analysis_transition <- make_analysis_transition(seurat_value)
-  selected_cells <- shiny::reactiveVal(character(0))
-  gene_indicator <- shiny::reactiveVal(0)
-  meta_indicator <- shiny::reactiveVal(0)
-  reduction_indicator <- shiny::reactiveVal(0)
-
-  testServer(
-    mod_SubsetCells_server,
-    args = list(
-      seuratObj = seurat_value,
-      selectedCells = selected_cells,
-      geneUpdateIndicator = gene_indicator,
-      metaUpdateIndicator = meta_indicator,
-      reductionUpdateIndicator = reduction_indicator,
-      analysisTransition = analysis_transition,
-      categoryContext = shiny::reactive(list(invalid = TRUE))
-    ),
-    {
-      session$setInputs(subsetData = TRUE)
-    }
-  )
-
-  expect_identical(analysis_transition$version(), 0L)
-  expect_identical(colnames(shiny::isolate(seurat_value())), colnames(object))
-  expect_subset_indicator_values(
-    gene_indicator,
-    meta_indicator,
-    reduction_indicator,
-    0
-  )
-})
-
 test_that("stale and empty Analysis Mutations preserve the current state", {
   object <- make_subset_object()
   seurat_value <- shiny::reactiveVal(object)
@@ -538,6 +576,19 @@ test_that("stale and empty Analysis Mutations preserve the current state", {
   expect_false(empty_result$committed)
   expect_identical(empty_result$reason_code, "no_valid_cells")
   expect_identical(empty_transition$version(), 0L)
+
+  mixed_transition <- make_analysis_transition(shiny::reactiveVal(object))
+  mixed_result <- mixed_transition$apply(
+    intent = list(
+      operation = "subset",
+      expected_version = 0L,
+      lineage_id = 1L,
+      cells = c("Cell1", "missing-cell")
+    )
+  )
+  expect_false(mixed_result$committed)
+  expect_identical(mixed_result$reason_code, "no_valid_cells")
+  expect_identical(mixed_transition$version(), 0L)
 
   subset_result <- analysis_transition$apply(
     intent = list(
@@ -790,7 +841,9 @@ test_that("Subset module commits the server-owned Analysis Transition state", {
   object <- make_subset_object()
   seurat_value <- shiny::reactiveVal(object)
   analysis_transition <- make_analysis_transition(seurat_value)
-  selected_cells <- shiny::reactiveVal(c("Cell1", "Cell3"))
+  selection_intent <- shiny::reactiveVal(make_subset_selection_intent(
+    c("Cell1", "Cell3")
+  ))
   gene_indicator <- shiny::reactiveVal(0)
   meta_indicator <- shiny::reactiveVal(0)
   reduction_indicator <- shiny::reactiveVal(0)
@@ -799,7 +852,7 @@ test_that("Subset module commits the server-owned Analysis Transition state", {
     mod_SubsetCells_server,
     args = list(
       seuratObj = seurat_value,
-      selectedCells = selected_cells,
+      selectionIntent = selection_intent,
       geneUpdateIndicator = gene_indicator,
       metaUpdateIndicator = meta_indicator,
       reductionUpdateIndicator = reduction_indicator,
@@ -849,7 +902,9 @@ test_that("Subset adapter rejects non-boolean switch values without mutation", {
   object <- make_subset_object()
   seurat_value <- shiny::reactiveVal(object)
   analysis_transition <- make_analysis_transition(seurat_value)
-  selected_cells <- shiny::reactiveVal(c("Cell1", "Cell3"))
+  selection_intent <- shiny::reactiveVal(make_subset_selection_intent(
+    c("Cell1", "Cell3")
+  ))
   gene_indicator <- shiny::reactiveVal(0)
   meta_indicator <- shiny::reactiveVal(0)
   reduction_indicator <- shiny::reactiveVal(0)
@@ -858,7 +913,7 @@ test_that("Subset adapter rejects non-boolean switch values without mutation", {
     mod_SubsetCells_server,
     args = list(
       seuratObj = seurat_value,
-      selectedCells = selected_cells,
+      selectionIntent = selection_intent,
       geneUpdateIndicator = gene_indicator,
       metaUpdateIndicator = meta_indicator,
       reductionUpdateIndicator = reduction_indicator,
@@ -885,7 +940,9 @@ test_that("Subset adapter rejects a queued toggle across an Analysis reset", {
   object <- make_subset_object()
   seurat_value <- shiny::reactiveVal(object)
   analysis_transition <- make_analysis_transition(seurat_value)
-  selected_cells <- shiny::reactiveVal(c("Cell1", "Cell3"))
+  selection_intent <- shiny::reactiveVal(make_subset_selection_intent(
+    c("Cell1", "Cell3")
+  ))
   gene_indicator <- shiny::reactiveVal(0)
   meta_indicator <- shiny::reactiveVal(0)
   reduction_indicator <- shiny::reactiveVal(0)
@@ -894,7 +951,7 @@ test_that("Subset adapter rejects a queued toggle across an Analysis reset", {
     mod_SubsetCells_server,
     args = list(
       seuratObj = seurat_value,
-      selectedCells = selected_cells,
+      selectionIntent = selection_intent,
       geneUpdateIndicator = gene_indicator,
       metaUpdateIndicator = meta_indicator,
       reductionUpdateIndicator = reduction_indicator,
@@ -912,6 +969,10 @@ test_that("Subset adapter rejects a queued toggle across an Analysis reset", {
       )
 
       session$setInputs(subsetData = FALSE)
+      selection_intent(make_subset_selection_intent(
+        c("Cell1", "Cell3"),
+        lineage_id = analysis_transition$lineage_id()
+      ))
       session$setInputs(subsetData = TRUE)
       expect_identical(analysis_transition$version(), 1L)
       expect_identical(

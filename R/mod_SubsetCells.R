@@ -25,13 +25,12 @@ mod_SubsetCells_ui <- function(id) {
 mod_SubsetCells_server <- function(
   id,
   seuratObj,
-  selectedCells,
+  selectionIntent,
   geneUpdateIndicator,
   metaUpdateIndicator,
   reductionUpdateIndicator,
   analysisTransition,
-  backend_root = NULL,
-  categoryContext = NULL
+  backend_root = NULL
 ) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
@@ -77,11 +76,11 @@ mod_SubsetCells_server <- function(
       reductionUpdateIndicator(reductionUpdateIndicator() + 1)
     }
 
-    read_category_context <- function() {
-      if (is.function(categoryContext)) {
-        return(categoryContext())
+    read_selection_intent <- function() {
+      if (is.function(selectionIntent)) {
+        return(selectionIntent())
       }
-      categoryContext
+      selectionIntent
     }
 
     notify_transition_failure <- function(reason_code, operation) {
@@ -89,7 +88,6 @@ mod_SubsetCells_server <- function(
         reason_code,
         no_valid_cells = "Please select current cells before subsetting.",
         already_subsetted = "Dataset is already subsetted. Restore before subsetting again.",
-        invalid_category_context = "Category selection is stale. Refresh the plot and try again.",
         subset_failed = "Unable to subset selected cells safely.",
         original_state_failed = "Unable to preserve the original dataset safely.",
         restore_failed = "Unable to restore the original dataset safely.",
@@ -138,7 +136,6 @@ mod_SubsetCells_server <- function(
 
       req(seuratObj())
 
-      transition_context <- analysisTransition$intent_context()
       operation <- if (isTRUE(subset_value)) "subset" else "restore"
       subset_backend_root <- if (
         isTRUE(subset_value) && isTruthy(backend_root)
@@ -148,42 +145,41 @@ mod_SubsetCells_server <- function(
         NULL
       }
 
-      requested_cells <- if (identical(operation, "subset")) {
-        selectedCells()
-      } else {
-        character(0)
-      }
-      requested_cells <- as.character(requested_cells %||% character(0))
-      requested_cells <- requested_cells[
-        !is.na(requested_cells) & nzchar(requested_cells)
-      ]
-
-      intent <- list(
-        operation = operation,
-        expected_version = transition_context$expected_version,
-        lineage_id = transition_context$lineage_id,
-        cells = requested_cells
-      )
-
-      if (identical(operation, "subset") && !length(requested_cells)) {
-        category <- read_category_context()
-        if (!is.null(category)) {
-          if (isTRUE(category$invalid)) {
-            intent$context <- list()
-            intent$category <- list()
-          } else {
-            intent$context <- list(
-              groupBy = category$groupBy %||% "None",
-              splitBy = category$splitBy %||% "None"
-            )
-            intent$category <- list(
-              groupBy = category$groupBy %||% "None",
-              groupLevels = category$groupLevels %||% character(0),
-              splitBy = category$splitBy %||% "None",
-              splitLevels = category$splitLevels %||% character(0)
-            )
-          }
+      if (identical(operation, "subset")) {
+        selection_intent <- read_selection_intent()
+        if (!is.list(selection_intent)) {
+          notify_transition_failure("no_valid_cells", operation)
+          sync_subset_switch()
+          return(invisible(NULL))
         }
+
+        reason_code <- selection_intent$reason_code %||% NULL
+        if (!is.null(reason_code)) {
+          if (
+            length(reason_code) != 1L ||
+              !is.character(reason_code) ||
+              is.na(reason_code)
+          ) {
+            reason_code <- "invalid_intent"
+          }
+          notify_transition_failure(reason_code, operation)
+          sync_subset_switch()
+          return(invisible(NULL))
+        }
+
+        intent <- list(
+          operation = operation,
+          expected_version = selection_intent$expected_version,
+          lineage_id = selection_intent$lineage_id,
+          cells = selection_intent$cells %||% character(0)
+        )
+      } else {
+        transition_context <- analysisTransition$intent_context()
+        intent <- list(
+          operation = operation,
+          expected_version = transition_context$expected_version,
+          lineage_id = transition_context$lineage_id
+        )
       }
 
       result <- analysisTransition$apply(

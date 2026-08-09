@@ -66,7 +66,6 @@ const renameClusterIds = {
   selectedCellsText: "renameCluster-selectedCellsText",
   assign: "renameCluster-assign",
   selectedCellsPayload: "renameCluster-selectedCellsPayload",
-  categorySelectionContext: "renameCluster-categorySelectionContext",
   assignmentIntent: "renameCluster-assignmentIntent",
 };
 const renameSelectionState = {
@@ -1326,7 +1325,6 @@ const setRenameAssignmentFeedback = (message) => {
 const clearRenameAssignmentTransportState = () => {
   if (!globalThis.Shiny?.setInputValue) return;
   Shiny.setInputValue(renameClusterIds.selectedCellsPayload, null, { priority: "event" });
-  Shiny.setInputValue(renameClusterIds.categorySelectionContext, null, { priority: "event" });
   Shiny.setInputValue(renameClusterIds.assignmentIntent, null, { priority: "event" });
 };
 
@@ -1338,6 +1336,12 @@ const currentRenameContext = () => ({
   groupBy: normalizePlotContextValue(reglElementData.plotMetaData.group_by),
   splitBy: normalizePlotContextValue(reglElementData.plotMetaData.split_by),
   metaVersion: activeMetaVersion,
+});
+
+const currentAnalysisSelectionContext = () => ({
+  metaVersion: activeMetaVersion,
+  analysisVersion: reglElementData.plotMetaData.analysisVersion,
+  analysisLineageId: reglElementData.plotMetaData.analysisLineageId,
 });
 
 const getCurrentCellIds = () => {
@@ -1429,10 +1433,9 @@ const clearSelectionTransportAfterScatterReplacement = () => {
   clearRenameCategorySelectionUi();
   clearRenameAssignmentTransportState();
   updateRenameSelectedCellsText(0);
-  Shiny.setInputValue("selectedPoints", null, { priority: "event" });
 };
 
-const clearSelectedCellsAfterScatterReplacement = () => {
+const clearSelectedCellsAfterSelectionInvalidation = () => {
   reglElementData.setSelectedCells([], { source: null });
   reglElementData.interactions?.clearLasso?.();
   clearSelectionTransportAfterScatterReplacement();
@@ -1440,7 +1443,7 @@ const clearSelectedCellsAfterScatterReplacement = () => {
 
 const handleFullObjectReplacementState = () => {
   clearExpressionState({ refreshPanels: false, invalidateVersion: true });
-  clearSelectedCellsAfterScatterReplacement();
+  clearSelectedCellsAfterSelectionInvalidation();
   renameSelectionState.lastGroupBy = null;
   renameSelectionState.lastSplitBy = null;
 };
@@ -1580,45 +1583,13 @@ const computeRenameCategorySelectedCells = () => {
   return selectedCells;
 };
 
-const getRenameCategorySelectionContext = () => {
-  const groupBy = normalizePlotContextValue(reglElementData.plotMetaData.group_by);
-  const splitBy = normalizePlotContextValue(reglElementData.plotMetaData.split_by);
-  const groupLevels = getRenameSelectedValues(renameClusterIds.chosenGroup);
-  const splitLevels = splitBy === "None"
-    ? []
-    : getRenameSelectedValues(renameClusterIds.chosenSplit);
-
-  if (
-    groupBy === "None" ||
-    groupLevels.length === 0 ||
-    (splitBy !== "None" && splitLevels.length === 0)
-  ) {
-    return null;
-  }
-
-  return {
-    groupBy,
-    groupLevels,
-    splitBy,
-    splitLevels,
-    metaVersion: activeMetaVersion,
-  };
-};
-
 const applyRenameCategorySelection = () => {
   if (reglElementData.selectionSource === "lasso" && reglElementData.plotData.selectedCells.length > 0) {
-    Shiny.setInputValue(renameClusterIds.categorySelectionContext, null, { priority: "event" });
     updateRenameSelectedCellsText(reglElementData.plotData.selectedCells.length);
     return;
   }
-  const categoryContext = getRenameCategorySelectionContext();
   const selectedCells = computeRenameCategorySelectedCells();
   reglElementData.setSelectedCells(selectedCells, { source: selectedCells.length > 0 ? "category" : null });
-  Shiny.setInputValue(
-    renameClusterIds.categorySelectionContext,
-    selectedCells.length > 0 ? categoryContext : null,
-    { priority: "event" },
-  );
   updateRenameSelectedCellsText(selectedCells.length);
 };
 
@@ -1851,6 +1822,7 @@ Shiny.addCustomMessageHandler("meta_patch_ready", (msg) => {
       });
       console.log("metaPatch", out);
       reglElementData.updateCellMetaDataPatch(patch);
+      clearSelectedCellsAfterSelectionInvalidation();
       const syncResult = syncMetaUiAfterUpdate({
         fullTransfer: false,
         changedCols,
@@ -2146,6 +2118,8 @@ Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
     const moduleScore = msg.moduleScore;
 
     nextReglElementData.updatePlotMetaData(group_by, split_by, moduleScore);
+    nextReglElementData.plotMetaData.analysisVersion = msg.analysisVersion;
+    nextReglElementData.plotMetaData.analysisLineageId = msg.analysisLineageId;
     console.log("reglElementData.plotMetaData: ", nextReglElementData.plotMetaData);
 
     console.log("Generating plotEl");
@@ -2182,7 +2156,7 @@ Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
     if (replacesRenderedScatter) {
       // Render replacements do not retain lasso geometry. Clear the matching
       // server transport so a visually cleared lasso cannot mutate later state.
-      clearSelectedCellsAfterScatterReplacement();
+      clearSelectedCellsAfterSelectionInvalidation();
     }
     pushSidebarMetaState();
 
@@ -2192,7 +2166,10 @@ Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
         console.log("selectedCells: ", selectedCells);
         updateRenameSelectedCellsText(selectedCells.length);
         syncRenameClusterSelectionUi();
-        Shiny.setInputValue("selectedPoints", selectedCells, {
+        Shiny.setInputValue(renameClusterIds.selectedCellsPayload, {
+          cells: selectedCells,
+          ...currentAnalysisSelectionContext(),
+        }, {
           priority: "event",
         });
       },
@@ -2200,7 +2177,6 @@ Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
         clearRenameCategorySelectionUi();
         clearRenameAssignmentTransportState();
         syncRenameClusterSelectionUi();
-        Shiny.setInputValue("selectedPoints", null);
       },
     });
 

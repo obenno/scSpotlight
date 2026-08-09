@@ -444,20 +444,12 @@ app_server <- function(input, output, session) {
     scatterUpdateIndicator,
     categoryInfo$group.by,
     categoryInfo$split.by,
-    featureInfo$moduleScore
+    featureInfo$moduleScore,
+    analysisTransition = analysisTransition
   )
 
   if (identical(runningMode, "analysis")) {
     ## Rename Clusters
-    selectedPoints <- eventReactive(
-      input$selectedPoints,
-      {
-        ##message("Selected Points: ", ifelse(isTruthy(input$selectedPoints), paste(input$selectedPoints, collapse = " "), "None"))
-        input$selectedPoints
-      },
-      ignoreNULL = FALSE
-    )
-
     observeEvent(input[["renameCluster-assignmentIntent"]], {
       assignmentIntent <- input[["renameCluster-assignmentIntent"]]
       req(isTruthy(seuratObj()))
@@ -526,14 +518,11 @@ app_server <- function(input, output, session) {
     mod_AssignCellCluster_server(
       "renameCluster",
       seuratObj,
-      selectedPoints,
       geneUpdateIndicator,
       metaUpdateIndicator,
       reductionUpdateIndicator,
       backend_root = session$userData$backendDir,
       analysisTransition = analysisTransition,
-      groupBy = categoryInfo$group.by,
-      splitBy = categoryInfo$split.by,
       currentMetadataVersion = currentMetadataVersion
     )
 
