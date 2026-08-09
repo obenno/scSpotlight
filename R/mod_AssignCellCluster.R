@@ -87,19 +87,54 @@ mod_AssignCellCluster_server <- function(
   reductionUpdateIndicator,
   analysisTransition,
   backend_root = NULL,
-  currentMetadataVersion = NULL
+  currentMetadataVersion = NULL,
+  currentGroupBy = NULL,
+  currentSplitBy = NULL
 ) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
-    selectionIntent <- reactive({
+    current_value <- function(value) {
+      if (is.function(value)) value() else value
+    }
+
+    current_metadata_version <- function() {
+      normalize_analysis_version(current_value(currentMetadataVersion))
+    }
+
+    validate_selection_identity <- function(payload) {
       reject <- function(reason_code) list(reason_code = reason_code)
-      payload <- input$selectedCellsPayload
-      if (is.null(payload)) {
-        return(reject("no_valid_cells"))
-      }
       if (!is.list(payload)) {
         return(reject("invalid_intent"))
+      }
+
+      metadata_version <- normalize_analysis_version(payload$metaVersion)
+      active_metadata_version <- current_metadata_version()
+      if (
+        is.null(metadata_version) ||
+          is.null(active_metadata_version) ||
+          !identical(metadata_version, active_metadata_version)
+      ) {
+        return(reject("stale_analysis_version"))
+      }
+
+      expected_version <- normalize_analysis_version(payload$analysisVersion)
+      lineage_id <- normalize_analysis_version(payload$analysisLineageId)
+      if (is.null(expected_version) || is.null(lineage_id) || lineage_id < 1L) {
+        return(reject("invalid_intent"))
+      }
+
+      list(
+        expected_version = expected_version,
+        lineage_id = lineage_id
+      )
+    }
+
+    manual_selection_intent <- function(payload) {
+      reject <- function(reason_code) list(reason_code = reason_code)
+      identity <- validate_selection_identity(payload)
+      if (!is.null(identity$reason_code)) {
+        return(identity)
       }
 
       cells <- payload$cells %||% character(0)
@@ -114,31 +149,89 @@ mod_AssignCellCluster_server <- function(
         return(reject("no_valid_cells"))
       }
 
-      metadata_version <- normalize_analysis_version(payload$metaVersion)
-      current_metadata_version <- if (is.function(currentMetadataVersion)) {
-        normalize_analysis_version(currentMetadataVersion())
-      } else {
-        normalize_analysis_version(currentMetadataVersion)
-      }
-      if (
-        is.null(metadata_version) ||
-          is.null(current_metadata_version) ||
-          !identical(metadata_version, current_metadata_version)
-      ) {
-        return(reject("stale_analysis_version"))
+      c(identity, list(cells = cells))
+    }
+
+    category_selection_intent <- function(payload) {
+      reject <- function(reason_code) list(reason_code = reason_code)
+      identity <- validate_selection_identity(payload)
+      if (!is.null(identity$reason_code)) {
+        return(identity)
       }
 
-      expected_version <- normalize_analysis_version(payload$analysisVersion)
-      lineage_id <- normalize_analysis_version(payload$analysisLineageId)
-      if (is.null(expected_version) || is.null(lineage_id) || lineage_id < 1L) {
-        return(reject("invalid_intent"))
+      context <- payload$context
+      category <- payload$category
+      if (!is.list(context) || !is.list(category)) {
+        return(reject("invalid_category_context"))
       }
 
-      list(
-        cells = cells,
-        expected_version = expected_version,
-        lineage_id = lineage_id
+      current_group <- normalize_analysis_context_value(
+        current_value(currentGroupBy)
       )
+      current_split <- normalize_analysis_context_value(
+        current_value(currentSplitBy)
+      )
+      submitted_group <- normalize_analysis_context_value(context$groupBy)
+      submitted_split <- normalize_analysis_context_value(context$splitBy)
+      category_group <- normalize_analysis_context_value(category$groupBy)
+      category_split <- normalize_analysis_context_value(category$splitBy)
+      if (
+        is.null(current_group) ||
+          is.null(current_split) ||
+          is.null(submitted_group) ||
+          is.null(submitted_split) ||
+          is.null(category_group) ||
+          is.null(category_split) ||
+          identical(current_group, "None") ||
+          !identical(submitted_group, current_group) ||
+          !identical(submitted_split, current_split) ||
+          !identical(category_group, current_group) ||
+          !identical(category_split, current_split)
+      ) {
+        return(reject("invalid_category_context"))
+      }
+
+      group_levels <- normalize_analysis_context_levels(category$groupLevels)
+      if (is.null(group_levels)) {
+        return(reject("invalid_category_context"))
+      }
+
+      split_levels <- normalize_analysis_context_levels(
+        category$splitLevels,
+        allow_empty = identical(current_split, "None")
+      )
+      if (
+        is.null(split_levels) ||
+          (identical(current_split, "None") && length(split_levels) > 0L)
+      ) {
+        return(reject("invalid_category_context"))
+      }
+
+      c(
+        identity,
+        list(
+          category = list(
+            groupBy = category_group,
+            groupLevels = group_levels,
+            splitBy = category_split,
+            splitLevels = split_levels
+          )
+        )
+      )
+    }
+
+    selectionIntent <- reactive({
+      manual_payload <- input$selectedCellsPayload
+      if (!is.null(manual_payload)) {
+        return(manual_selection_intent(manual_payload))
+      }
+
+      category_payload <- input$categorySelectionContext
+      if (!is.null(category_payload)) {
+        return(category_selection_intent(category_payload))
+      }
+
+      list(reason_code = "no_valid_cells")
     })
 
     observeEvent(input$assign, {

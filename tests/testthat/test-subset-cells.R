@@ -51,6 +51,29 @@ make_subset_selection_intent <- function(
   intent
 }
 
+make_category_selection_payload <- function(
+  group_by = "cluster",
+  group_levels = "A",
+  split_by = "None",
+  split_levels = character(0),
+  meta_version = 0L,
+  analysis_version = 0L,
+  lineage_id = 1L
+) {
+  list(
+    context = list(groupBy = group_by, splitBy = split_by),
+    category = list(
+      groupBy = group_by,
+      groupLevels = group_levels,
+      splitBy = split_by,
+      splitLevels = split_levels
+    ),
+    metaVersion = meta_version,
+    analysisVersion = analysis_version,
+    analysisLineageId = lineage_id
+  )
+}
+
 expect_subset_indicator_values <- function(gene, meta, reduction, expected) {
   expect_identical(shiny::isolate(gene()), expected)
   expect_identical(shiny::isolate(meta()), expected)
@@ -251,12 +274,14 @@ test_that("browser Cell ID payloads flow through assignment module into subset s
       currentMetadataVersion = metadata_version
     ),
     {
-      session$setInputs(selectedCellsPayload = list(
-        cells = c("Cell3", "Cell1"),
-        metaVersion = 0L,
-        analysisVersion = 0L,
-        analysisLineageId = 1L
-      ))
+      session$setInputs(
+        selectedCellsPayload = list(
+          cells = c("Cell3", "Cell1"),
+          metaVersion = 0L,
+          analysisVersion = 0L,
+          analysisLineageId = 1L
+        )
+      )
       session$setInputs("subsetCells-subsetData" = TRUE)
 
       expect_identical(
@@ -268,6 +293,174 @@ test_that("browser Cell ID payloads flow through assignment module into subset s
         meta_indicator,
         reduction_indicator,
         1
+      )
+    }
+  )
+})
+
+test_that("browser category context resolves subsets server-side in source cell order", {
+  object <- make_subset_object()
+  object$batch <- factor(c("batch1", "batch2", "batch1", "batch2", "batch1"))
+  seurat_value <- shiny::reactiveVal(object)
+  analysis_transition <- make_analysis_transition(seurat_value)
+  metadata_version <- shiny::reactiveVal(0L)
+  gene_indicator <- shiny::reactiveVal(0)
+  meta_indicator <- shiny::reactiveVal(0)
+  reduction_indicator <- shiny::reactiveVal(0)
+  assert_no_dense_scale_data <- getFromNamespace(
+    "assert_no_dense_scale_data",
+    "scSpotlight"
+  )
+
+  testServer(
+    mod_AssignCellCluster_server,
+    args = list(
+      seuratObj = seurat_value,
+      geneUpdateIndicator = gene_indicator,
+      metaUpdateIndicator = meta_indicator,
+      reductionUpdateIndicator = reduction_indicator,
+      analysisTransition = analysis_transition,
+      currentMetadataVersion = metadata_version,
+      currentGroupBy = shiny::reactive("cluster"),
+      currentSplitBy = shiny::reactive("batch")
+    ),
+    {
+      session$setInputs(
+        categorySelectionContext = make_category_selection_payload(
+          split_by = "batch",
+          split_levels = "batch1"
+        )
+      )
+      session$setInputs("subsetCells-subsetData" = TRUE)
+
+      expect_identical(
+        colnames(shiny::isolate(seurat_value())),
+        c("Cell1", "Cell3", "Cell5")
+      )
+      expect_silent(assert_no_dense_scale_data(shiny::isolate(seurat_value())))
+      expect_identical(analysis_transition$version(), 1L)
+      expect_subset_indicator_values(
+        gene_indicator,
+        meta_indicator,
+        reduction_indicator,
+        1
+      )
+    }
+  )
+})
+
+test_that("category subset context rejects stale, mismatched, and manual-preempted requests", {
+  object <- make_subset_object()
+  object$batch <- factor(c("batch1", "batch2", "batch1", "batch2", "batch1"))
+  seurat_value <- shiny::reactiveVal(object)
+  analysis_transition <- make_analysis_transition(seurat_value)
+  metadata_version <- shiny::reactiveVal(0L)
+  group_by <- shiny::reactiveVal("cluster")
+  split_by <- shiny::reactiveVal("batch")
+  gene_indicator <- shiny::reactiveVal(0)
+  meta_indicator <- shiny::reactiveVal(0)
+  reduction_indicator <- shiny::reactiveVal(0)
+
+  testServer(
+    mod_AssignCellCluster_server,
+    args = list(
+      seuratObj = seurat_value,
+      geneUpdateIndicator = gene_indicator,
+      metaUpdateIndicator = meta_indicator,
+      reductionUpdateIndicator = reduction_indicator,
+      analysisTransition = analysis_transition,
+      currentMetadataVersion = metadata_version,
+      currentGroupBy = group_by,
+      currentSplitBy = split_by
+    ),
+    {
+      session$setInputs(
+        categorySelectionContext = make_category_selection_payload(
+          split_by = "batch",
+          split_levels = "batch1",
+          meta_version = 1L
+        )
+      )
+      session$setInputs("subsetCells-subsetData" = TRUE)
+      expect_identical(analysis_transition$version(), 0L)
+
+      session$setInputs("subsetCells-subsetData" = FALSE)
+      group_by("other")
+      session$setInputs(
+        categorySelectionContext = make_category_selection_payload(
+          split_by = "batch",
+          split_levels = "batch1"
+        )
+      )
+      session$setInputs("subsetCells-subsetData" = TRUE)
+      expect_identical(analysis_transition$version(), 0L)
+
+      session$setInputs("subsetCells-subsetData" = FALSE)
+      group_by("cluster")
+      session$setInputs(
+        categorySelectionContext = make_category_selection_payload(
+          group_by = "other",
+          split_by = "batch",
+          split_levels = "batch1"
+        )
+      )
+      session$setInputs("subsetCells-subsetData" = TRUE)
+      expect_identical(analysis_transition$version(), 0L)
+
+      session$setInputs("subsetCells-subsetData" = FALSE)
+      session$setInputs(
+        categorySelectionContext = make_category_selection_payload(
+          split_by = "batch",
+          split_levels = "missing-batch"
+        )
+      )
+      session$setInputs("subsetCells-subsetData" = TRUE)
+      expect_identical(analysis_transition$version(), 0L)
+
+      session$setInputs("subsetCells-subsetData" = FALSE)
+      session$setInputs(
+        categorySelectionContext = make_category_selection_payload(
+          split_by = "batch",
+          split_levels = "batch1"
+        )
+      )
+      session$setInputs(
+        selectedCellsPayload = list(
+          cells = character(0),
+          metaVersion = 0L,
+          analysisVersion = 0L,
+          analysisLineageId = 1L
+        )
+      )
+      session$setInputs("subsetCells-subsetData" = TRUE)
+      expect_identical(analysis_transition$version(), 0L)
+
+      session$setInputs("subsetCells-subsetData" = FALSE)
+      session$setInputs(
+        categorySelectionContext = make_category_selection_payload(
+          split_by = "batch",
+          split_levels = "batch1"
+        )
+      )
+      session$setInputs(
+        selectedCellsPayload = list(
+          cells = "Cell1",
+          metaVersion = 1L,
+          analysisVersion = 0L,
+          analysisLineageId = 1L
+        )
+      )
+      session$setInputs("subsetCells-subsetData" = TRUE)
+      expect_identical(analysis_transition$version(), 0L)
+      expect_identical(
+        colnames(shiny::isolate(seurat_value())),
+        colnames(object)
+      )
+      expect_subset_indicator_values(
+        gene_indicator,
+        meta_indicator,
+        reduction_indicator,
+        0
       )
     }
   )
@@ -341,58 +534,83 @@ test_that("browser Cell ID payloads reject empty, mixed, and stale selections", 
       currentMetadataVersion = metadata_version
     ),
     {
-      session$setInputs(selectedCellsPayload = list(
-        cells = character(0),
-        metaVersion = 0L,
-        analysisVersion = 0L,
-        analysisLineageId = 1L
-      ))
+      session$setInputs(
+        selectedCellsPayload = list(
+          cells = character(0),
+          metaVersion = 0L,
+          analysisVersion = 0L,
+          analysisLineageId = 1L
+        )
+      )
       session$setInputs("subsetCells-subsetData" = TRUE)
-      expect_identical(colnames(shiny::isolate(seurat_value())), colnames(object))
+      expect_identical(
+        colnames(shiny::isolate(seurat_value())),
+        colnames(object)
+      )
       expect_identical(analysis_transition$version(), 0L)
 
       session$setInputs("subsetCells-subsetData" = FALSE)
-      session$setInputs(selectedCellsPayload = list(
-        cells = c("Cell1", "missing-cell"),
-        metaVersion = 0L,
-        analysisVersion = 0L,
-        analysisLineageId = 1L
-      ))
+      session$setInputs(
+        selectedCellsPayload = list(
+          cells = c("Cell1", "missing-cell"),
+          metaVersion = 0L,
+          analysisVersion = 0L,
+          analysisLineageId = 1L
+        )
+      )
       session$setInputs("subsetCells-subsetData" = TRUE)
-      expect_identical(colnames(shiny::isolate(seurat_value())), colnames(object))
+      expect_identical(
+        colnames(shiny::isolate(seurat_value())),
+        colnames(object)
+      )
       expect_identical(analysis_transition$version(), 0L)
 
       session$setInputs("subsetCells-subsetData" = FALSE)
-      session$setInputs(selectedCellsPayload = list(
-        cells = "Cell1",
-        metaVersion = 0L,
-        analysisVersion = 1L,
-        analysisLineageId = 1L
-      ))
+      session$setInputs(
+        selectedCellsPayload = list(
+          cells = "Cell1",
+          metaVersion = 0L,
+          analysisVersion = 1L,
+          analysisLineageId = 1L
+        )
+      )
       session$setInputs("subsetCells-subsetData" = TRUE)
-      expect_identical(colnames(shiny::isolate(seurat_value())), colnames(object))
+      expect_identical(
+        colnames(shiny::isolate(seurat_value())),
+        colnames(object)
+      )
       expect_identical(analysis_transition$version(), 0L)
 
       session$setInputs("subsetCells-subsetData" = FALSE)
-      session$setInputs(selectedCellsPayload = list(
-        cells = "Cell1",
-        metaVersion = 1L,
-        analysisVersion = 0L,
-        analysisLineageId = 1L
-      ))
+      session$setInputs(
+        selectedCellsPayload = list(
+          cells = "Cell1",
+          metaVersion = 1L,
+          analysisVersion = 0L,
+          analysisLineageId = 1L
+        )
+      )
       session$setInputs("subsetCells-subsetData" = TRUE)
-      expect_identical(colnames(shiny::isolate(seurat_value())), colnames(object))
+      expect_identical(
+        colnames(shiny::isolate(seurat_value())),
+        colnames(object)
+      )
       expect_identical(analysis_transition$version(), 0L)
 
       session$setInputs("subsetCells-subsetData" = FALSE)
-      session$setInputs(selectedCellsPayload = list(
-        cells = "Cell1",
-        metaVersion = 0L,
-        analysisVersion = 0L,
-        analysisLineageId = 2L
-      ))
+      session$setInputs(
+        selectedCellsPayload = list(
+          cells = "Cell1",
+          metaVersion = 0L,
+          analysisVersion = 0L,
+          analysisLineageId = 2L
+        )
+      )
       session$setInputs("subsetCells-subsetData" = TRUE)
-      expect_identical(colnames(shiny::isolate(seurat_value())), colnames(object))
+      expect_identical(
+        colnames(shiny::isolate(seurat_value())),
+        colnames(object)
+      )
       expect_identical(analysis_transition$version(), 0L)
       expect_subset_indicator_values(
         gene_indicator,
@@ -557,6 +775,70 @@ test_that("Analysis Transition publishes monotonic versions for Subset and Resto
       operation = "restore"
     )
   )
+})
+
+test_that("Analysis Transition resolves category subset intents from canonical metadata", {
+  object <- make_subset_object()
+  object$batch <- factor(c("batch1", "batch2", "batch1", "batch2", "batch1"))
+  seurat_value <- shiny::reactiveVal(object)
+  analysis_transition <- make_analysis_transition(seurat_value)
+
+  result <- analysis_transition$apply(
+    intent = list(
+      operation = "subset",
+      expected_version = 0L,
+      lineage_id = 1L,
+      category = list(
+        groupBy = "cluster",
+        groupLevels = "A",
+        splitBy = "batch",
+        splitLevels = "batch1"
+      )
+    )
+  )
+
+  expect_true(result$committed)
+  expect_identical(
+    colnames(shiny::isolate(seurat_value())),
+    c("Cell1", "Cell3", "Cell5")
+  )
+  expect_identical(analysis_transition$version(), 1L)
+
+  invalid_transition <- make_analysis_transition(shiny::reactiveVal(object))
+  invalid_result <- invalid_transition$apply(
+    intent = list(
+      operation = "subset",
+      expected_version = 0L,
+      lineage_id = 1L,
+      category = list(
+        groupBy = "cluster",
+        groupLevels = "missing",
+        splitBy = "batch",
+        splitLevels = "batch1"
+      )
+    )
+  )
+  expect_false(invalid_result$committed)
+  expect_identical(invalid_result$reason_code, "invalid_category_context")
+  expect_identical(invalid_transition$version(), 0L)
+
+  empty_transition <- make_analysis_transition(shiny::reactiveVal(object))
+  empty_result <- empty_transition$apply(
+    intent = list(
+      operation = "subset",
+      expected_version = 0L,
+      lineage_id = 1L,
+      category = list(
+        groupBy = "cluster",
+        groupLevels = "B",
+        splitBy = "batch",
+        splitLevels = "batch1"
+      )
+    )
+  )
+  expect_false(empty_result$committed)
+  expect_identical(empty_result$reason_code, "no_valid_cells")
+  expect_identical(empty_transition$version(), 0L)
 })
 
 test_that("stale and empty Analysis Mutations preserve the current state", {

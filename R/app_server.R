@@ -523,7 +523,9 @@ app_server <- function(input, output, session) {
       reductionUpdateIndicator,
       backend_root = session$userData$backendDir,
       analysisTransition = analysisTransition,
-      currentMetadataVersion = currentMetadataVersion
+      currentMetadataVersion = currentMetadataVersion,
+      currentGroupBy = categoryInfo$group.by,
+      currentSplitBy = categoryInfo$split.by
     )
 
     ## Download Object

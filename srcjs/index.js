@@ -66,6 +66,7 @@ const renameClusterIds = {
   selectedCellsText: "renameCluster-selectedCellsText",
   assign: "renameCluster-assign",
   selectedCellsPayload: "renameCluster-selectedCellsPayload",
+  categorySelectionContext: "renameCluster-categorySelectionContext",
   assignmentIntent: "renameCluster-assignmentIntent",
 };
 const renameSelectionState = {
@@ -1325,6 +1326,7 @@ const setRenameAssignmentFeedback = (message) => {
 const clearRenameAssignmentTransportState = () => {
   if (!globalThis.Shiny?.setInputValue) return;
   Shiny.setInputValue(renameClusterIds.selectedCellsPayload, null, { priority: "event" });
+  Shiny.setInputValue(renameClusterIds.categorySelectionContext, null, { priority: "event" });
   Shiny.setInputValue(renameClusterIds.assignmentIntent, null, { priority: "event" });
 };
 
@@ -1583,13 +1585,44 @@ const computeRenameCategorySelectedCells = () => {
   return selectedCells;
 };
 
+const getRenameCategorySelectionContext = () => {
+  const groupBy = normalizePlotContextValue(reglElementData.plotMetaData.group_by);
+  const splitBy = normalizePlotContextValue(reglElementData.plotMetaData.split_by);
+  const groupLevels = getRenameSelectedValues(renameClusterIds.chosenGroup);
+  const splitLevels = splitBy === "None"
+    ? []
+    : getRenameSelectedValues(renameClusterIds.chosenSplit);
+
+  if (
+    groupBy === "None" ||
+    groupLevels.length === 0 ||
+    (splitBy !== "None" && splitLevels.length === 0)
+  ) {
+    return null;
+  }
+
+  return {
+    context: { groupBy, splitBy },
+    category: { groupBy, groupLevels, splitBy, splitLevels },
+    ...currentAnalysisSelectionContext(),
+  };
+};
+
 const applyRenameCategorySelection = () => {
   if (reglElementData.selectionSource === "lasso" && reglElementData.plotData.selectedCells.length > 0) {
+    Shiny.setInputValue(renameClusterIds.categorySelectionContext, null, { priority: "event" });
     updateRenameSelectedCellsText(reglElementData.plotData.selectedCells.length);
     return;
   }
+  const categoryContext = getRenameCategorySelectionContext();
   const selectedCells = computeRenameCategorySelectedCells();
   reglElementData.setSelectedCells(selectedCells, { source: selectedCells.length > 0 ? "category" : null });
+  Shiny.setInputValue(renameClusterIds.selectedCellsPayload, null, { priority: "event" });
+  Shiny.setInputValue(
+    renameClusterIds.categorySelectionContext,
+    selectedCells.length > 0 ? categoryContext : null,
+    { priority: "event" },
+  );
   updateRenameSelectedCellsText(selectedCells.length);
 };
 
@@ -2164,6 +2197,10 @@ Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
     reglElementData.setSelectionHandlers({
       onSelect: ({ selectedCells }) => {
         console.log("selectedCells: ", selectedCells);
+        clearRenameCategorySelectionUi();
+        Shiny.setInputValue(renameClusterIds.categorySelectionContext, null, {
+          priority: "event",
+        });
         updateRenameSelectedCellsText(selectedCells.length);
         syncRenameClusterSelectionUi();
         Shiny.setInputValue(renameClusterIds.selectedCellsPayload, {

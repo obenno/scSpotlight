@@ -88,6 +88,7 @@ mod_SubsetCells_server <- function(
         reason_code,
         no_valid_cells = "Please select current cells before subsetting.",
         already_subsetted = "Dataset is already subsetted. Restore before subsetting again.",
+        invalid_category_context = "Category selection is stale. Refresh the plot and try again.",
         subset_failed = "Unable to subset selected cells safely.",
         original_state_failed = "Unable to preserve the original dataset safely.",
         restore_failed = "Unable to restore the original dataset safely.",
@@ -167,11 +168,17 @@ mod_SubsetCells_server <- function(
           return(invisible(NULL))
         }
 
-        intent <- list(
-          operation = operation,
-          expected_version = selection_intent$expected_version,
-          lineage_id = selection_intent$lineage_id,
-          cells = selection_intent$cells %||% character(0)
+        intent <- c(
+          list(
+            operation = operation,
+            expected_version = selection_intent$expected_version,
+            lineage_id = selection_intent$lineage_id
+          ),
+          if (!is.null(selection_intent$category)) {
+            list(category = selection_intent$category)
+          } else {
+            list(cells = selection_intent$cells %||% character(0))
+          }
         )
       } else {
         transition_context <- analysisTransition$intent_context()

@@ -287,18 +287,22 @@ local paths, or stack traces.
 
 The assignment and category-selection consistency contract keeps browser-owned rename filtering for responsive previews while moving persistence to a bounded server-validated intent. lasso selections take precedence over category selections. The browser sends bounded browser assignment intent through `renameCluster-assignmentIntent`: manual/lasso assignment carries selected cell IDs, and category assignment carries the current group/split levels and plot context. The server resolves assigned cells from canonical Seurat metadata, assignment mutates exactly one metadata column, and the browser receives a one-column scoped `meta_patch_ready` patch. Assignment must use no full JSON cell-level metadata transfer. Rename UI state must clear stale rename selections on group.by or split.by changes, metadata patch invalidation, explicit deselect, and clear stale rename selections after assignment completion.
 
-Subset requests are intentionally limited to a manual/lasso Cell-ID selection.
-The browser publishes `renameCluster-selectedCellsPayload` with canonical Cell
-IDs plus the observed metadata version, Analysis Version, and Analysis lineage
-ID. `R/mod_AssignCellCluster.R` validates payload structure and the metadata
-epoch, then forwards the captured Analysis Version/lineage to the Analysis
-Transition seam. The Analysis Transition validates every Cell ID against the
-active Seurat object and canonicalizes source `colnames()` order once before
-subsetting.
-Category controls remain available for metadata assignment previews, but category
-selection cannot substitute for a missing manual/lasso subset intent. The lasso
-lifecycle, successful metadata patch, and any object replacement clear a
-previously published manual selection payload.
+Subset requests accept either a manual/lasso Cell-ID selection or a bounded
+category context. The browser publishes `renameCluster-selectedCellsPayload`
+with canonical Cell IDs plus the observed metadata version, Analysis Version,
+and Analysis lineage ID for manual/lasso selection. For category selection, it
+publishes `renameCluster-categorySelectionContext` with only the current
+group/split context, selected levels, metadata version, Analysis Version, and
+lineage ID; it never sends the category-derived Cell-ID set back to R.
+`R/mod_AssignCellCluster.R` validates payload structure, the active View
+group/split context, and the metadata epoch, then forwards the captured Analysis
+Version/lineage to the Analysis Transition seam. The Analysis Transition resolves
+category membership from canonical Seurat metadata, validates every resulting
+Cell ID against the active Seurat object, and canonicalizes source `colnames()`
+order once before subsetting. A present manual/lasso payload is authoritative:
+an invalid or stale manual request cannot fall back to category context.
+The lasso lifecycle, category changes, successful metadata patch, and any object
+replacement clear the incompatible selection transport.
 
 The subset and restore refresh semantics are part of the same Analysis Mode mutation safety seam. A subset uses safe_subset_seurat_object with a complete validated selected-cell set, preserves source-object cell order, and leaves app state untouched when the requested Cell-ID set is not completely valid. The original object is stored once by the Analysis Transition controller before the first active subset, and restore clears that controller-owned backup after replacing app state with the original object. invalid or repeated subset toggles do not mutate app state: empty, duplicate, mixed-validity, stale, or already-subsetted requests reset or no-op without incrementing refresh indicators. successful subset and restore increment geneUpdateIndicator, metaUpdateIndicator, and reductionUpdateIndicator so existing metadata, reduction, feature, expression, and plot refresh chains run.
 
@@ -331,7 +335,7 @@ The final Phase 03 gap-closure repairs are now part of the Analysis Mode process
 - **Monotonic metadata versioning:** metadata refreshes and metadata patches share one server-owned monotonic version sequence. Full `meta_ready` transfers and column-scoped `meta_patch_ready` transfers must allocate comparable metadata versions from the same server-owned counter so valid patches cannot be rejected as stale after a full refresh.
 - **Server-trusted assignment validation:** assignment validation must not trust browser-submitted current metadata versions. Versioned assignment intents are accepted only when the server can compare them with the server-trusted current metadata version for the active group/split context.
 - **Single assignment activation:** normal assignment activation emits a single renameCluster-assignmentIntent. Browser handlers must avoid pointerdown/click double submission so one user action produces one bounded assignment intent and one scoped metadata mutation.
-- **Cell-ID lasso and subset flow:** browser `renameCluster-selectedCellsPayload` carries canonical Cell IDs plus metadata, Analysis Version, and lineage tokens captured from the rendered plot. The Analysis Transition rejects lasso/manual selections unless every Cell ID exists in `colnames(seuratObj())`, then re-orders the complete selection once by the current Seurat object before subsetting. Successful metadata patches clear the visible lasso and its transport so a stale metadata epoch cannot remain selectable. Empty, duplicate, mixed-validity, metadata-stale, version-stale, and lineage-stale requests publish no Analysis Version.
+- **Cell-ID and category subset flow:** browser `renameCluster-selectedCellsPayload` carries canonical manual/lasso Cell IDs plus metadata, Analysis Version, and lineage tokens captured from the rendered plot. Browser `renameCluster-categorySelectionContext` carries only bounded group/split levels and the same identity tokens; category-derived Cell IDs stay server-side. The Analysis Transition rejects manual selections unless every Cell ID exists in `colnames(seuratObj())`, and resolves category selections from canonical metadata before re-ordering the complete selection once by the current Seurat object. A stale manual payload blocks category fallback. Successful metadata patches clear the visible lasso and its transport so a stale metadata epoch cannot remain selectable. Empty, duplicate, mixed-validity, category-context-invalid, metadata-stale, version-stale, and lineage-stale requests publish no Analysis Version.
 - **Session-root BPCells subset backing:** subset backing must use the session backend root for BPCells-safe output. Session callers pass `session$userData$backendDir` (or a child directory) into `safe_subset_seurat_object()` so temporary BPCells subset layers are cleaned up with the Shiny session.
 
 ### Browser payload contracts
