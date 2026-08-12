@@ -803,7 +803,8 @@ test_that("Analysis Transition publishes monotonic versions for Subset and Resto
       "cell_population_changed",
       "metadata_changed",
       "reduction_changed",
-      "expression_invalidated"
+      "expression_invalidated",
+      "selection_reconciliation"
     )],
     list(
       lineage_id = 1L,
@@ -813,7 +814,8 @@ test_that("Analysis Transition publishes monotonic versions for Subset and Resto
       cell_population_changed = TRUE,
       metadata_changed = TRUE,
       reduction_changed = TRUE,
-      expression_invalidated = TRUE
+      expression_invalidated = TRUE,
+      selection_reconciliation = "visible_cell_ids"
     )
   )
 
@@ -846,16 +848,96 @@ test_that("Analysis Transition publishes monotonic versions for Subset and Resto
       "analysis_version",
       "parent_version",
       "source_version",
-      "operation"
+      "operation",
+      "cell_population_changed",
+      "metadata_changed",
+      "reduction_changed",
+      "expression_invalidated",
+      "selection_reconciliation"
     )],
     list(
       lineage_id = 1L,
       analysis_version = 2L,
       parent_version = 1L,
       source_version = 0L,
-      operation = "restore"
+      operation = "restore",
+      cell_population_changed = TRUE,
+      metadata_changed = TRUE,
+      reduction_changed = TRUE,
+      expression_invalidated = TRUE,
+      selection_reconciliation = "visible_cell_ids"
     )
   )
+})
+
+test_that("Analysis Transition preserves BPCells backing through Subset and Restore", {
+  skip_if_not_installed("Seurat")
+  skip_if_not_installed("BPCells")
+
+  ensure_bpcells_backing <- getFromNamespace(
+    "ensure_bpcells_backing",
+    "scSpotlight"
+  )
+  assert_scspotlight_backend <- getFromNamespace(
+    "assert_scspotlight_backend",
+    "scSpotlight"
+  )
+  source_backend_root <- tempfile("analysis_transition_source_layers_")
+  subset_backend_root <- tempfile("analysis_transition_subset_layers_")
+  on.exit(unlink(source_backend_root, recursive = TRUE, force = TRUE), add = TRUE)
+  on.exit(unlink(subset_backend_root, recursive = TRUE, force = TRUE), add = TRUE)
+
+  object <- ensure_bpcells_backing(
+    make_subset_object(),
+    root_dir = source_backend_root,
+    layers = NULL
+  )
+  source_cells <- colnames(object)
+  seuratValue <- shiny::reactiveVal(object)
+  analysis_transition <- make_analysis_transition(seuratValue)
+  active_before_subset <- shiny::isolate(seuratValue())
+
+  subset_result <- analysis_transition$apply(
+    intent = list(
+      operation = "subset",
+      expected_version = 0L,
+      lineage_id = 1L,
+      cells = c("Cell5", "Cell2")
+    ),
+    backend_root = subset_backend_root
+  )
+
+  expect_true(subset_result$committed)
+  active_after_subset <- shiny::isolate(seuratValue())
+  expect_false(identical(active_after_subset, active_before_subset))
+  expect_identical(colnames(active_after_subset), c("Cell2", "Cell5"))
+  expect_silent(assert_scspotlight_backend(active_after_subset))
+  expect_identical(
+    analysis_transition$change_set()$selection_reconciliation,
+    "visible_cell_ids"
+  )
+  active_before_restore <- active_after_subset
+
+  restore_result <- analysis_transition$apply(
+    intent = list(
+      operation = "restore",
+      expected_version = 1L,
+      lineage_id = 1L
+    )
+  )
+
+  expect_true(restore_result$committed)
+  active_after_restore <- shiny::isolate(seuratValue())
+  expect_false(identical(active_after_restore, active_before_restore))
+  expect_identical(colnames(active_after_restore), source_cells)
+  expect_silent(assert_scspotlight_backend(active_after_restore))
+  expect_false(analysis_transition$is_subsetted())
+  expect_identical(analysis_transition$version(), 2L)
+  expect_identical(
+    analysis_transition$change_set()$selection_reconciliation,
+    "visible_cell_ids"
+  )
+  expect_true(analysis_transition$change_set()$expression_invalidated)
 })
 
 test_that("Analysis Transition resolves category subset intents from canonical metadata", {
