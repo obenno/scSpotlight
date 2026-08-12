@@ -48,12 +48,12 @@ export function computeHighlightIndices({
 }) {
   const pointsIndex = [];
 
-  const factorLevel = {};
+  const factorLevel = new Map();
   const sortedUniqueArr = [...new Set(groupByValues)].sort(sortStringArray);
   sortedUniqueArr.forEach((e, i) => {
-    factorLevel[e] = i;
+    factorLevel.set(e, i);
   });
-  const selectedLevel = factorLevel[selectedGroupBy];
+  const selectedLevel = factorLevel.get(selectedGroupBy);
 
   switch (mode) {
     case "clusterOnly":

@@ -1839,3 +1839,49 @@ Validation performed:
   typed R producer usage, ordinary clearing, and numeric Analysis invalidation.
 - `srcjs/index.test.js` covers ordinary clear behavior, explicit stale-epoch
   rejection, delayed stale application, and malformed payload normalization.
+
+### 40. Browser category labels are prototype-safe
+
+Decision:
+
+- Valid category labels may include JavaScript prototype property names such as
+  `__proto__`, `constructor`, and `prototype`.
+- Browser category maps that use labels as keys must use null-prototype records,
+  and transient label-to-level lookups must use `Map`.
+- Category values remain compact label-to-index-array records; the browser must
+  not replace that representation with repeated per-cell strings merely to make
+  labels safe.
+
+Why:
+
+- Category labels originate in user data and must not be interpreted as
+  inherited JavaScript object properties.
+- Ordinary object property lookup could corrupt category buckets, fail decoding,
+  or mutate an object's prototype when a valid label has a special name.
+- The existing compact representation is required for million-cell datasets.
+
+Implementation notes:
+
+- `srcjs/modules/arrowReader.js` creates null-prototype category maps for both
+  UTF-8 and Arrow dictionary columns.
+- `srcjs/modules/deckScatter.js` uses null-prototype split records and `Map`
+  level lookups; `srcjs/modules/scatter/scatterLegend.js` uses `Map` for legend
+  highlight level resolution.
+- `srcjs/modules/scatter/scatterTooltip.js` keeps its fallback split helper
+  prototype-safe, and legacy `addNewMeta` compatibility handling in
+  `srcjs/index.js` builds null-prototype assignment buckets.
+- `srcjs/modules/arrowReader.test.js`, `srcjs/modules/deckScatter.test.js`,
+  `srcjs/modules/scatter/scatterLegend.test.js`,
+  `srcjs/modules/scatter/scatterModel.test.js`,
+  `srcjs/modules/scatter/scatterTooltip.test.js`, and `srcjs/index.test.js`
+  cover decode, plot construction, legend selection, tooltip splitting, and
+  legacy assignment with special labels.
+
+Validation performed:
+
+- `pixi run npm exec vitest run srcjs/modules/arrowReader.test.js srcjs/modules/deckScatter.test.js srcjs/modules/scatter/scatterLegend.test.js srcjs/modules/scatter/scatterModel.test.js srcjs/modules/scatter/scatterTooltip.test.js srcjs/index.test.js` passed 117 tests.
+- `pixi run test-js` passed 15 test files and 155 tests.
+- `pixi run Rscript -e "devtools::test()"` passed 903 tests with 40 existing
+  small-fixture and underlying-library warnings.
+- `pixi run build-js` completed successfully and regenerated
+  `inst/app/www/index.js` plus `inst/app/www/index.js.map`.

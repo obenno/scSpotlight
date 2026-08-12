@@ -61,4 +61,16 @@ describe("scatterLegend utilities", () => {
     expect(out[2]).toEqual([2]);
     expect(out[3]).toEqual([2]);
   });
+
+  it("highlights prototype-named category labels by their compact level index", () => {
+    const out = computeHighlightIndices({
+      mode: "clusterOnly",
+      pointsData: [{ z: new Int16Array([0, 1, 2, 3, 0]) }],
+      groupByValues: ["1", "__proto__", "constructor", "prototype", "__proto__"],
+      selectedGroupBy: "__proto__",
+      sortStringArray,
+    });
+
+    expect(out).toEqual([[0, 4]]);
+  });
 });

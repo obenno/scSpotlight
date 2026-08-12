@@ -94,4 +94,31 @@ describe("buildHoverText", () => {
       }),
     ).toBe("Expr: 1.200");
   });
+
+  it("handles prototype-named split labels", () => {
+    const common = {
+      groupByValues: ["__proto__", "constructor", "prototype", "__proto__"],
+      splitByValues: ["__proto__", "constructor", "prototype", "__proto__"],
+      expressionValues: [0.1, 0.2, 1.1, 1.2],
+      formatExpr: fmt,
+    };
+
+    expect(
+      buildHoverText({
+        mode: "cluster+multiSplit",
+        panelIndex: 1,
+        pointIndex: 0,
+        ...common,
+      }),
+    ).toBe("Cat: constructor");
+
+    expect(
+      buildHoverText({
+        mode: "cluster+expr+multiSplit",
+        panelIndex: 2,
+        pointIndex: 0,
+        ...common,
+      }),
+    ).toBe("Expr: 1.100");
+  });
 });

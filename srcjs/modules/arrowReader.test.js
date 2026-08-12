@@ -6,6 +6,7 @@ import {
   Utf8,
   Int8,
   Float32,
+  Type,
   makeBuilder,
 } from "apache-arrow";
 import {
@@ -104,6 +105,51 @@ describe("parseMetaFromArrow", () => {
     expect(meta.cluster.value["TypeA"]).toEqual([0, 1]);
     expect(meta.cluster.value["TypeB"]).toEqual([2, 3]);
     expect(meta.cluster.value["TypeC"]).toEqual([4]);
+  });
+
+  it("keeps prototype-named UTF-8 labels in own compact category buckets", () => {
+    const values = ["__proto__", "constructor", "prototype", "__proto__"];
+    const table = {
+      schema: {
+        fields: [{ name: "cluster", type: { typeId: Type.Utf8 } }],
+      },
+      getChild: () => ({ toArray: () => values }),
+    };
+
+    const meta = parseMetaFromArrow(table);
+
+    expect(Object.getPrototypeOf(meta.cluster.value)).toBeNull();
+    expect(Object.keys(meta.cluster.value)).toEqual([
+      "__proto__",
+      "constructor",
+      "prototype",
+    ]);
+    expect(meta.cluster.value["__proto__"]).toEqual([0, 3]);
+    expect(meta.cluster.value.constructor).toEqual([1]);
+    expect(meta.cluster.value.prototype).toEqual([2]);
+  });
+
+  it("keeps prototype-named dictionary labels in own compact category buckets", () => {
+    const builder = makeBuilder({
+      type: new Dictionary(new Utf8(), new Int8()),
+    });
+    for (const label of ["__proto__", "constructor", "prototype", "__proto__"]) {
+      builder.append(label);
+    }
+    const dictVec = builder.finish().toVector();
+    const table = tableFromArrays({ cluster: dictVec });
+
+    const meta = parseMetaFromArrow(table);
+
+    expect(Object.getPrototypeOf(meta.cluster.value)).toBeNull();
+    expect(Object.keys(meta.cluster.value)).toEqual([
+      "__proto__",
+      "constructor",
+      "prototype",
+    ]);
+    expect(meta.cluster.value["__proto__"]).toEqual([0, 3]);
+    expect(meta.cluster.value.constructor).toEqual([1]);
+    expect(meta.cluster.value.prototype).toEqual([2]);
   });
 
   it("parses UTF-8 cell IDs as an ordered identity vector", () => {

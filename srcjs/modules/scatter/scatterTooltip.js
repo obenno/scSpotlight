@@ -13,10 +13,10 @@ export function buildHoverText({
     typeof splitArrByMeta === "function"
       ? splitArrByMeta
       : (arr, by) => {
-          const out = {};
+          const out = Object.create(null);
           for (let i = 0; i < by.length; i++) {
             const key = by[i];
-            if (!out[key]) out[key] = [];
+            if (!Object.hasOwn(out, key)) out[key] = [];
             out[key].push(arr[i]);
           }
           return out;

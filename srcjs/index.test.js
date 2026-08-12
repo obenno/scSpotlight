@@ -537,6 +537,94 @@ describe("browser message handlers", () => {
     });
   });
 
+  it("renders and selects prototype-named category levels", () => {
+    const categoryMap = Object.create(null);
+    categoryMap["__proto__"] = [0];
+    categoryMap.constructor = [1];
+    categoryMap.prototype = [2];
+    setCategoryMeta("clusterA", categoryMap);
+    testState.handlers.reglScatter_plot({
+      group_by: "clusterA",
+      split_by: "None",
+      moduleScore: null,
+    });
+
+    expect([...document.getElementById("renameCluster-chosenGroup").options]
+      .map((option) => option.value)).toEqual([
+      "__proto__",
+      "constructor",
+      "prototype",
+    ]);
+
+    selectValues("renameCluster-chosenGroup", ["__proto__"]);
+    expect(testState.reglInstance.plotData.selectedCells).toEqual(["c1"]);
+    expect(latestInputValue("renameCluster-categorySelectionContext")).toMatchObject({
+      category: { groupLevels: ["__proto__"] },
+    });
+
+    selectValues("renameCluster-chosenGroup", ["constructor"]);
+    expect(testState.reglInstance.plotData.selectedCells).toEqual(["c2"]);
+    expect(latestInputValue("renameCluster-categorySelectionContext")).toMatchObject({
+      category: { groupLevels: ["constructor"] },
+    });
+
+    selectValues("renameCluster-chosenGroup", ["prototype"]);
+    expect(testState.reglInstance.plotData.selectedCells).toEqual(["c3"]);
+    expect(latestInputValue("renameCluster-categorySelectionContext")).toMatchObject({
+      category: { groupLevels: ["prototype"] },
+    });
+  });
+
+  it("keeps prototype-named labels in legacy assignment category buckets", () => {
+    setCategoryMeta("clusterA", { A: [0, 1], B: [2] });
+    testState.handlers.reglScatter_plot({
+      group_by: "clusterA",
+      split_by: "None",
+      moduleScore: null,
+    });
+    testState.reglInstance.setSelectedCells(["c1", "c2", "c3"], { source: "lasso" });
+
+    testState.handlers.addNewMeta({
+      colName: "renamed",
+      colValue: "__proto__",
+    });
+
+    const firstCategoryMap = testState.reglInstance.origData.cellMetaData.renamed.value;
+    expect(Object.getPrototypeOf(firstCategoryMap)).toBeNull();
+    expect(Object.keys(firstCategoryMap)).toEqual(["__proto__"]);
+    expect(firstCategoryMap["__proto__"]).toEqual([0, 1, 2]);
+
+    testState.reglInstance.setSelectedCells(["c1"], { source: "lasso" });
+    testState.handlers.addNewMeta({
+      colName: "renamed",
+      colValue: "constructor",
+    });
+
+    const categoryMap = testState.reglInstance.origData.cellMetaData.renamed.value;
+    expect(Object.getPrototypeOf(categoryMap)).toBeNull();
+    expect(Object.keys(categoryMap)).toEqual(["constructor", "__proto__"]);
+    expect(categoryMap.constructor).toEqual([0]);
+    expect(categoryMap["__proto__"]).toEqual([1, 2]);
+
+    testState.reglInstance.setSelectedCells(["c2"], { source: "lasso" });
+    testState.handlers.addNewMeta({
+      colName: "renamed",
+      colValue: "prototype",
+    });
+
+    const finalCategoryMap = testState.reglInstance.origData.cellMetaData.renamed.value;
+    expect(Object.getPrototypeOf(finalCategoryMap)).toBeNull();
+    expect(Object.keys(finalCategoryMap)).toEqual([
+      "constructor",
+      "prototype",
+      "__proto__",
+    ]);
+    expect(finalCategoryMap.constructor).toEqual([0]);
+    expect(finalCategoryMap.prototype).toEqual([1]);
+    expect(finalCategoryMap["__proto__"]).toEqual([2]);
+    expect(Object.prototype.polluted).toBeUndefined();
+  });
+
   it("sends a versioned lasso selection payload and bounded assignment intent", () => {
     setCategoryMeta("clusterA", { A: [0, 1], B: [2] });
     setCategoryMeta("batch", { batch1: [0, 2], batch2: [1] });

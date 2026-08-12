@@ -56,6 +56,52 @@ describe("metadata cache helpers", () => {
     expect(Array.from(split.s2)).toEqual([10, 50]);
   });
 
+  it("preserves prototype-named category levels through expansion and compact encoding", () => {
+    const categoryMap = Object.create(null);
+    categoryMap["__proto__"] = [0, 3];
+    categoryMap.constructor = [1];
+    categoryMap.prototype = [2];
+    const meta = {
+      type: "category",
+      value: categoryMap,
+    };
+
+    expect(Object.getPrototypeOf(meta.value)).toBeNull();
+    expect(expandMeta(meta)).toEqual([
+      "__proto__",
+      "constructor",
+      "prototype",
+      "__proto__",
+    ]);
+    expect(getMetaLevels(meta)).toEqual([
+      "__proto__",
+      "constructor",
+      "prototype",
+    ]);
+    expect(Array.from(convert_stringArr_to_integer([
+      "1",
+      "__proto__",
+      "constructor",
+      "prototype",
+      "__proto__",
+    ]))).toEqual([
+      0,
+      1,
+      2,
+      3,
+      1,
+    ]);
+    const split = splitArrByMeta(
+      new Int16Array([10, 20, 30, 40]),
+      ["1", "__proto__", "constructor", "prototype"],
+    );
+    expect(Object.getPrototypeOf(split)).toBeNull();
+    expect(Array.from(split["__proto__"])).toEqual([20]);
+    expect(Array.from(split.constructor)).toEqual([30]);
+    expect(Array.from(split.prototype)).toEqual([40]);
+    expect(Object.prototype.polluted).toBeUndefined();
+  });
+
   it("keeps Cell IDs as their compact ordered identity vector", () => {
     const cells = {
       type: "cell_id",
@@ -63,6 +109,53 @@ describe("metadata cache helpers", () => {
     };
 
     expect(expandMeta(cells)).toBe(cells.value);
+  });
+});
+
+describe("reglScatterCanvas category legends", () => {
+  it("renders and highlights prototype-named category labels", () => {
+    const categoryMap = Object.create(null);
+    categoryMap["__proto__"] = [0];
+    categoryMap.constructor = [1];
+    categoryMap.prototype = [2];
+    const canvas = Object.create(reglScatterCanvas.prototype);
+    canvas.plotMetaData = {
+      group_by: "cluster",
+      mode: "clusterOnly",
+      catColors: ["#ff0000", "#00ff00", "#0000ff"],
+    };
+    canvas.origData = {
+      cellMetaData: {
+        cluster: { type: "category", value: categoryMap },
+      },
+    };
+    canvas.catLegendEl = document.createElement("div");
+    canvas.highlight_index = vi.fn((label) => [[label.length]]);
+    canvas.applyHighlight = vi.fn();
+    canvas.clearHighlight = vi.fn();
+
+    canvas.updateCatLegend();
+
+    const entries = [...canvas.catLegendEl.querySelectorAll(".scatter-legend")];
+    expect(entries.map((entry) => entry.querySelector(".legend-label").textContent)).toEqual([
+      "__proto__",
+      "constructor",
+      "prototype",
+    ]);
+    expect(entries.map((entry) => entry.querySelector(".num-points").textContent)).toEqual([
+      "1",
+      "1",
+      "1",
+    ]);
+
+    entries.forEach((entry, index) => {
+      entry.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+      const label = entries[index].querySelector(".legend-label").textContent;
+      expect(canvas.highlight_index).toHaveBeenLastCalledWith(label);
+      expect(canvas.highlightByPanel).toEqual([[label.length]]);
+    });
+    expect(canvas.applyHighlight).toHaveBeenCalledTimes(3);
+    expect(Object.prototype.polluted).toBeUndefined();
   });
 });
 

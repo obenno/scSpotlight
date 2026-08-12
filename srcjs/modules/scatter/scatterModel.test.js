@@ -6,6 +6,20 @@ function makeUtils() {
     if (Array.isArray(x)) return x;
     if (x && Array.isArray(x.value)) return x.value;
     if (x && ArrayBuffer.isView(x.value)) return x.value;
+    if (x?.type === "category" && x.value && typeof x.value === "object") {
+      const entries = Object.entries(x.value);
+      const length = entries.reduce((max, [, indices]) => {
+        const lastIndex = Math.max(...indices, -1);
+        return Math.max(max, lastIndex + 1);
+      }, 0);
+      const expanded = Array(length).fill(null);
+      entries.forEach(([label, indices]) => {
+        indices.forEach((index) => {
+          expanded[index] = label;
+        });
+      });
+      return expanded;
+    }
     return [];
   };
 
@@ -18,11 +32,11 @@ function makeUtils() {
     .sort(sortStringArray);
 
   const splitArrByMeta = (arr, by) => {
-    const out = {};
+    const out = Object.create(null);
     for (let i = 0; i < by.length; i++) {
       const key = by[i];
       if (isMissingLevel(key)) continue;
-      if (!out[key]) out[key] = [];
+      if (!Object.hasOwn(out, key)) out[key] = [];
       out[key].push(arr[i]);
     }
     return out;
@@ -360,6 +374,48 @@ describe("ScatterModel panel data assembly", () => {
     // category labels should map to group names, not integer ids
     const panel0Labels = (plot.catLabelCoordinates[0] || []).map((d) => d.label).sort();
     expect(panel0Labels).toEqual(["A", "B"]);
+  });
+
+  it("builds split plot panels for prototype-named labels without changing compact indexes", () => {
+    const model = buildModel();
+    const groupMap = Object.create(null);
+    groupMap["__proto__"] = [0, 3, 6];
+    groupMap.constructor = [1, 4, 7];
+    groupMap.prototype = [2, 5];
+    const splitMap = Object.create(null);
+    splitMap["__proto__"] = [0, 1, 7];
+    splitMap.constructor = [2, 3];
+    splitMap.prototype = [4, 5, 6];
+    model.origData.cellMetaData.group = {
+      type: "category",
+      value: groupMap,
+    };
+    model.origData.cellMetaData.split = {
+      type: "category",
+      value: splitMap,
+    };
+    model.setConfig({ selectedFeatures: [], moduleScore: false });
+
+    const meta = model.derivePlotMetaData("group", "split", false);
+    const plot = model.buildPlotData();
+
+    expect(meta.mode).toBe("cluster+multiSplit");
+    expect(meta.nPanels).toBe(3);
+    expect(plot.panelTitles).toEqual(["__proto__", "constructor", "prototype"]);
+    expect(plot.cells).toEqual([
+      ["c1", "c2", "c8"],
+      ["c3", "c4"],
+      ["c5", "c6", "c7"],
+    ]);
+    expect(plot.catLabelCoordinates.flatMap((coords) => coords || []).map((coord) => coord.label).sort()).toEqual([
+      "__proto__",
+      "__proto__",
+      "__proto__",
+      "constructor",
+      "constructor",
+      "prototype",
+      "prototype",
+    ]);
   });
 
   it("builds 4 panels for two-split expression mode", () => {

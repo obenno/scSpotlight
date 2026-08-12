@@ -1730,7 +1730,7 @@ export const splitArrByMeta = (Arr, meta) => {
   // split array (reduciton x,y etc.) by meta inforamtion
   // Arr should be reduction.x or reduction.y, which is a numeric array
   // Arr could also be "group_by" stringArray
-  let splitOut = {};
+  const splitOut = Object.create(null);
   if (Arr != null && Arr.length == meta.length) {
     let meta_levels = [...new Set(meta)]
       .filter((value) => !isMissingMetaLevel(value))
@@ -1757,15 +1757,15 @@ export const splitArrByMeta = (Arr, meta) => {
 };
 
 export const convert_stringArr_to_integer = (stringArray) => {
-  let factorLevel = {};
-  let uniqueArr = new Set(stringArray);
-  let sortedUniqueArr = Array.from(uniqueArr)
+  const factorLevel = new Map();
+  const uniqueArr = new Set(stringArray);
+  const sortedUniqueArr = Array.from(uniqueArr)
     .filter((value) => !isMissingMetaLevel(value))
     .sort(sortStringArray);
   sortedUniqueArr.forEach((e, i) => {
-    factorLevel[e] = i;
+    factorLevel.set(e, i);
   });
-  let integerArray = stringArray.map((e) => factorLevel[e] ?? -1);
+  const integerArray = stringArray.map((e) => factorLevel.get(e) ?? -1);
   return new Int16Array(integerArray);
 };
 

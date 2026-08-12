@@ -2187,13 +2187,11 @@ Shiny.addCustomMessageHandler("addNewMeta", (msg) => {
     //console.log(Object.keys(metaData).includes(newMetaCol));
     //console.log(!Object.keys(metaData).includes(newMetaCol));
     if (!colNames.includes(newMetaCol)) {
+      const categoryMap = Object.create(null);
+      categoryMap.unknown = Array.from({ length: nCells }, (_, i) => i);
       reglElementData.origData.cellMetaData[newMetaCol] = {
         type: "category",
-        value: {
-          unknown: Array(nCells)
-            .fill(0)
-            .map((_, i) => i),
-        },
+        value: categoryMap,
       };
       //console.log(reglElementData.origData.cellMetaData[newMetaCol]);
     }
@@ -2220,9 +2218,12 @@ Shiny.addCustomMessageHandler("addNewMeta", (msg) => {
       nn[e] = assignAs;
     });
     const result = nn.reduce((acc, val, index) => {
-      (acc[val] = acc[val] || []).push(index);
+      if (!Object.hasOwn(acc, val)) {
+        acc[val] = [];
+      }
+      acc[val].push(index);
       return acc;
-    }, {});
+    }, Object.create(null));
     reglElementData.origData.cellMetaData[newMetaCol].value = result;
     invalidateMetaCache(reglElementData.origData.cellMetaData[newMetaCol]);
   }

@@ -134,14 +134,14 @@ function isTextType(typeId) {
 }
 
 function parseTextColumn(col) {
-  const categoryMap = {};
+  const categoryMap = Object.create(null);
   const values = col.toArray();
   values.forEach((value, index) => {
     if (value == null) {
       return;
     }
     const label = String(value);
-    if (!categoryMap[label]) {
+    if (!Object.hasOwn(categoryMap, label)) {
       categoryMap[label] = [];
     }
     categoryMap[label].push(index);
@@ -179,7 +179,7 @@ export function parseMetaFromArrow(table) {
     } else if (typeId === Type.Dictionary) {
       // Category column — Arrow dictionary encoding.
       // Decode via dictionary/index buffers directly to avoid per-row col.get().
-      const catMap = {};
+      const catMap = Object.create(null);
       let globalRowIndex = 0;
 
       for (const chunk of col.data) {
@@ -189,7 +189,7 @@ export function parseMetaFromArrow(table) {
         );
 
         for (const label of labels) {
-          if (label != null && catMap[label] === undefined) {
+          if (label != null && !Object.hasOwn(catMap, label)) {
             catMap[label] = [];
           }
         }
