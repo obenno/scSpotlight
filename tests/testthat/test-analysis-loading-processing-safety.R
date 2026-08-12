@@ -278,7 +278,7 @@ test_that("Explore parquet archives are rejected by Analysis loading", {
 
 test_that("compressed Analysis archives validate unsafe entries before extraction", {
   mod_source <- paste(
-    readLines(testthat::test_path("..", "..", "R", "mod_dataInput.R"), warn = FALSE),
+    readLines(scspotlight_test_source_path("R", "mod_dataInput.R"), warn = FALSE),
     collapse = "\n"
   )
 
@@ -319,8 +319,8 @@ test_that("compressed Analysis archives validate unsafe entries before extractio
 })
 
 test_that("loading and processing source guards block high-memory Analysis regressions", {
-  mod_source <- paste(readLines(testthat::test_path("..", "..", "R", "mod_dataInput.R"), warn = FALSE), collapse = "\n")
-  backend_source <- paste(readLines(testthat::test_path("..", "..", "R", "fct_bpcells_backend.R"), warn = FALSE), collapse = "\n")
+  mod_source <- paste(readLines(scspotlight_test_source_path("R", "mod_dataInput.R"), warn = FALSE), collapse = "\n")
+  backend_source <- paste(readLines(scspotlight_test_source_path("R", "fct_bpcells_backend.R"), warn = FALSE), collapse = "\n")
   guarded_source <- paste(mod_source, backend_source, sep = "\n")
 
   expect_false(grepl("duckdb::|DBI::dbConnect", guarded_source))

@@ -80,6 +80,22 @@ validate_assignment_intent <- function(
     stop("stale assignment context", call. = FALSE)
   }
 
+  current_view_filter_version <- normalize_analysis_version(
+    current_context$viewFilterVersion %||% NULL
+  )
+  intent_view_filter_version <- normalize_analysis_version(
+    intent_context$viewFilterVersion %||% NULL
+  )
+  if (
+    !is.null(current_view_filter_version) &&
+      (
+        is.null(intent_view_filter_version) ||
+          !identical(current_view_filter_version, intent_view_filter_version)
+      )
+  ) {
+    stop("stale View Filter context", call. = FALSE)
+  }
+
   object_cells <- colnames(object)
   if (is.null(object_cells) || length(object_cells) == 0L) {
     stop("Object has no cells for assignment", call. = FALSE)
@@ -102,6 +118,13 @@ validate_assignment_intent <- function(
     unknown_cells <- setdiff(selected_cells, object_cells)
     if (length(unknown_cells) > 0L) {
       stop("Assignment intent contains unknown cells", call. = FALSE)
+    }
+    view_filter <- current_context$viewFilter %||% NULL
+    if (!is.null(view_filter)) {
+      visible_cells <- resolve_view_filter_cells(object, view_filter)
+      if (any(!selected_cells %in% visible_cells)) {
+        stop("Assignment intent contains cells outside the current View", call. = FALSE)
+      }
     }
     return(list(
       type = intent_type,
@@ -146,6 +169,11 @@ validate_assignment_intent <- function(
   }
 
   resolved_cells <- rownames(meta)[matched]
+  view_filter <- current_context$viewFilter %||% NULL
+  if (!is.null(view_filter)) {
+    visible_cells <- resolve_view_filter_cells(object, view_filter)
+    resolved_cells <- resolved_cells[resolved_cells %in% visible_cells]
+  }
   if (length(resolved_cells) == 0L) {
     stop("Category assignment resolved no cells", call. = FALSE)
   }
@@ -168,13 +196,17 @@ validate_assignment_intent <- function(
 #' @noRd
 app_server <- function(input, output, session) {
   ## create temp dir to store Arrow IPC files and BPCells-backed session data
-  tempDir <- file.path(getwd(), paste0("tmp_", session$token))
-  if (dir.create(tempDir)) {
+  tempDir <- file.path(
+    scspotlight_temp_root(),
+    paste0("scspotlight-session-", session$token)
+  )
+  dir.create(tempDir, recursive = TRUE, showWarnings = FALSE)
+  if (dir.exists(tempDir)) {
     ## create dir to store reduction, meta and expr files
-    dir.create(file.path(tempDir, "reduction"))
-    dir.create(file.path(tempDir, "meta"))
-    dir.create(file.path(tempDir, "expr"))
-    dir.create(file.path(tempDir, "backend"))
+    dir.create(file.path(tempDir, "reduction"), showWarnings = FALSE)
+    dir.create(file.path(tempDir, "meta"), showWarnings = FALSE)
+    dir.create(file.path(tempDir, "expr"), showWarnings = FALSE)
+    dir.create(file.path(tempDir, "backend"), showWarnings = FALSE)
     dataResourcePrefix <- paste0("data-", session$token)
     session$userData$dataResourcePrefix <- dataResourcePrefix
     addResourcePath(dataResourcePrefix, tempDir)
@@ -242,6 +274,8 @@ app_server <- function(input, output, session) {
   reductionUpdateIndicator <- reactiveVal(0)
   ## indicator for view-driven plot changes (group.by/split.by/feature toggles)
   scatterUpdateIndicator <- reactiveVal(0)
+  ## server-owned temporary View Filter state; never mutates the active Analysis
+  viewFilter <- new_view_filter_controller()
   ## indicator for plot refresh after data transfer completion
   plotRefreshIndicator <- reactiveVal(0)
   ## request for partial metadata transfer
@@ -254,8 +288,6 @@ app_server <- function(input, output, session) {
     cols[!is.na(cols) & nzchar(cols) & cols != "None"]
   })
 
-  ## seuratObj changes, plottingMode will change, and indicators will increase
-  ## Thus filterCells and ClusterSetting do not need to alter indicators
   inputData <- mod_dataInput_server(
     "dataInput",
     seuratObj,
@@ -266,7 +298,8 @@ app_server <- function(input, output, session) {
     metaUpdateIndicator,
     reductionUpdateIndicator,
     analysisTransition = analysisTransition,
-    resetAnalysisUi = resetAnalysisUi
+    resetAnalysisUi = resetAnalysisUi,
+    clearViewFilter = viewFilter$clear
   )
 
   if (identical(runningMode, "analysis")) {
@@ -279,17 +312,12 @@ app_server <- function(input, output, session) {
       reductionUpdateIndicator
     )
 
-    ## Filter Clusters
+    ## Apply temporary View Filters without changing the active Analysis.
     mod_FilterCell_server(
       "filterCells",
       seuratObj,
       inputData$selectedAssay,
-      clusterSettings$hvgSelectMethod,
-      clusterSettings$clusterDims,
-      clusterSettings$clusterResolution,
-      geneUpdateIndicator,
-      metaUpdateIndicator,
-      reductionUpdateIndicator
+      setViewFilter = viewFilter$set
     )
 
     mod_CellCycling_server(
@@ -445,7 +473,8 @@ app_server <- function(input, output, session) {
     categoryInfo$group.by,
     categoryInfo$split.by,
     featureInfo$moduleScore,
-    analysisTransition = analysisTransition
+    analysisTransition = analysisTransition,
+    viewFilterState = viewFilter$state
   )
 
   if (identical(runningMode, "analysis")) {
@@ -457,7 +486,9 @@ app_server <- function(input, output, session) {
       current_context <- list(
         groupBy = categoryInfo$group.by(),
         splitBy = categoryInfo$split.by(),
-        metaVersion = currentMetadataVersion()
+        metaVersion = currentMetadataVersion(),
+        viewFilter = viewFilter$value(),
+        viewFilterVersion = viewFilter$version()
       )
 
       tryCatch(
@@ -525,7 +556,9 @@ app_server <- function(input, output, session) {
       analysisTransition = analysisTransition,
       currentMetadataVersion = currentMetadataVersion,
       currentGroupBy = categoryInfo$group.by,
-      currentSplitBy = categoryInfo$split.by
+      currentSplitBy = categoryInfo$split.by,
+      currentViewFilter = viewFilter$value,
+      currentViewFilterVersion = viewFilter$version
     )
 
     ## Download Object

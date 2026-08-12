@@ -67,7 +67,7 @@ mod_UpdateReduction_server <- function(
 
         reductionVersion <- reductionUpdateIndicator()
         pca_result <- tryCatch(
-          capture_warnings(
+          capture_operation_warnings(
             write_backend_pca_stdev_transfer(
               seuratObj(),
               dir_path = file.path(session$userData$tempDir, "reduction"),
@@ -166,7 +166,7 @@ mod_UpdateReduction_server <- function(
         resource_prefix = session$userData$dataResourcePrefix
       )
       reduction_promise <- future_promise({
-        capture_warnings(write_backend_reduction_transfer(transfer))
+        capture_operation_warnings(write_backend_reduction_transfer(transfer))
       }) %...>%
         (function(result) {
           show_captured_warnings(
@@ -181,7 +181,7 @@ mod_UpdateReduction_server <- function(
           result$value
         }) %...!%
         (function(error) {
-          message("Reduction export failed during IPC write.")
+          message("Reduction export failed during IPC write: ", conditionMessage(error))
           session$sendCustomMessage(
             type = "transfer_error",
             message = make_transfer_error_payload(
@@ -238,6 +238,17 @@ mod_UpdateReduction_server <- function(
       reductionProcessed(FALSE)
       dirPath <- file.path(session$userData$tempDir, "reduction")
       reductionVersion <- reductionUpdateIndicator()
+      reductions_started <- proc.time()[["elapsed"]]
+      scspotlight_benchmark_timing_event(
+        session,
+        phase = "server_reductions_ipc",
+        state = "start",
+        details = list(
+          reductionVersion = reductionVersion,
+          activeReduction = active_reduction_name,
+          reductions = reduction_names
+        )
+      )
       prefetchingReductionVersion(reductionVersion)
       prefetchingReductionNames(reduction_names)
       reduction_transfers <- lapply(reduction_names, function(reduction_name) {
@@ -253,7 +264,7 @@ mod_UpdateReduction_server <- function(
 
       reductions_promise <- future_promise({
         results <- lapply(reduction_transfers, function(transfer) {
-          capture_warnings(write_backend_reduction_transfer(transfer))
+          capture_operation_warnings(write_backend_reduction_transfer(transfer))
         })
         list(
           value = unname(lapply(results, `[[`, "value")),
@@ -275,10 +286,44 @@ mod_UpdateReduction_server <- function(
               resourcePrefix = session$userData$dataResourcePrefix
             )
           )
+          output_bytes <- sum(vapply(
+            reduction_transfers,
+            function(transfer) {
+              if (file.exists(transfer$filePath)) {
+                unname(file.info(transfer$filePath)$size)
+              } else {
+                0
+              }
+            },
+            numeric(1)
+          ))
+          scspotlight_benchmark_timing_event(
+            session,
+            phase = "server_reductions_ipc",
+            state = "end",
+            elapsed_ms = (proc.time()[["elapsed"]] - reductions_started) * 1000,
+            details = list(
+              reductionVersion = reductionVersion,
+              activeReduction = active_reduction_name,
+              reductions = reduction_names,
+              outputBytes = output_bytes
+            )
+          )
           result$value
         }) %...!%
         (function(error) {
-          message("Reduction prefetch failed during IPC write.")
+          message("Reduction prefetch failed during IPC write: ", conditionMessage(error))
+          scspotlight_benchmark_timing_event(
+            session,
+            phase = "server_reductions_ipc",
+            state = "error",
+            elapsed_ms = (proc.time()[["elapsed"]] - reductions_started) * 1000,
+            details = list(
+              reductionVersion = reductionVersion,
+              activeReduction = active_reduction_name,
+              reductions = reduction_names
+            )
+          )
           session$sendCustomMessage(
             type = "transfer_error",
             message = make_transfer_error_payload(

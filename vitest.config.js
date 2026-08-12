@@ -1,5 +1,5 @@
 import { fileURLToPath } from 'node:url';
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 import viteConfig from './vite.config.js';
 
 const shinyStub = fileURLToPath(new URL('./srcjs/test/shinyStub.js', import.meta.url));
@@ -17,5 +17,6 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: [],
+    exclude: [...configDefaults.exclude, 'tests/e2e/**', 'benchmarks/**'],
   },
 });

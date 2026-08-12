@@ -8,6 +8,7 @@ scspotlight_explore_archive_pattern <- "\\.explore-parquet\\.[Zz][Ii][Pp]$"
 scspotlight_reduction_transfer_chunk_size <- 100000L
 scspotlight_metadata_transfer_chunk_size <- 100000L
 scspotlight_expression_transfer_chunk_size <- 100000L
+scspotlight_expression_export_cell_chunk_size <- 100000L
 
 duckdb_parquet_sql_path <- function(path) {
   gsub(
@@ -525,6 +526,98 @@ explore_sparse_summary <- function(mat) {
   ))
 }
 
+explore_expression_parquet_schema <- function() {
+  arrow::schema(
+    feature_idx = arrow::int32(),
+    cell_idx = arrow::int32(),
+    value = arrow::float64()
+  )
+}
+
+explore_write_expression_block <- function(
+  mat,
+  row_idx,
+  path,
+  compression = "zstd",
+  cell_chunk_size = scspotlight_expression_export_cell_chunk_size
+) {
+  cell_chunk_size <- suppressWarnings(as.integer(cell_chunk_size))
+  if (is.na(cell_chunk_size) || cell_chunk_size < 1L) {
+    stop("cell_chunk_size must be a positive integer")
+  }
+
+  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+  if (file.exists(path)) {
+    file.remove(path)
+  }
+
+  sink <- arrow::FileOutputStream$create(path)
+  sink_closed <- FALSE
+  writer <- NULL
+  writer_closed <- FALSE
+  on.exit(
+    {
+      if (!is.null(writer) && !writer_closed) {
+        try(writer$Close(), silent = TRUE)
+      }
+      if (!sink_closed) {
+        try(sink$close(), silent = TRUE)
+      }
+    },
+    add = TRUE
+  )
+  writer <- arrow::ParquetFileWriter$create(
+    schema = explore_expression_parquet_schema(),
+    sink = sink,
+    properties = arrow::ParquetWriterProperties$create(
+      column_names = c("feature_idx", "cell_idx", "value"),
+      compression = compression
+    )
+  )
+
+  cell_count <- ncol(mat)
+  if (cell_count > 0L) {
+    for (cell_start in seq.int(1L, cell_count, by = cell_chunk_size)) {
+      cell_end <- min(cell_count, cell_start + cell_chunk_size - 1L)
+      chunk_mat <- mat[
+        row_idx,
+        seq.int(cell_start, cell_end),
+        drop = FALSE
+      ]
+      sparse_summary <- explore_sparse_summary(chunk_mat)
+
+      if (nrow(sparse_summary)) {
+        expression_table <- arrow::arrow_table(
+          feature_idx = arrow::Array$create(
+            as.integer(row_idx[sparse_summary$i] - 1L),
+            type = arrow::int32()
+          ),
+          cell_idx = arrow::Array$create(
+            as.integer(cell_start + sparse_summary$j - 2L),
+            type = arrow::int32()
+          ),
+          value = arrow::Array$create(
+            sparse_summary$x,
+            type = arrow::float64()
+          )
+        )
+        writer$WriteTable(expression_table, chunk_size = nrow(sparse_summary))
+        rm(expression_table)
+      }
+
+      rm(sparse_summary, chunk_mat)
+      gc()
+    }
+  }
+
+  writer$Close()
+  writer_closed <- TRUE
+  sink$close()
+  sink_closed <- TRUE
+
+  invisible(path)
+}
+
 explore_empty_expression_frame <- function() {
   data.frame(
     feature_idx = integer(),
@@ -540,7 +633,8 @@ write_scspotlight_explore_bundle <- function(
   layer = NULL,
   block_size = 1024L,
   compression = "zstd",
-  progress = NULL
+  progress = NULL,
+  expression_cell_chunk_size = scspotlight_expression_export_cell_chunk_size
 ) {
   progress <- progress %||% (function(...) NULL)
 
@@ -551,6 +645,12 @@ write_scspotlight_explore_bundle <- function(
     stop("block_size must be a positive integer")
   }
   block_size <- as.integer(block_size)
+  expression_cell_chunk_size <- suppressWarnings(
+    as.integer(expression_cell_chunk_size)
+  )
+  if (is.na(expression_cell_chunk_size) || expression_cell_chunk_size < 1L) {
+    stop("expression_cell_chunk_size must be a positive integer")
+  }
 
   assay <- assay %||% DefaultAssay(object)
   if (!assay %in% Assays(object)) {
@@ -565,10 +665,11 @@ write_scspotlight_explore_bundle <- function(
   )
 
   dir.create(bundle_dir, recursive = TRUE, showWarnings = FALSE)
+  cell_count <- ncol(object)
 
   progress(message = "Writing cell index")
   cells <- data.frame(
-    cell_idx = seq_len(ncol(object)) - 1L,
+    cell_idx = seq_len(cell_count) - 1L,
     cell_id = colnames(object),
     stringsAsFactors = FALSE
   )
@@ -577,6 +678,8 @@ write_scspotlight_explore_bundle <- function(
     file.path(bundle_dir, "cells.parquet"),
     compression
   )
+  rm(cells)
+  gc()
 
   progress(message = "Writing metadata")
   meta <- explore_prepare_metadata(object[[]])
@@ -585,6 +688,8 @@ write_scspotlight_explore_bundle <- function(
     file.path(bundle_dir, "metadata.parquet"),
     compression
   )
+  rm(meta)
+  gc()
 
   progress(message = "Writing reductions")
   reduction_names <- SeuratObject::Reductions(object)
@@ -600,6 +705,8 @@ write_scspotlight_explore_bundle <- function(
       file.path(bundle_dir, "reductions", paste0(reduction, ".parquet")),
       compression
     )
+    rm(reduction_df, emb)
+    gc()
   }
 
   if ("pca" %in% reduction_names) {
@@ -613,6 +720,8 @@ write_scspotlight_explore_bundle <- function(
         compression
       )
     }
+    rm(pca_stdev)
+    gc()
   }
 
   progress(message = "Writing feature index")
@@ -633,41 +742,33 @@ write_scspotlight_explore_bundle <- function(
     file.path(bundle_dir, "features.parquet"),
     compression
   )
+  rm(features, feature_index)
+  gc()
 
   progress(message = "Writing expression blocks")
   expression_dir <- file.path(bundle_dir, "expression")
   dir.create(expression_dir, recursive = TRUE, showWarnings = FALSE)
   blocks <- split(seq_along(feature_names), feature_blocks)
+  rm(feature_blocks, object)
+  gc()
 
   for (block_name in names(blocks)) {
     row_idx <- blocks[[block_name]]
-    block_mat <- mat[row_idx, , drop = FALSE]
-    sparse_summary <- explore_sparse_summary(block_mat)
-
-    block_df <- if (nrow(sparse_summary)) {
-      data.frame(
-        feature_idx = as.integer(row_idx[sparse_summary$i] - 1L),
-        cell_idx = as.integer(sparse_summary$j - 1L),
-        value = as.numeric(sparse_summary$x)
-      )
-    } else {
-      explore_empty_expression_frame()
-    }
-
-    block_df <- block_df[
-      order(block_df$feature_idx, block_df$cell_idx),
-      ,
-      drop = FALSE
-    ]
-    explore_write_parquet(
-      block_df,
-      file.path(
+    # Build the file in bounded cell batches. A whole 1M+ cell feature block
+    # can otherwise require several gigabytes of temporary sparse data.
+    explore_write_expression_block(
+      mat = mat,
+      row_idx = row_idx,
+      path = file.path(
         expression_dir,
         sprintf("block_%05d.parquet", as.integer(block_name))
       ),
-      compression
+      compression = compression,
+      cell_chunk_size = expression_cell_chunk_size
     )
   }
+  rm(blocks, mat)
+  gc()
 
   progress(message = "Writing Explore bundle manifest")
   manifest <- list(
@@ -679,7 +780,7 @@ write_scspotlight_explore_bundle <- function(
     layer = layer,
     assays = list(list(name = assay, layers = list(layer))),
     default_assay = assay,
-    cell_count = ncol(object),
+    cell_count = cell_count,
     feature_count = length(feature_names),
     block_size = block_size,
     expression_compression = compression,
@@ -704,7 +805,7 @@ read_explore_conversion_source <- function(input_file, backend_root = NULL) {
 
   if (grepl("\\.[Hh]5[Aa][Dd]$", input_file)) {
     backend_root <- backend_root %||%
-      tempfile("scspotlight_explore_h5ad_backend_")
+      scspotlight_temp_path("scspotlight_explore_h5ad_backend_")
     dir.create(backend_root, recursive = TRUE, showWarnings = FALSE)
     return(import_h5ad_as_seurat_bpcells(
       input_file,
@@ -767,28 +868,21 @@ convert_to_explore_bundle <- function(
     stop("Output directory does not exist: ", output_dir)
   }
 
-  work_root <- tempfile("scspotlight_explore_bundle_work_")
+  work_root <- scspotlight_temp_path("scspotlight_explore_bundle_work_")
   dir.create(work_root, recursive = TRUE, showWarnings = FALSE)
   on.exit(unlink(work_root, recursive = TRUE, force = TRUE), add = TRUE)
-
-  object <- read_explore_conversion_source(
-    input_file,
-    backend_root = file.path(work_root, "h5ad_backend")
-  )
-  if (!inherits(object, "Seurat")) {
-    stop("input_file did not produce a Seurat object")
-  }
-
-  object <- ensure_normalized_layer(
-    object,
-    assay = assay,
-    input_label = "Explore bundle source"
-  )
 
   bundle_name <- sub("\\.[Zz][Ii][Pp]$", "", basename(output_file))
   bundle_dir <- file.path(work_root, bundle_name)
   write_scspotlight_explore_bundle(
-    object = object,
+    object = ensure_normalized_layer(
+      read_explore_conversion_source(
+        input_file,
+        backend_root = file.path(work_root, "h5ad_backend")
+      ),
+      assay = assay,
+      input_label = "Explore bundle source"
+    ),
     bundle_dir = bundle_dir,
     assay = assay,
     layer = layer,
@@ -892,20 +986,22 @@ clean_meta_transfer_chunk <- function(d) {
       d[[col]] <- v
     } else if (
       col != "cells" &&
-        (is.character(d[[col]]) || is.logical(d[[col]]))
+        (is.factor(d[[col]]) || is.logical(d[[col]]))
     ) {
-      d[[col]] <- as.factor(d[[col]])
+      d[[col]] <- as.character(d[[col]])
     }
   }
 
   d
 }
 
-metadata_transfer_column_array <- function(values) {
-  if (is.factor(values)) {
-    return(arrow::Array$create(
-      values,
-      type = arrow::dictionary(arrow::int32(), arrow::utf8())
+metadata_transfer_column_array <- function(values, dictionary_encode = FALSE) {
+  if (dictionary_encode && is.character(values)) {
+    levels <- unique(values[!is.na(values)])
+    indices <- as.integer(match(values, levels) - 1L)
+    return(arrow::DictionaryArray$create(
+      arrow::Array$create(indices, type = arrow::int32()),
+      arrow::Array$create(levels)
     ))
   }
   if (is.integer(values)) {
@@ -915,8 +1011,205 @@ metadata_transfer_column_array <- function(values) {
 }
 
 metadata_transfer_arrow_table <- function(d) {
-  arrays <- lapply(d, metadata_transfer_column_array)
+  arrays <- Map(
+    function(values, column) {
+      metadata_transfer_column_array(
+        values,
+        dictionary_encode = !identical(column, "cells")
+      )
+    },
+    d,
+    colnames(d)
+  )
   do.call(arrow::arrow_table, arrays)
+}
+
+metadata_transfer_arrow_array <- function(values) {
+  value_type <- values$type
+  if (inherits(value_type, c("Utf8", "LargeUtf8"))) {
+    return(values$cast(arrow::dictionary(arrow::int32(), arrow::utf8())))
+  }
+  if (inherits(value_type, "Boolean")) {
+    return(metadata_transfer_column_array(
+      as.character(values$as_vector()),
+      dictionary_encode = TRUE
+    ))
+  }
+  if (inherits(value_type, c("Float16", "Float32", "Float64"))) {
+    is_finite <- arrow::call_function("is_finite", values)
+    all_finite <- arrow::call_function("all", is_finite)$as_vector()
+    if (!isTRUE(all_finite)) {
+      numeric_values <- values$as_vector()
+      invalid_values <- !is.finite(numeric_values)
+      numeric_values[invalid_values] <- NA_real_
+      return(arrow::Array$create(numeric_values, type = value_type))
+    }
+  }
+  values
+}
+
+write_metadata_transfer_chunks <- function(
+  output_file,
+  next_chunk,
+  empty_chunk
+) {
+  dir.create(dirname(output_file), recursive = TRUE, showWarnings = FALSE)
+  if (file.exists(output_file)) {
+    file.remove(output_file)
+  }
+
+  sink <- arrow::FileOutputStream$create(output_file)
+  writer <- NULL
+  writer_closed <- FALSE
+  sink_closed <- FALSE
+  on.exit(
+    {
+      if (!is.null(writer) && !writer_closed) {
+        try(writer$close(), silent = TRUE)
+      }
+      if (!sink_closed) {
+        try(sink$close(), silent = TRUE)
+      }
+    },
+    add = TRUE
+  )
+
+  wrote_chunk <- FALSE
+  repeat {
+    chunk <- next_chunk()
+    if (is.null(chunk) || !nrow(chunk)) {
+      break
+    }
+    chunk <- clean_meta_transfer_chunk(chunk)
+    table <- metadata_transfer_arrow_table(chunk)
+    if (is.null(writer)) {
+      writer <- arrow::RecordBatchStreamWriter$create(sink, table$schema)
+    }
+    writer$write(table)
+    wrote_chunk <- TRUE
+  }
+
+  if (!wrote_chunk) {
+    table <- metadata_transfer_arrow_table(clean_meta_transfer_chunk(
+      empty_chunk
+    ))
+    writer <- arrow::RecordBatchStreamWriter$create(sink, table$schema)
+  }
+
+  writer$close()
+  writer_closed <- TRUE
+  sink$close()
+  sink_closed <- TRUE
+
+  invisible(output_file)
+}
+
+try_extract_canonical_explore_metadata_to_ipc <- function(
+  metadata_path,
+  cells_path,
+  output_file,
+  selected_cols,
+  chunk_size,
+  expected_cell_count
+) {
+  metadata_idx_name <- ".scspotlight_cell_idx"
+  metadata_scanner <- arrow::open_dataset(
+    metadata_path,
+    format = "parquet"
+  )$NewScan()
+  metadata_scanner$Project(c(selected_cols, metadata_idx_name))
+  metadata_scanner$BatchSize(chunk_size)
+  metadata_reader <- arrow::as_record_batch_reader(metadata_scanner$Finish())
+  on.exit(try(metadata_reader$Close(), silent = TRUE), add = TRUE)
+
+  cells_scanner <- arrow::open_dataset(cells_path, format = "parquet")$NewScan()
+  cells_scanner$Project(c("cell_idx", "cell_id"))
+  cells_scanner$BatchSize(chunk_size)
+  cells_reader <- arrow::as_record_batch_reader(cells_scanner$Finish())
+  on.exit(try(cells_reader$Close(), silent = TRUE), add = TRUE)
+
+  dir.create(dirname(output_file), recursive = TRUE, showWarnings = FALSE)
+  if (file.exists(output_file)) {
+    file.remove(output_file)
+  }
+
+  sink <- arrow::FileOutputStream$create(output_file)
+  writer <- NULL
+  writer_closed <- FALSE
+  sink_closed <- FALSE
+  completed <- FALSE
+  on.exit(
+    {
+      if (!is.null(writer) && !writer_closed) {
+        try(writer$close(), silent = TRUE)
+      }
+      if (!sink_closed) {
+        try(sink$close(), silent = TRUE)
+      }
+      if (!completed) {
+        unlink(output_file, force = TRUE)
+      }
+    },
+    add = TRUE
+  )
+
+  next_cell_idx <- 0L
+  repeat {
+    metadata_batch <- metadata_reader$read_next_batch()
+    cells_batch <- cells_reader$read_next_batch()
+    if (is.null(metadata_batch) && is.null(cells_batch)) {
+      break
+    }
+    if (
+      is.null(metadata_batch) ||
+        is.null(cells_batch) ||
+        nrow(metadata_batch) != nrow(cells_batch)
+    ) {
+      return(FALSE)
+    }
+
+    batch_rows <- nrow(metadata_batch)
+    expected_values <- seq.int(next_cell_idx, length.out = batch_rows)
+    metadata_values <- as.integer(metadata_batch[[metadata_idx_name]])
+    cell_values <- as.integer(cells_batch[["cell_idx"]])
+    if (
+      !identical(metadata_values, expected_values) ||
+        !identical(cell_values, expected_values)
+    ) {
+      return(FALSE)
+    }
+
+    arrays <- lapply(
+      selected_cols,
+      function(column) metadata_transfer_arrow_array(metadata_batch[[column]])
+    )
+    names(arrays) <- selected_cols
+    arrays$cells <- cells_batch[["cell_id"]]
+    output_schema <- do.call(
+      arrow::schema,
+      lapply(arrays, function(values) values$type)
+    )
+    output_batch <- do.call(
+      arrow::RecordBatch$create,
+      c(arrays, list(schema = output_schema))
+    )
+    if (is.null(writer)) {
+      writer <- arrow::RecordBatchStreamWriter$create(sink, output_schema)
+    }
+    writer$write(output_batch)
+    next_cell_idx <- as.integer(next_cell_idx + batch_rows)
+  }
+
+  if (is.null(writer) || next_cell_idx != expected_cell_count) {
+    return(FALSE)
+  }
+
+  writer$close()
+  writer_closed <- TRUE
+  sink$close()
+  sink_closed <- TRUE
+  completed <- TRUE
+  TRUE
 }
 
 explore_bundle_metadata_query_plan <- function(bundle, cols = NULL) {
@@ -951,6 +1244,56 @@ extract_explore_metadata_to_ipc <- function(
     chunk_size <- scspotlight_metadata_transfer_chunk_size
   }
 
+  metadata_columns <- arrow::open_dataset(
+    metadata_path,
+    format = "parquet"
+  )$schema$names
+  if (!".scspotlight_cell_idx" %in% metadata_columns) {
+    stop(
+      "Metadata Parquet file is missing required column: ",
+      ".scspotlight_cell_idx"
+    )
+  }
+  selected_cols <- metadata_columns
+  if (isTruthy(cols)) {
+    selected_cols <- intersect(cols, selected_cols)
+  }
+  selected_cols <- setdiff(
+    selected_cols,
+    c("cells", ".scspotlight_cell_idx", ".scspotlight_cell_id")
+  )
+
+  cells_path <- file.path(dirname(metadata_path), "cells.parquet")
+  if (is.null(expected_cell_count)) {
+    cell_count <- validate_scspotlight_explore_cells_file(cells_path)
+    validate_scspotlight_explore_metadata_cell_index(
+      metadata_path,
+      cells_path,
+      expected_cell_count = cell_count
+    )
+  } else {
+    cell_count <- suppressWarnings(as.integer(expected_cell_count[[1]]))
+    if (is.na(cell_count) || cell_count < 1L || !file.exists(cells_path)) {
+      stop(
+        "Explore metadata transfer requires validated canonical Cell IDs.",
+        call. = FALSE
+      )
+    }
+  }
+
+  if (
+    try_extract_canonical_explore_metadata_to_ipc(
+      metadata_path = metadata_path,
+      cells_path = cells_path,
+      output_file = output_file,
+      selected_cols = selected_cols,
+      chunk_size = chunk_size,
+      expected_cell_count = cell_count
+    )
+  ) {
+    return(invisible(output_file))
+  }
+
   con <- DBI::dbConnect(duckdb::duckdb(), dbdir = ":memory:")
   on.exit(DBI::dbDisconnect(con, shutdown = TRUE), add = TRUE)
 
@@ -959,20 +1302,8 @@ extract_explore_metadata_to_ipc <- function(
     con,
     sprintf("SELECT * FROM read_parquet('%s') LIMIT 0", sql_path)
   )
-  if (!".scspotlight_cell_idx" %in% colnames(schema)) {
-    stop(
-      "Metadata Parquet file is missing required column: ",
-      ".scspotlight_cell_idx"
-    )
-  }
-  selected_cols <- colnames(schema)
-  if (isTruthy(cols)) {
-    selected_cols <- intersect(cols, selected_cols)
-  }
-  selected_cols <- setdiff(
-    selected_cols,
-    c("cells", ".scspotlight_cell_idx", ".scspotlight_cell_id")
-  )
+  empty_chunk <- schema[selected_cols]
+  empty_chunk$cells <- character()
   metadata_alias <- "meta_src"
   cell_alias <- "cell_index"
   order_expr <- sprintf(
@@ -994,23 +1325,6 @@ extract_explore_metadata_to_ipc <- function(
     )
   )
 
-  cells_path <- file.path(dirname(metadata_path), "cells.parquet")
-  if (is.null(expected_cell_count)) {
-    cell_count <- validate_scspotlight_explore_cells_file(cells_path)
-    validate_scspotlight_explore_metadata_cell_index(
-      metadata_path,
-      cells_path,
-      expected_cell_count = cell_count
-    )
-  } else {
-    cell_count <- suppressWarnings(as.integer(expected_cell_count[[1]]))
-    if (is.na(cell_count) || cell_count < 1L || !file.exists(cells_path)) {
-      stop(
-        "Explore metadata transfer requires validated canonical Cell IDs.",
-        call. = FALSE
-      )
-    }
-  }
   from_expr <- sprintf(
     paste(
       "read_parquet('%s') AS %s",
@@ -1041,58 +1355,17 @@ extract_explore_metadata_to_ipc <- function(
   result <- DBI::dbSendQuery(con, sql)
   on.exit(try(DBI::dbClearResult(result), silent = TRUE), add = TRUE)
 
-  dir.create(dirname(output_file), recursive = TRUE, showWarnings = FALSE)
-  if (file.exists(output_file)) {
-    file.remove(output_file)
-  }
-
-  sink <- arrow::FileOutputStream$create(output_file)
-  writer <- NULL
-  writer_closed <- FALSE
-  sink_closed <- FALSE
-  on.exit(
-    {
-      if (!is.null(writer) && !writer_closed) {
-        try(writer$close(), silent = TRUE)
+  write_metadata_transfer_chunks(
+    output_file = output_file,
+    next_chunk = function() {
+      chunk <- DBI::dbFetch(result, n = chunk_size)
+      if (!nrow(chunk)) {
+        return(NULL)
       }
-      if (!sink_closed) {
-        try(sink$close(), silent = TRUE)
-      }
+      chunk
     },
-    add = TRUE
+    empty_chunk = empty_chunk
   )
-
-  wrote_chunk <- FALSE
-  repeat {
-    chunk <- DBI::dbFetch(result, n = chunk_size)
-    if (!nrow(chunk)) {
-      break
-    }
-    chunk <- clean_meta_transfer_chunk(chunk)
-    table <- metadata_transfer_arrow_table(chunk)
-    if (is.null(writer)) {
-      writer <- arrow::RecordBatchStreamWriter$create(sink, table$schema)
-    }
-    writer$write(table)
-    wrote_chunk <- TRUE
-
-    if (DBI::dbHasCompleted(result)) {
-      break
-    }
-  }
-
-  if (!wrote_chunk) {
-    empty <- clean_meta_transfer_chunk(
-      cbind(schema[selected_cols], cells = character())
-    )
-    table <- metadata_transfer_arrow_table(empty)
-    writer <- arrow::RecordBatchStreamWriter$create(sink, table$schema)
-  }
-
-  writer$close()
-  writer_closed <- TRUE
-  sink$close()
-  sink_closed <- TRUE
 
   invisible(output_file)
 }

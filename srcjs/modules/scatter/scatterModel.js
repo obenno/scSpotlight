@@ -23,6 +23,8 @@ export class ScatterModel {
       selectedCells: [],
       catLabelCoordinates: [],
       plotFeature: null,
+      sourceIndices: [],
+      visibleCellCount: 0,
     };
 
     this.plotMetaData = {
@@ -35,6 +37,8 @@ export class ScatterModel {
       moduleScore: false,
       labelSize: 14,
       selectedMeta: null,
+      viewFilter: null,
+      viewFilterVersion: 0,
     };
   }
 
@@ -48,6 +52,8 @@ export class ScatterModel {
       selectedCells: [],
       catLabelCoordinates: [],
       plotFeature: null,
+      sourceIndices: [],
+      visibleCellCount: 0,
     };
 
     this.plotMetaData.mode = null;
@@ -179,6 +185,142 @@ export class ScatterModel {
     return this.plotMetaData;
   }
 
+  buildViewFilterMask(metaData) {
+    const expandMeta = this.utils.expandMeta;
+    const cells = expandMeta(metaData.cells) || [];
+    const totalCellCount = cells.length;
+    const viewFilter = this.plotMetaData.viewFilter;
+
+    if (!viewFilter) {
+      return { mask: null, visibleCellCount: totalCellCount };
+    }
+
+    const nFeature = viewFilter.nFeature || {};
+    const percentMt = viewFilter.percentMt || {};
+    const nFeatureValues = expandMeta(metaData[nFeature.column]) || [];
+    const percentMtValues = expandMeta(metaData[percentMt.column]) || [];
+    const min = Number(nFeature.min);
+    const max = Number(nFeature.max);
+    const percentMax = Number(percentMt.max);
+
+    if (
+      !Number.isFinite(min) ||
+      !Number.isFinite(max) ||
+      !Number.isFinite(percentMax) ||
+      min >= max ||
+      nFeatureValues.length !== totalCellCount ||
+      percentMtValues.length !== totalCellCount
+    ) {
+      return {
+        mask: new Uint8Array(totalCellCount),
+        visibleCellCount: 0,
+      };
+    }
+
+    const mask = new Uint8Array(totalCellCount);
+    let visibleCellCount = 0;
+    for (let i = 0; i < totalCellCount; i++) {
+      const nFeatureValue = Number(nFeatureValues[i]);
+      const percentMtValue = Number(percentMtValues[i]);
+      if (
+        Number.isFinite(nFeatureValue) &&
+        Number.isFinite(percentMtValue) &&
+        nFeatureValue > min &&
+        nFeatureValue < max &&
+        percentMtValue < percentMax
+      ) {
+        mask[i] = 1;
+        visibleCellCount += 1;
+      }
+    }
+
+    return {
+      // Avoid allocating duplicate panel buffers when every cell remains visible.
+      mask: visibleCellCount === totalCellCount ? null : mask,
+      visibleCellCount,
+    };
+  }
+
+  buildSourceIndices(length) {
+    const indices = new Int32Array(length);
+    for (let i = 0; i < length; i++) {
+      indices[i] = i;
+    }
+    return indices;
+  }
+
+  filterPlotPanels(pointsData, zData, visibilityMask) {
+    if (!visibilityMask) {
+      return {
+        pointsData,
+        zData,
+        sourceIndices: [],
+      };
+    }
+
+    const filteredPoints = [];
+    const filteredZData = {
+      ...zData,
+      point_Z_data: [],
+      cells: [],
+    };
+    const sourceIndices = [];
+
+    for (let panelIdx = 0; panelIdx < pointsData.length; panelIdx++) {
+      const panel = pointsData[panelIdx];
+      const panelZ = zData.point_Z_data[panelIdx];
+      const panelCells = zData.cells[panelIdx] || [];
+      const panelSourceIndices = zData.sourceIndices?.[panelIdx] || [];
+      const panelLength = Math.min(
+        panel?.x?.length || 0,
+        panel?.y?.length || 0,
+        panelZ?.length || 0,
+        panelCells.length,
+        panelSourceIndices.length,
+      );
+      let visibleCount = 0;
+
+      for (let pointIdx = 0; pointIdx < panelLength; pointIdx++) {
+        if (visibilityMask[panelSourceIndices[pointIdx]] === 1) {
+          visibleCount += 1;
+        }
+      }
+
+      const x = new Float32Array(visibleCount);
+      const y = new Float32Array(visibleCount);
+      const z = ArrayBuffer.isView(panelZ)
+        ? new panelZ.constructor(visibleCount)
+        : new Float32Array(visibleCount);
+      const cells = new Array(visibleCount);
+      const indices = new Int32Array(visibleCount);
+      let outputIdx = 0;
+
+      for (let pointIdx = 0; pointIdx < panelLength; pointIdx++) {
+        const sourceIdx = panelSourceIndices[pointIdx];
+        if (visibilityMask[sourceIdx] !== 1) {
+          continue;
+        }
+        x[outputIdx] = panel.x[pointIdx];
+        y[outputIdx] = panel.y[pointIdx];
+        z[outputIdx] = panelZ[pointIdx];
+        cells[outputIdx] = panelCells[pointIdx];
+        indices[outputIdx] = sourceIdx;
+        outputIdx += 1;
+      }
+
+      filteredPoints[panelIdx] = { x, y, z };
+      filteredZData.point_Z_data[panelIdx] = z;
+      filteredZData.cells[panelIdx] = cells;
+      sourceIndices[panelIdx] = indices;
+    }
+
+    return {
+      pointsData: filteredPoints,
+      zData: filteredZData,
+      sourceIndices,
+    };
+  }
+
   buildPlotData() {
     const metaData = this.origData.cellMetaData;
     const reductionData = this.origData.reductionData;
@@ -195,8 +337,10 @@ export class ScatterModel {
 
     const selectedFeature = selectedFeatures[0];
     const expressionData = selectedFeature ? expressionAll[selectedFeature] : [];
+    const viewFilter = this.buildViewFilterMask(metaData);
+    const includeSourceIndices = viewFilter.mask !== null;
 
-    const pointsData = this.prepareXYData(
+    let pointsData = this.prepareXYData(
       reductionData,
       metaData,
       mode,
@@ -204,7 +348,7 @@ export class ScatterModel {
       split_by,
     );
 
-    const zData = this.prepareZData(
+    let zData = this.prepareZData(
       metaData,
       expressionData,
       mode,
@@ -214,11 +358,17 @@ export class ScatterModel {
       catColors,
       selectedFeature,
       moduleScore,
+      undefined,
+      includeSourceIndices,
     );
 
     for (let i = 0; i < pointsData.length; i++) {
       pointsData[i].z = zData.point_Z_data[i];
     }
+
+    const filtered = this.filterPlotPanels(pointsData, zData, viewFilter.mask);
+    pointsData = filtered.pointsData;
+    zData = filtered.zData;
 
     const catLabelCoordinates = [];
     const groupTitles = group_by ? this.utils.getMetaLevels(metaData[group_by]) : [];
@@ -255,6 +405,8 @@ export class ScatterModel {
       panelTitles: zData.panelTitles,
       catLabelCoordinates,
       plotFeature: selectedFeature,
+      sourceIndices: filtered.sourceIndices,
+      visibleCellCount: viewFilter.visibleCellCount,
     };
 
     return this.plotData;
@@ -271,6 +423,7 @@ export class ScatterModel {
     selectedFeature,
     moduleScore,
     exprColorScale = d3.interpolate("#E5E4E2", "#800080"),
+    includeSourceIndices = false,
   ) {
     const expandMeta = this.utils.expandMeta;
     const splitArrByMeta = this.utils.splitArrByMeta;
@@ -284,6 +437,7 @@ export class ScatterModel {
       zType: [],
       cells: [],
       panelTitles: [],
+      sourceIndices: [],
     };
 
     const exprTitle = moduleScore ? "ModuleScore" : selectedFeature;
@@ -301,6 +455,9 @@ export class ScatterModel {
           zData.colorData[0] = catColors;
           zData.zType[0] = "category";
           zData.cells[0] = expandMeta(metaData.cells);
+          if (includeSourceIndices) {
+            zData.sourceIndices[0] = this.buildSourceIndices(zData.cells[0].length);
+          }
         }
         break;
       }
@@ -318,6 +475,11 @@ export class ScatterModel {
           zData.zType[1] = "expr";
           zData.cells[0] = cellsArray;
           zData.cells[1] = cellsArray;
+          if (includeSourceIndices) {
+            const sourceIndices = this.buildSourceIndices(cellsArray.length);
+            zData.sourceIndices[0] = sourceIndices;
+            zData.sourceIndices[1] = sourceIndices;
+          }
         }
         break;
       }
@@ -331,6 +493,12 @@ export class ScatterModel {
           );
           const splitExpr = splitArrByMeta(expressionData, splitByArray);
           const splitCells = splitArrByMeta(expandMeta(metaData.cells), splitByArray);
+          const splitSourceIndices = includeSourceIndices
+            ? splitArrByMeta(
+              this.buildSourceIndices(expandMeta(metaData.cells).length),
+              splitByArray,
+            )
+            : null;
           const splitKeys = Object.keys(splitZ);
           for (let i = 0; i < splitKeys.length; i++) {
             const key = splitKeys[i];
@@ -344,6 +512,10 @@ export class ScatterModel {
             zData.zType[i * 2 + 1] = "expr";
             zData.cells[i * 2] = splitCells[key];
             zData.cells[i * 2 + 1] = splitCells[key];
+            if (splitSourceIndices) {
+              zData.sourceIndices[i * 2] = splitSourceIndices[key];
+              zData.sourceIndices[i * 2 + 1] = splitSourceIndices[key];
+            }
           }
         }
         break;
@@ -372,6 +544,9 @@ export class ScatterModel {
           zData.colorData[i] = catColors;
           zData.zType[i] = "category";
           zData.cells[i] = cellSplit;
+          if (includeSourceIndices) {
+            zData.sourceIndices[i] = Int32Array.from(indices);
+          }
         }
         break;
       }
@@ -394,6 +569,15 @@ export class ScatterModel {
           zData.colorData[i] = exprColorMap;
           zData.zType[i] = "expr";
           zData.cells[i] = cellSplit;
+          if (includeSourceIndices) {
+            const sourceIndices = [];
+            for (let j = 0; j < splitByArray.length; j++) {
+              if (splitByArray[j] === level) {
+                sourceIndices.push(j);
+              }
+            }
+            zData.sourceIndices[i] = Int32Array.from(sourceIndices);
+          }
         }
         break;
       }

@@ -14,12 +14,13 @@ The recent work touched these areas:
 - reduction transfer in `R/mod_UpdateReduction.R`
 - processed input validation in `R/mod_dataInput.R`
 - h5ad conversion/export helpers in `R/fct_bpcells_backend.R`
-- Analysis Version selection and subset flow in `R/fct_analysis_transition.R`, `R/mod_AssignCellCluster.R`, `R/mod_SubsetCells.R`, and `R/mod_mainClusterPlot.R`
+- View Filter, selection guard, and Analysis Version Subset/Restore flow in `R/mod_FilterCell.R`, `R/fct_analysis_transition.R`, `R/mod_AssignCellCluster.R`, `R/mod_SubsetCells.R`, and `R/mod_mainClusterPlot.R`
 - floating plot state and rendering flow in `srcjs/index.js`
 - sparkline gene selection behavior in `srcjs/modules/featureSparkLine.js`
 - main scatter plot mode selection in `srcjs/modules/scatter/scatterModel.js`
 - main expression legend handling in `srcjs/modules/deckScatter.js`
 - floating panel drag behavior in `srcjs/modules/floatingPlots.js`
+- checked-in real-browser correctness coverage in `playwright.config.js` and `tests/e2e/`
 
 ## Key Decisions
 
@@ -241,6 +242,200 @@ Analysis Mode uses the in-memory Seurat object plus BPCells-backed assay layers 
 
 For Analysis Mode, do not reintroduce a mirrored DuckDB runtime for Analysis Mode. DuckDB remains appropriate for immutable Explore Parquet bundle scans, but Analysis metadata, reductions, features, PCA summaries, and expression must not be mirrored into a second DuckDB runtime source of truth.
 
+### Real CellxGene H5AD Evidence and Scratch-Space Contract
+
+Issue #27 requires evidence from a real CellxGene AnnData artifact, not a synthetic
+structural workload. The verified source artifact is
+`aa6ebee3-68cc-41b4-80b2-5ef5c3317e14.h5ad` from CellxGene, with `1,102,250`
+cells, `35,477` features, a source size of `9,663,215,939` bytes, and MD5
+`7933979b0faf179ce2674be6e4baed81`.
+
+Decision:
+
+- Use `pixi run benchmark-real-h5ad` to measure Analysis Mode import, browser
+  transfers, first rendered View, selected-gene interaction, Shiny RSS, and
+  Chromium RSS against that artifact.
+- The RSS criterion is a strict decimal comparison: every measured peak must be
+  `< 6,000,000,000` bytes. Equality is a failure.
+- Benchmark temporary files, browser caches, R temporary files, session IPC,
+  and BPCells staging are rooted through `SCSPOTLIGHT_TEMP_ROOT`. The standard
+  external benchmark root is
+  `/media/xzx/zflow13_sd/tmp/20260810_scSpotlight`.
+
+Why:
+
+- A million-cell synthetic structure cannot demonstrate that a CellxGene H5AD
+  import, categorical metadata transfer, native reduction, and selected-gene
+  read stay below the production memory limit.
+- Redirecting scratch data prevents the benchmark itself from consuming the
+  source-checkout filesystem or an uncontrolled system temporary directory.
+
+Implementation notes:
+
+- `benchmarks/run_real_h5ad_processing_benchmark.R` runs in a fresh Pixi R
+  process and records Linux `VmHWM` through import/validation and production
+  metadata, reduction, and expression Arrow IPC transfers.
+- `benchmarks/real-h5ad.spec.js` selects the actual Analysis input in headless
+  Chromium, waits for the real cell count, requests the recorded gene, samples
+  Shiny and Chromium process RSS every 100 ms, and writes the browser result
+  into the same JSON evidence file.
+- The direct native expression-transfer branch is reported as
+  `bpcells_anndata_hdf5`: `get_bpcells_layer_ref()` unwraps Seurat's
+  `RenameDims` wrapper to retain the original `AnnDataMatrixH5` H5AD path and
+  group instead of materializing an `expr_layers` matrix copy.
+- Native H5AD metadata reading uses one `rhdf5` file handle for an entire
+  dataframe and reads `obs` before BPCells opens its long-lived matrix handles.
+  This avoids repeated-file-open contention observed with large CellxGene
+  categorical metadata tables.
+- Arrow IPC fetches keep `{ cache: "no-store" }` in
+  `srcjs/modules/arrowReader.js` to avoid Chromium
+  `net::ERR_CACHE_WRITE_FAILURE` on large session payloads.
+
+Validation performed on August 10, 2026:
+
+- Evidence: `/media/xzx/zflow13_sd/tmp/20260810_scSpotlight/cellxgene-h5ad/runs/20260810-real-h5ad-final/results.json`.
+- Processing peak `VmHWM`: `2,903,064,576` bytes, passed.
+- Shiny browser-flow peak `VmHWM`: `2,991,915,008` bytes, passed.
+- Aggregate Chromium browser/renderer/GPU peak `VmHWM`: `2,311,741,440`
+  bytes, passed.
+- Real first View latency: `418,087` ms. Selected-gene end-to-end latency:
+  `63,915` ms.
+- The evidence result reports `issue_27_evidence_status: "passed"`.
+
+### Real Explore Mode Comparison
+
+The matching Explore Mode comparison uses the same CellxGene source artifact and
+the same selected feature, `ENSG00000243485`. Explore stores expression as
+zstd-compressed Parquet blocks of `1,024` features and uses DuckDB to query the
+selected feature before writing the browser-facing float32 Arrow IPC stream.
+
+The initial August 11, 2026 query-path probe wrote the selected feature's real
+block directly from the H5AD `X` matrix. The block covers features `0` through
+`1,023`, contains `58,556,268` nonzero rows, is `323,063,676` bytes on disk,
+and includes `153` nonzero cells for `ENSG00000243485`. Fresh-process production
+DuckDB-to-Arrow measurements for the `1,102,250`-cell output vector were `602`,
+`611`, and `606` ms, respectively, each writing `4,410,864` bytes. This isolates
+the actual Explore selected-gene transfer from full archive conversion and is
+substantially faster than the `59,919` ms native-H5AD Analysis Mode server
+transfer measured on August 10, 2026.
+
+The probe is not a substitute for a complete Explore application measurement:
+it contains only the selected feature block and cannot be opened as an Explore
+bundle. `pixi run benchmark-real-explore` now creates a complete archive from
+all `35,477` features, measures H5AD-to-archive conversion, archive unpacking
+and validation, three production selected-gene DuckDB-to-Arrow transfers, and
+the actual Explore Mode browser selection flow. Its artifacts live under
+`SCSPOTLIGHT_REAL_EXPLORE_ROOT` (by default,
+`/media/xzx/zflow13_sd/tmp/20260810_scSpotlight/cellxgene-explore`) and retain
+the same strict decimal `< 6,000,000,000` byte RSS gate used for the real H5AD
+benchmark. Full conversion time and browser latency must be reported separately
+from selected-gene query latency because conversion serializes every expression
+block while a user action reads only one block.
+
+The initial full conversions showed that releasing completed metadata, reduction,
+feature-index, and Seurat-wrapper buffers was necessary but not sufficient. The
+remaining peak came from materializing an entire 1,024-feature by 1,102,250-cell
+expression block and its sparse triplet/data-frame representation before writing
+Parquet. `write_scspotlight_explore_bundle()` therefore keeps the one-file-per-
+feature-block contract but delegates each block to
+`explore_write_expression_block()`. That writer slices the source matrix in
+bounded 100,000-cell batches and appends each batch as a Parquet row group through
+`arrow::ParquetFileWriter`. It releases each batch before reading the next one.
+The resulting block remains compatible with the existing DuckDB expression query,
+which orders only the requested feature by `cell_idx`; no full-block physical sort
+is required.
+
+Validation performed on August 11, 2026:
+
+- Accepted evidence:
+  `/media/xzx/zflow13_sd/tmp/20260810_scSpotlight/cellxgene-explore/runs/20260811-real-explore-streaming-fix/results.json`.
+- The completed archive contains the full `1,102,250` cells, `35,477` features,
+  and `35` expression blocks. Its archive size is `5,630,730,641` bytes and its
+  unpacked bundle size is `5,780,808,262` bytes.
+- Full H5AD-to-Explore conversion took `2,655,199` ms and peaked at
+  `3,638,833,152` bytes VmHWM, passing the strict `< 6,000,000,000` byte
+  processing gate.
+- The three production DuckDB-to-float32-Arrow selected-gene transfers measured
+  `126`, `155`, and `119` ms, with a median of `126` ms for a `4,410,864`-byte
+  payload.
+- Actual Explore browser flow first View was `75,892` ms and selected-gene
+  end-to-end latency was `821` ms. The Explore Shiny process peaked at
+  `3,790,221,312` bytes and aggregate Chromium peak was `2,449,096,704` bytes;
+  both passed the same strict RSS limit.
+- Against the August 10 native-H5AD Analysis Mode evidence, Explore reduced first
+  View from `418,087` ms to `75,892` ms and selected-gene end-to-end latency from
+  `63,915` ms to `821` ms. Conversion remains a separate offline cost, at
+  `2,655,199` ms, and must not be presented as interactive latency.
+
+### Phase-Level Explore Startup Evidence
+
+The opt-in startup profiler separates a retained archive selection from the
+server archive lifecycle, browser Arrow hydration, initial scatter rendering,
+and the normal browser `fileInput()` path. Set
+`SCSPOTLIGHT_BENCHMARK_STARTUP_TIMING=true` when running
+`dev/run_real_explore_startup_timing.sh`. Server events are appended to
+`server-events.jsonl`, browser events are captured by
+`benchmarks/real-explore-startup-timing.spec.js`, and the combined result is
+written as `startup-timing.json`. The profiler is benchmark-only and must not
+change normal application behavior when disabled.
+
+The profiler reports two distinct user-visible boundaries:
+
+- `initial_plot_ready`: the browser has built and rendered the initial deck.gl
+  scatter plot.
+- `first_view_settled`: the application's full-screen waiter overlay is hidden.
+
+The two boundaries must not be conflated. Their difference is an app-level
+settling interval, not a proven individual transfer or renderer cost. Likewise,
+phase durations describe an event timeline, not an additive total: metadata and
+reduction IPC work overlap, as can browser webR initialization and input work.
+
+Validation performed on August 11, 2026 used the accepted `5,630,730,641`-byte,
+`1,102,250`-cell archive from the strict-RSS conversion evidence. The version-2
+results are retained at:
+
+- Server-resident archive selection:
+  `/media/xzx/zflow13_sd/tmp/20260810_scSpotlight/cellxgene-explore/startup-timings/20260811-real-explore-startup-server-profile-v2/startup-timing.json`.
+- Normal browser `fileInput()` selection on the same host:
+  `/media/xzx/zflow13_sd/tmp/20260810_scSpotlight/cellxgene-explore/startup-timings/20260811-real-explore-startup-browser-upload-profile-v2/startup-timing.json`.
+
+For the server-resident archive path, the server began dataset loading `53` ms
+after selection. The initial scatter was ready after `46,671` ms, while the
+waiter-hidden first View settled after `72,461` ms. The post-selection critical
+path to initial scatter readiness was:
+
+- Full archive extraction: `23,057` ms.
+- Bundle location and validation: `659` ms combined.
+- Metadata Arrow IPC generation: `15,192` ms for a `302,933,112`-byte payload.
+- Metadata browser fetch, Arrow decode, metadata parsing, and UI application:
+  `4,600`, `14`, `2,856`, and `20` ms, respectively.
+- Initial scatter model, deck creation, and render: `82`, `15`, and `110` ms,
+  respectively.
+
+The `8,820,480`-byte UMAP IPC transfer took `313` ms to generate and `1,459` ms
+to fetch, but it overlaps the final portion of metadata preparation and browser
+metadata fetch. It is therefore not added to the critical-path total. The
+browser webR initialization took `106,065` ms in this one server-resident run
+and completed before archive selection; its full page-navigation-to-initial-plot
+measurement was `153,773` ms. The profiler records that ordering but does not
+attribute the cause of the delayed selection interaction.
+
+The current archive contract eagerly extracts the complete archive, including
+all `35` expression blocks, before the bundle opens. Initial plotting reads
+metadata and a reduction, not an expression block. Full archive extraction is
+therefore the largest measured post-selection server phase and the clearest
+future startup optimization target; preserve the existing archive and browser
+message contracts if pursuing lazy extraction or a new distribution layout.
+
+For the normal browser `fileInput()` path on loopback, `setInputFiles()` itself
+returned in `35` ms, but the server did not begin its dataset-load observer until
+`21,003` ms after the input selection. That measured interval represents local
+browser input delivery plus Shiny dispatch/scheduling for the `5,630,730,641`-
+byte archive; it is not a remote-WAN upload measurement. The initial scatter was
+ready after `67,990` ms and the waiter-hidden first View settled after `94,340`
+ms from input selection. A remote deployment or controlled bandwidth profile is
+required before reporting browser upload time to users over a WAN.
+
 ### Phase 03 Analysis Mode processing and mutation safety
 
 Analysis loading now routes supported Analysis Mode inputs through one validation,
@@ -269,12 +464,21 @@ and `transfer_error`; do not add JSON cell-level payloads, local file paths,
 mirrored Analysis DuckDB stores, or live Seurat/BPCells objects in background
 futures to work around loading or processing issues.
 
-The same section owns filter, cluster, and cell-cycle mutation safety. Filtering
-must route browser/reactive selections through validated selected-cell sets via
-`safe_subset_seurat_object`, preserve source-object cell order, reject stale selections before mutating app state, preserve BPCells backing where available,
-and finish with `drop_dense_scale_data()` / `assert_no_dense_scale_data()`.
-filtering and clustering must drop final dense `scale.data` before replacing the
+The same section owns clustering, cell-cycle, and Analysis-subsetting mutation
+safety. Analysis-subsetting requests must route browser/reactive selections
+through validated selected-cell sets via `safe_subset_seurat_object`, preserve
+source-object cell order, reject stale selections before mutating app state,
+preserve BPCells backing where available, and finish with
+`drop_dense_scale_data()` / `assert_no_dense_scale_data()`. Cluster and
+Analysis Mutation paths must drop final dense `scale.data` before replacing the
 server-side Seurat object.
+
+`Filter Cells` is deliberately excluded from the Analysis Mutation path. It is
+a Session-owned View Filter: applying or clearing it must not subset or
+reprocess Seurat data, replace `seuratObj`, publish an Analysis Version or
+Change-set, increment analysis transfer indicators, or create metadata,
+reduction, expression, or PCA transfers. A user must explicitly invoke Subset
+from a currently valid selection to create a new Analysis.
 
 Cluster update modes have intentionally different scopes and transfer indicators.
 Update All refreshes metadata and reductions after rerunning the full
@@ -287,16 +491,26 @@ local paths, or stack traces.
 
 The assignment and category-selection consistency contract keeps browser-owned rename filtering for responsive previews while moving persistence to a bounded server-validated intent. lasso selections take precedence over category selections. The browser sends bounded browser assignment intent through `renameCluster-assignmentIntent`: manual/lasso assignment carries selected cell IDs, and category assignment carries the current group/split levels and plot context. The server resolves assigned cells from canonical Seurat metadata, assignment mutates exactly one metadata column, and the browser receives a one-column scoped `meta_patch_ready` patch. Assignment must use no full JSON cell-level metadata transfer. Rename UI state must clear stale rename selections on group.by or split.by changes, metadata patch invalidation, explicit deselect, and clear stale rename selections after assignment completion.
 
+View Filter state is part of the same selection safety boundary without becoming
+an Analysis Mutation. The browser carries `viewFilterVersion` with lasso,
+category, and assignment contexts. The server rejects an intent whose View
+Filter Version is stale and rejects manual cells outside the active View. For a
+category context, the server resolves canonical category membership first and
+then intersects it with the visible cells. A View-only redraw reconciles an
+existing lasso selection to visible Cell IDs; hidden cells are removed and an
+empty result clears the matching browser transport.
+
 Subset requests accept either a manual/lasso Cell-ID selection or a bounded
 category context. The browser publishes `renameCluster-selectedCellsPayload`
 with canonical Cell IDs plus the observed metadata version, Analysis Version,
-and Analysis lineage ID for manual/lasso selection. For category selection, it
-publishes `renameCluster-categorySelectionContext` with only the current
-group/split context, selected levels, metadata version, Analysis Version, and
-lineage ID; it never sends the category-derived Cell-ID set back to R.
+Analysis Lineage ID, and View Filter Version for manual/lasso selection. For
+category selection, it publishes `renameCluster-categorySelectionContext` with
+only the current group/split context, selected levels, metadata version,
+Analysis Version, Analysis Lineage ID, and View Filter Version; it never sends
+the category-derived Cell-ID set back to R.
 `R/mod_AssignCellCluster.R` validates payload structure, the active View
-group/split context, and the metadata epoch, then forwards the captured Analysis
-Version/lineage to the Analysis Transition seam. The Analysis Transition resolves
+group/split context, metadata epoch, and View Filter Version, then forwards the
+captured Analysis Version/lineage to the Analysis Transition seam. The Analysis Transition resolves
 category membership from canonical Seurat metadata, validates every resulting
 Cell ID against the active Seurat object, and canonicalizes source `colnames()`
 order once before subsetting. A present manual/lasso payload is authoritative:
@@ -304,7 +518,17 @@ an invalid or stale manual request cannot fall back to category context.
 The lasso lifecycle, category changes, successful metadata patch, and any object
 replacement clear the incompatible selection transport.
 
-The subset and restore refresh semantics are part of the same Analysis Mode mutation safety seam. A subset uses safe_subset_seurat_object with a complete validated selected-cell set, preserves source-object cell order, and leaves app state untouched when the requested Cell-ID set is not completely valid. The original object is stored once by the Analysis Transition controller before the first active subset, and restore clears that controller-owned backup after replacing app state with the original object. The Session-scoped Analysis Transition serializes mutations, validates Analysis Version and lineage before calculating a replacement, and publishes object, backup, transition state, and Change-set only after a complete candidate succeeds. invalid or repeated subset toggles do not mutate app state: empty, duplicate, mixed-validity, stale, already-subsetted, and failed requests reset or no-op without incrementing refresh indicators. successful subset and restore increment geneUpdateIndicator, metaUpdateIndicator, and reductionUpdateIndicator so existing metadata, reduction, feature, expression, and plot refresh chains run. Browser metadata, reduction, PCA, expression, and transfer-error payloads must discard stale versions before mutating browser state.
+The subset and restore refresh semantics are part of the same Analysis Mode mutation safety seam. A subset uses safe_subset_seurat_object with a complete validated selected-cell set, preserves source-object cell order, and leaves app state untouched when the requested Cell-ID set is not completely valid. The original object is stored once by the Analysis Transition controller before the first active subset, and restore clears that controller-owned backup after replacing app state with the original object. The Session-scoped Analysis Transition serializes mutations, validates Analysis Version, Analysis Lineage, and View Filter Version before calculating a replacement, and publishes object, backup, transition state, and Change-set only after a complete candidate succeeds. Invalid or repeated subset toggles do not mutate app state: empty, duplicate, mixed-validity, stale, already-subsetted, and failed requests reset or no-op without incrementing refresh indicators. Successful subset and restore increment geneUpdateIndicator, metaUpdateIndicator, and reductionUpdateIndicator so existing metadata, reduction, feature, expression, and plot refresh chains run. Browser metadata, reduction, PCA, expression, and transfer-error payloads must discard stale versions before mutating browser state.
+
+Applying or clearing a View Filter sends a `reglScatter_plot` request marked
+`viewFilterOnly` with the active `viewFilter` predicate and `viewFilterVersion`.
+It preserves the current Analysis Version and lineage. The client filters
+browser-resident typed metadata, reduction, and expression buffers into visible
+panel buffers, retains source indexes for hover values, and reports the visible
+cell count. It does not request a new Arrow IPC data transfer. A full Analysis
+replacement still clears incompatible selection, feature, expression, and lasso
+state; a View Filter render is not object replacement and instead reconciles an
+existing lasso selection to the visible population.
 
 Every full or patch metadata IPC stream carries ordered canonical Cell IDs in its
 `cells` column. The browser decodes this as an identity vector rather than a
@@ -336,6 +560,7 @@ The final Phase 03 gap-closure repairs are now part of the Analysis Mode process
 - **Server-trusted assignment validation:** assignment validation must not trust browser-submitted current metadata versions. Versioned assignment intents are accepted only when the server can compare them with the server-trusted current metadata version for the active group/split context.
 - **Single assignment activation:** normal assignment activation emits a single renameCluster-assignmentIntent. Browser handlers must avoid pointerdown/click double submission so one user action produces one bounded assignment intent and one scoped metadata mutation.
 - **Cell-ID and category subset flow:** browser `renameCluster-selectedCellsPayload` carries canonical manual/lasso Cell IDs plus metadata, Analysis Version, and lineage tokens captured from the rendered plot. Browser `renameCluster-categorySelectionContext` carries only bounded group/split levels and the same identity tokens; category-derived Cell IDs stay server-side. The Analysis Transition rejects manual selections unless every Cell ID exists in `colnames(seuratObj())`, and resolves category selections from canonical metadata before re-ordering the complete selection once by the current Seurat object. A stale manual payload blocks category fallback. Successful metadata patches clear the visible lasso and its transport so a stale metadata epoch cannot remain selectable. Empty, duplicate, mixed-validity, category-context-invalid, metadata-stale, version-stale, and lineage-stale requests publish no Analysis Version.
+- **View-only Filter and selection identity:** `Filter Cells` validates the selected assay's numeric `nFeature_<assay>` and `percent.mt` metadata on the server, then updates only Session-owned `viewFilter` and `viewFilterVersion` state. Apply and clear operations never change `seuratObj`, Analysis Version, Analysis Lineage, Change-set, or transfer indicators. Browser selection and assignment contexts include `viewFilterVersion`; stale contexts and cells no longer visible under the active filter are rejected. Category contexts resolve canonical membership server-side and intersect it with visible Cell IDs. The client filters existing typed buffers and reconciles lasso selections without treating a View-only render as an object replacement.
 - **Session-root BPCells subset backing:** subset backing must use the session backend root for BPCells-safe output. Session callers pass `session$userData$backendDir` (or a child directory) into `safe_subset_seurat_object()` so temporary BPCells subset layers are cleaned up with the Shiny session.
 
 ### Browser payload contracts
@@ -384,6 +609,16 @@ The active-reduction readiness rule is: `initialPlotReady` is reported only afte
 one current active reduction renders successfully, or after the current transfer
 visibly fails and settles the waiter. Batched `reductions_ready` must prefer the
 server-provided `activeReduction` over a stale DOM selection.
+
+The server sends `await_initial_plot_ready` before incrementing the initial
+metadata, reduction, and expression transfer indicators. This arms the browser
+readiness token before a fast local transfer can render an active reduction and
+prevents the full-screen waiter from remaining visible after a valid initial
+plot. Async transfer writers use the package-scoped
+`capture_operation_warnings()` envelope. Do not call a generic
+`capture_warnings()` in a `future_promise()` worker: a same-named helper such as
+`testthat::capture_warnings()` can mask it and return an atomic value rather than
+the required `{value, warnings}` envelope.
 
 Expression transfers are scoped backend jobs. `R/mod_InputFeature.R` keeps
 queued one-active expression jobs per session and uses duplicate scoped key suppression
@@ -512,6 +747,7 @@ These changes were implemented with the repo's large-dataset constraints in mind
 - Keep a cold client-side IPC cache only for reduction and expression payloads. `srcjs/index.js` stores fetched Arrow IPC `ArrayBuffer`s keyed by `{version, reduction}` and `{version, assay, gene}` and rehydrates typed arrays on demand. This avoids repeated server fetches for reduction switching and cleared/reloaded expression panels while conserving memory by not keeping extra decoded hot copies.
 - Cache expanded categorical metadata and unique sorted levels per column object on the client. `srcjs/modules/deckScatter.js` now memoizes both expanded arrays and level lists so plot-mode derivation, legends, category selection, and rename-cluster filtering do not rebuild the same metadata repeatedly.
 - Keep rename-cluster category filtering on the client. `srcjs/index.js` now computes rename selections directly from cached metadata and only sends the final selected cells to R on assign.
+- Keep View Filter work browser-local after server predicate validation. `srcjs/modules/scatter/scatterModel.js` creates a `Uint8Array` visibility mask and only allocates filtered panel buffers when a filter hides cells; original metadata, reductions, and expression vectors remain the browser-resident source buffers. `Int32Array` source indexes preserve canonical metadata and expression lookup for filtered hover text.
 - Use adaptive split-panel grids for very high-cardinality `split.by` layouts. `srcjs/modules/scatter/scatterLayout.js` now balances columns/rows and shrinks minimum panel sizes as panel counts rise so the deck surface does not become excessively large.
 - Keep main scatter rendering deck.gl-only with typed binary attributes. `srcjs/modules/deckScatter.js` builds `ScatterplotLayer` inputs from `Float32Array` positions and `Uint8Array` colors, applies the AGENTS.md point-size/opacity/pickability thresholds, and keeps base hover picking disabled at 2M+ points while lasso selection remains available through client-side geometry.
 
@@ -1151,9 +1387,13 @@ If behavior changes again, review these files together:
 - `R/mod_Download.R`
 - `R/mod_InputFeature.R`
 - `R/mod_UpdateReduction.R`
+- `R/mod_FilterCell.R`
 - `R/mod_mainClusterPlot.R`
 - `R/app_server.R`
+- `R/utils_warnings.R`
 - `srcjs/modules/floatingPlots.js`
+- `playwright.config.js`
+- `tests/e2e/subset-restore.spec.js`
 
 ## Suggested Follow-up Discipline
 
@@ -1163,6 +1403,8 @@ When changing plot behavior in the future:
 2. Keep the interaction contract explicit for each floating panel.
 3. Re-run `pixi run test-js`.
 4. Rebuild the frontend bundle with `pixi run build-js` before manual browser verification.
+5. For View Filter or Analysis Transition changes, run the focused R tests, `pixi run test-e2e`, and the full validation stack before landing.
+6. Treat the deterministic E2E fixture as correctness-only. Publish 1M+ performance or memory evidence only from a representative processed artifact and recorded target environment.
 
 ## Engineering Workflow Configuration
 
@@ -1220,7 +1462,7 @@ Implementation and tracking:
 - A successful Analysis dataset reset also clears the nested Subset switch through an Analysis-only UI callback, keeping the visible control aligned with the new lineage.
 - `tests/testthat/test-subset-cells.R` verifies successful Subset/Restore lineage, Change-set publication, strict and cancelled intents, failed transitions, reset behavior, and re-entrant mutation rejection with deterministic Seurat fixtures.
 - Targeted validation passed with `pixi run Rscript -e "devtools::test(filter = 'subset-cells')"` and adjacent mutation/document/runtime tests passed with `pixi run Rscript -e "devtools::test(filter = 'analysis-mutation-safety|development-contract-docs|run-app-modes')"`.
-- This checkout has no checked-in deterministic Playwright/end-to-end harness or representative 1M+ benchmark fixture. Issue #27 live-browser and large-dataset evidence therefore remains separate work and must not be inferred from unit or module-level integration tests.
+- This checkout includes a deterministic checked-in Playwright end-to-end harness for the View Filter to Subset to Restore correctness path. The generated six-cell artifact is intentionally a correctness fixture, not a representative 1M+ benchmark artifact. Issue #27 large-dataset evidence remains separate work and must not be inferred from unit, module, or deterministic E2E results.
 
 ### 35. Canonical Cell-ID and expression-epoch hardening
 
@@ -1278,3 +1520,264 @@ Validation performed for this hardening slice:
 - `pixi run npm run build` completed successfully and regenerated
   `inst/app/www/index.js` plus `inst/app/www/index.js.map`.
 - `git diff --check` passed.
+
+### 36. View-only Filter, browser proof, and benchmark boundary
+
+Decision:
+
+- `Filter Cells` is a View-only Filter. Its visible predicate is strict:
+  `nFeature_<assay>` must be greater than the configured minimum and less than
+  the configured maximum, while `percent.mt` must be less than the configured
+  maximum.
+- The selected assay QC metadata must already exist, be numeric, and align to
+  canonical Seurat Cell IDs. Filter Cells does not synthesize or mutate missing
+  QC metadata.
+- Apply and Clear modify only the Session-owned View Filter state and its
+  monotonic View Filter Version. They never create a new Analysis Version,
+  alter the positive active Analysis Lineage ID, publish a Change-set, replace
+  the active Seurat object, or trigger metadata/reduction/expression transfers.
+- Subset and Restore remain the only operations in this slice that create a new
+  Analysis Version. An active loaded Analysis receives a positive lineage ID;
+  browser and E2E code must not assume the first active lineage is `1`, because
+  the controller's empty-session epoch is separate from a loaded Analysis.
+
+Why:
+
+- Exploration requires a fast temporary restriction without silently changing
+  scientific state or forcing expensive reprocessing.
+- Selection and mutation safety must hold when a user applies a View Filter
+  between selecting cells and invoking Subset or assignment.
+- Real-browser correctness evidence and large-scale performance evidence answer
+  different questions and must remain distinguishable.
+
+Implementation notes:
+
+- `R/mod_FilterCell.R` validates and stores the predicate through
+  `new_view_filter_controller()`. `R/app_server.R` owns that controller for the
+  Session, clears it after a successful dataset load, and supplies its filter
+  and version to plot and selection modules.
+- `R/mod_mainClusterPlot.R` emits a `viewFilterOnly` scatter render carrying
+  `viewFilter` and `viewFilterVersion`. `srcjs/index.js` preserves the Analysis
+  identity, rebuilds only the visible rendering state, and reconciles an
+  existing lasso to visible cells. `srcjs/modules/scatter/scatterModel.js`
+  filters typed panel buffers and records source indexes; `deckScatter.js` uses
+  those indexes for filtered hover text and reports visible rather than full
+  Analysis cell totals.
+- `R/mod_AssignCellCluster.R` and `R/app_server.R` reject stale View Filter
+  contexts. Manual selection cells must remain visible. Category membership is
+  resolved from canonical Seurat metadata and then constrained to visible cells.
+- `R/fct_analysis_transition.R` accepts only flat unnamed scalar
+  character/factor lists for browser JSON category arrays. Named, nested,
+  numeric, and otherwise malformed lists remain invalid.
+- `R/utils_warnings.R` exposes `capture_operation_warnings()` so async transfer
+  workers keep their stable `{value, warnings}` result shape even when a
+  same-named test helper is in scope. `R/mod_dataInput.R` arms the initial plot
+  readiness handshake before fast local transfer indicators can render a plot.
+
+Correctness evidence:
+
+- `playwright.config.js` runs the real Analysis Mode Shiny app through Chromium.
+  `tests/e2e/create-analysis-fixture.R` creates an ignored six-cell runtime
+  artifact, and `tests/e2e/subset-restore.spec.js` proves upload and initial
+  render, temporary View Filter `6 -> 3`, visible category selection `B -> 2`,
+  Subset `3 -> 2`, Restore `2 -> 3`, and stale category-intent rejection after
+  Restore.
+- The focused R tests cover View Filter predicate validation and non-mutation,
+  stale View Filter selection rejection, View-only scatter render identity,
+  browser JSON category normalization, and async warning-envelope behavior.
+  JS tests cover typed-buffer filtering, source indexes across split/expression
+  panels, visible counts, filtered hover lookup, and lasso reconciliation.
+
+Validation performed:
+
+- `pixi run Rscript -e "devtools::test(filter = 'analysis-mutation-safety|filter-cell-qc-metadata|subset-cells|warning-capture|development-contract-docs')"` passed 271 examples.
+- `pixi run Rscript -e "devtools::test()"` passed 751 examples with 40 existing small-fixture and underlying-library warnings.
+- `pixi run test-js` passed 15 Vitest files and 142 tests. Vitest explicitly excludes `tests/e2e/**`; Playwright owns those browser specs.
+- `pixi run build-js` completed and regenerated `inst/app/www/index.js` plus `inst/app/www/index.js.map`.
+- `pixi run test-e2e` passed the one real-browser Chromium scenario against the local Analysis Mode Shiny app.
+- `pixi run Rscript -e "devtools::document()"` completed and refreshed generated package documentation.
+- `R CMD INSTALL` into a temporary library and `library(scSpotlight)` both passed, validating the generated namespace and installed package load path.
+- `pixi run r-check` completed its staged `R CMD build` and `R CMD check`
+  workflow with 0 errors and 0 warnings. The check reported six ordinary
+  package-maintenance NOTES: unavailable suggested packages and import breadth,
+  `.dockerignore`, installed size, timestamp verification, top-level source
+  files/LICENSE metadata, and an overlong `run_app.Rd` example line.
+- `git diff --check` passed.
+
+Benchmark boundary:
+
+- The generated six-cell artifact under `tests/e2e/.tmp/` is correctness-only
+  and must not be cited as 1M+ performance or memory evidence.
+- The synthetic structural result recorded below remains explicitly
+  nonrepresentative. Representative CellxGene H5AD evidence is recorded in the
+  earlier `Real CellxGene H5AD Evidence and Scratch-Space Contract` section and
+  is the evidence used for issue #27.
+- Legitimate 1M+ evidence requires a representative processed artifact with
+  provenance, a recorded server and browser environment, a reproducible command
+  or harness, and raw results for peak server RSS, first-View latency, metadata
+  query latency, selected-gene expression latency, and settled browser-memory
+  use. Do not close issue #27 from synthetic evidence. The August 10, 2026
+  CellxGene H5AD run satisfies those requirements; the synthetic result below
+  does not replace it.
+
+### 37. Synthetic Explore 1M benchmark harness and staged package check
+
+Decision:
+
+- `pixi run benchmark-explore-1m` is a reproducible structural workload, not
+  representative biological-data acceptance evidence. It creates a synthetic
+  one-million-cell Explore Parquet bundle and explicitly records
+  `synthetic_structural_workload` plus `biological_representativeness: not
+  claimed` in its manifest and raw result JSON.
+- The harness writes generated inputs, Arrow IPC transfers, server PID state,
+  and raw metrics under the ignored `benchmarks/.tmp/explore-1m/` directory by
+  default. Callers may override `SCSPOTLIGHT_BENCHMARK_ROOT`,
+  `SCSPOTLIGHT_BENCHMARK_RESULTS_FILE`, and
+  `SCSPOTLIGHT_BENCHMARK_CELL_COUNT` for a separately retained run.
+- The direct server phase measures bundle open/validation plus three production
+  Explore transfer paths: metadata, reduction, and selected-gene expression.
+  Each path uses the existing DuckDB query-plan and chunked Arrow IPC writers.
+  The Chromium phase measures first-View latency, selected-gene end-to-end
+  latency, peak sampled server RSS, and settled browser memory after a
+  one-second wait.
+- `pixi run r-check` stages a physical source-tree copy outside `.pixi` before
+  invoking `devtools::check()`. It provides that staged root through
+  `SCSPOTLIGHT_TEST_SOURCE_ROOT` so installed-package contract tests can still
+  inspect the source files they are intended to guard.
+
+Why:
+
+- A generated dataset can exercise the real Explore Parquet, DuckDB, Arrow IPC,
+  Shiny, deck.gl, and Chromium paths at one million cells without falsely
+  claiming biological representativeness.
+- The local Pixi environment contains damaged symbolic links that made a normal
+  `R CMD build` traverse unusable `.pixi` targets despite `.Rbuildignore`.
+  A staged physical copy gives package checks a deterministic source boundary
+  without masking source-contract test coverage.
+
+Implementation notes:
+
+- `benchmarks/explore_1m_helpers.R` writes the deterministic bundle schema and
+  records machine, package, artifact hash, and source provenance fields:
+  `source_revision`, `source_dirty`, `source_status_porcelain`, and
+  `source_worktree_snapshot_id`. The snapshot ID hashes the tracked full-index
+  diff plus non-ignored untracked source files, so a run from a dirty checkout
+  cannot be mistaken for plain `HEAD` evidence.
+  `benchmarks/run_explore_1m_benchmark.R` performs the direct server transfer
+  measurements. `benchmarks/run_explore_1m_app.R`,
+  `playwright.benchmark.config.js`, and `benchmarks/explore-1m.spec.js` launch
+  the single-threaded Explore app and add browser/RSS metrics to the same raw
+  result file.
+- `tests/testthat/test-benchmark-explore-1m.R` uses a ten-cell version of the
+  generated fixture to verify that the production metadata, reduction, and
+  expression transfer writers generate valid Arrow IPC. It is a contract test,
+  not a size benchmark.
+- `tests/testthat/helper-source-path.R` resolves source-contract files from the
+  ordinary checkout during development and from the staged source root during
+  `R CMD check`.
+
+Important behavior rules:
+
+- Structural benchmark results may be used to diagnose engineering throughput
+  and memory behavior only. They must not be cited as representative 1M+
+  biological-data evidence and do not replace the provenance-bearing CellxGene
+  H5AD result used to close issue #27.
+- Do not commit generated benchmark bundles or raw results by default. Preserve
+  a result JSON outside the ignored benchmark work directory or attach it to the
+  relevant issue when a run is intended as review evidence.
+- A successful staged `r-check` means `R CMD build` and `R CMD check` completed
+  without errors. Existing CRAN NOTES still need ordinary package-maintenance
+  follow-up; they are not silently hidden by the staging wrapper.
+- Versioned Arrow IPC requests use `fetch(..., { cache: "no-store" })`. The
+  bounded application-owned IPC cache remains the cache authority; Chromium
+  must not write large ephemeral transfer payloads to its disk cache.
+
+Validation performed:
+
+- On August 9, 2026, `pixi run benchmark-explore-1m` completed a synthetic
+  one-million-cell structural run. The retained raw result is
+  `benchmarks/evidence/explore-1m-structural-2026-08-09.json`.
+- That run recorded a 29,648 ms first View, 981 ms selected-gene end-to-end
+  latency, 1,115,852 KiB peak sampled single-process server RSS, and
+  120,840,588 bytes Chromium runtime JS heap after the settled wait. Direct
+  server medians were 1,224 ms for metadata IPC, 187 ms for reduction IPC,
+  and 294 ms for selected-gene expression IPC.
+- These figures are diagnostic structural evidence only. They do not establish
+  representative biological-data behavior; refer to the real CellxGene H5AD
+  evidence above for issue #27 acceptance.
+
+### 38. Canonical Explore metadata Arrow fast path
+
+Decision:
+
+- Explore metadata transfers first attempt a native Arrow record-batch stream
+  when `metadata.parquet` and `cells.parquet` are physically aligned in canonical
+  `0..n-1` cell-index order.
+- The fast path reads only the requested metadata columns, the metadata cell
+  index, and `cell_idx`/`cell_id` from the cell index file. It validates both
+  indexes in lockstep before writing each Arrow IPC record batch.
+- A valid bundle whose physical metadata order is not canonical must not fail or
+  silently change browser order. The fast path removes any partial IPC output
+  and the existing DuckDB join-and-`ORDER BY` exporter remains the fallback.
+- Arrow UTF-8 and logical metadata are emitted as dictionary columns; `cells`
+  remains a plain UTF-8 identity column. Non-finite floating metadata is
+  normalized to null, matching the existing metadata-transfer contract.
+
+Why:
+
+- The original DuckDB metadata path was correct but spent most of its time on a
+  full metadata/cell-index join, global sort, R data-frame conversion, and
+  categorical reconstruction. The Arrow IPC writes themselves were not the
+  material bottleneck.
+- Processed scSpotlight Explore bundles write metadata and canonical Cell IDs in
+  the same order. Validating that invariant while streaming lets the normal
+  startup path preserve the browser contract without materializing the complete
+  metadata frame or invoking a join/sort query.
+- External or historical valid bundles can be physically reordered, so the
+  canonical stream is an optimization only. The DuckDB fallback remains the
+  authoritative correctness path for those inputs.
+
+Implementation notes:
+
+- `extract_explore_metadata_to_ipc()` discovers the metadata schema through
+  Arrow and attempts `try_extract_canonical_explore_metadata_to_ipc()` before
+  opening DuckDB. Normal validated Explore transfers therefore avoid creating a
+  DuckDB connection merely to discover metadata columns.
+- `try_extract_canonical_explore_metadata_to_ipc()` uses aligned Arrow dataset
+  scanners with bounded record batches, explicitly closes both readers, and
+  writes the IPC stream directly from Arrow arrays. It only completes the output
+  after every expected canonical index has been observed.
+- `metadata_transfer_arrow_array()` preserves dictionary encoding for text
+  fields, converts logical fields to the same category representation, and only
+  materializes a numeric batch when it contains `Inf` or `NaN` values that need
+  conversion to null.
+- `tests/testthat/test-explore-bundle.R` covers canonical ordering, dictionary
+  category output, logical metadata, non-finite numeric normalization, partial
+  output cleanup, and the reordered-input fallback.
+
+Validation performed on August 12, 2026:
+
+- Direct retained-bundle export from the accepted `1,102,250`-cell archive:
+  `/media/xzx/zflow13_sd/tmp/20260810_scSpotlight/cellxgene-explore/startup-timings/20260812-real-explore-metadata-native-arrow-final/metadata.arrow`.
+  It completed in `3,175` ms, wrote `302,986,152` bytes, contained `52`
+  columns and `1,102,250` rows, retained the canonical first/last Cell IDs, and
+  encoded `48` metadata columns as Arrow dictionaries.
+- Final server-resident startup evidence:
+  `/media/xzx/zflow13_sd/tmp/20260810_scSpotlight/cellxgene-explore/startup-timings/20260812-real-explore-startup-server-profile-metadata-native-arrow-final/startup-timing.json`.
+  `server_metadata_ipc` was `2,556` ms for the `302,986,152`-byte metadata
+  stream, compared with `15,192` ms in the version-2 baseline. Initial plot
+  readiness was `34,636` ms and waiter-hidden first View settled at `60,959` ms
+  after archive selection, compared with `46,671` and `72,461` ms in the
+  baseline. Archive extraction remained the largest post-selection server phase
+  at `23,689` ms.
+- Final normal browser `fileInput()` loopback evidence:
+  `/media/xzx/zflow13_sd/tmp/20260810_scSpotlight/cellxgene-explore/startup-timings/20260812-real-explore-startup-browser-upload-profile-metadata-native-arrow-final/startup-timing.json`.
+  `server_metadata_ipc` was `2,801` ms, initial plot readiness was `57,124` ms,
+  and waiter-hidden first View settled at `83,814` ms after archive selection,
+  compared with `14,947`, `67,990`, and `94,340` ms in the version-2 loopback
+  baseline. Browser input delivery to server dataset-load start was `21,378` ms
+  for the `5,630,730,641`-byte archive; this remains same-host loopback evidence,
+  not a WAN-upload claim.
+- The runs use the same retained archive and version-2 timing schema as the
+  August 11 baseline. Phase durations overlap and must not be added as a single
+  critical-path total.

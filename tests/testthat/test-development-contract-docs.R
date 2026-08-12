@@ -1,7 +1,5 @@
-development_doc_path <- testthat::test_path("..", "..", "DEVELOPMENT.md")
-development_contract_path <- testthat::test_path(
-  "..",
-  "..",
+development_doc_path <- scspotlight_test_source_path("DEVELOPMENT.md")
+development_contract_path <- scspotlight_test_source_path(
   "inst",
   "protocol",
   "browser-payload-contracts.json"
@@ -24,8 +22,10 @@ read_browser_payload_message_names <- function() {
 }
 
 expect_development_doc_contains <- function(text, needles) {
+  normalized_text <- gsub("[[:space:]]+", " ", text)
+  normalized_needles <- gsub("[[:space:]]+", " ", needles)
   missing <- needles[
-    !vapply(needles, grepl, logical(1), x = text, fixed = TRUE)
+    !vapply(normalized_needles, grepl, logical(1), x = normalized_text, fixed = TRUE)
   ]
   if (length(missing)) {
     fail(paste("Missing DEVELOPMENT.md text:", paste(missing, collapse = ", ")))
@@ -144,12 +144,13 @@ test_that("DEVELOPMENT documents Phase 03 Analysis mutation safety", {
   expect_development_doc_contains(
     doc_text,
     c(
-      "filter, cluster, and cell-cycle mutation safety",
+      "clustering, cell-cycle, and Analysis-subsetting mutation safety",
       "validated selected-cell sets",
       "safe_subset_seurat_object",
       "preserve source-object cell order",
       "reject stale selections before mutating app state",
-      "filtering and clustering must drop final dense `scale.data`",
+      "Cluster and Analysis Mutation paths must drop final dense `scale.data`",
+      "`Filter Cells` is deliberately excluded from the Analysis Mutation path",
       "Update All refreshes metadata and reductions",
       "Update nDim Only refreshes metadata and reductions",
       "Update Res Only reuses an existing graph and refreshes metadata without a reduction transfer",
@@ -195,17 +196,56 @@ test_that("DEVELOPMENT documents Phase 03 subset and restore safety", {
       "original object is stored once",
       "restore clears that controller-owned backup",
       "Session-scoped Analysis Transition serializes mutations",
+      "View Filter Version",
       "publishes object, backup, transition state, and Change-set only after a complete candidate succeeds",
-      "invalid or repeated subset toggles do not mutate app state",
-      "successful subset and restore increment geneUpdateIndicator, metaUpdateIndicator, and reductionUpdateIndicator",
+      "Invalid or repeated subset toggles do not mutate app state",
+      "Successful subset and restore increment geneUpdateIndicator, metaUpdateIndicator, and reductionUpdateIndicator",
       "transfer-error payloads must discard stale versions before mutating browser state",
       "browser selected-cell, rename, assignment, expression cache, and feature state clear or reconcile after object replacement",
       "ordered canonical Cell IDs",
       "mismatched or reordered Cell-ID sequence",
       "expression epoch",
       "reuse existing Phase 02 contracts",
-      "no final dense `scale.data` after subset or restore"
+      "no final dense `scale.data` after subset or restore",
+      "View Filter render is not object replacement"
     )
+  )
+})
+
+test_that("DEVELOPMENT documents the View Filter contract and evidence boundary", {
+  doc_text <- read_development_doc()
+
+  expect_development_doc_contains(
+    doc_text,
+    c(
+      "### 36. View-only Filter, browser proof, and benchmark boundary",
+      "`Filter Cells` is a View-only Filter",
+      "Session-owned View Filter state",
+      "viewFilterOnly",
+      "viewFilterVersion",
+      "never create a new Analysis Version",
+      "stale View Filter contexts",
+      "capture_operation_warnings()",
+      "await_initial_plot_ready",
+      "playwright.config.js",
+      "tests/e2e/subset-restore.spec.js",
+      "correctness-only",
+      "must not be cited as 1M+ performance or memory evidence",
+      "representative processed artifact",
+       "peak server RSS",
+       "settled browser-memory use",
+       "Do not close issue #27",
+       "### 37. Synthetic Explore 1M benchmark harness and staged package check",
+       "pixi run benchmark-explore-1m",
+       "synthetic_structural_workload",
+       "biological_representativeness: not claimed",
+        "benchmarks/.tmp/explore-1m/",
+        "benchmarks/evidence/explore-1m-structural-2026-08-09.json",
+        "source_worktree_snapshot_id",
+        "fetch(..., { cache: \"no-store\" })",
+        "SCSPOTLIGHT_TEST_SOURCE_ROOT",
+       "pixi run r-check"
+     )
   )
 })
 

@@ -1,0 +1,252 @@
+{
+  "schema_version": 1,
+  "command": "pixi run benchmark-explore-1m",
+  "provenance": {
+    "source_revision": "223136acce53e890d5d26b5ee6651ba6bccc2a4a",
+    "source_dirty": true,
+    "source_worktree_snapshot_id": "71ad6a0d097152ac36cf0e6c112c2ead29643488",
+    "source_status_porcelain": [
+      " M .Rbuildignore",
+      " M .gitignore",
+      " M CONTEXT.md",
+      " M DESCRIPTION",
+      " M DEVELOPMENT.md",
+      " M NAMESPACE",
+      " M NEWS.md",
+      " M R/app_server.R",
+      " M R/fct_analysis_transition.R",
+      " M R/fct_bpcells_backend.R",
+      " M R/mod_AssignCellCluster.R",
+      " M R/mod_FilterCell.R",
+      " M R/mod_InputFeature.R",
+      " M R/mod_SubsetCells.R",
+      " M R/mod_UpdateMetaData.R",
+      " M R/mod_UpdateReduction.R",
+      " M R/mod_dataInput.R",
+      " M R/mod_mainClusterPlot.R",
+      " M R/utils_warnings.R",
+      " M inst/app/www/index.js",
+      " M inst/app/www/index.js.map",
+      " M man/run_app.Rd",
+      " M package-lock.json",
+      " M package.json",
+      " M pixi.toml",
+      " M srcjs/index.js",
+      " M srcjs/index.test.js",
+      " M srcjs/modules/arrowReader.js",
+      " M srcjs/modules/arrowReader.test.js",
+      " M srcjs/modules/deckScatter.js",
+      " M srcjs/modules/deckScatter.test.js",
+      " M srcjs/modules/scatter/scatterModel.js",
+      " M srcjs/modules/scatter/scatterModel.test.js",
+      " M tests/testthat/test-analysis-backend-contract.R",
+      " M tests/testthat/test-analysis-loading-processing-safety.R",
+      " M tests/testthat/test-analysis-mutation-safety.R",
+      " M tests/testthat/test-assignment-metadata-safety.R",
+      " M tests/testthat/test-bpcells-expression-transfer.R",
+      " M tests/testthat/test-browser-payload-contracts.R",
+      " M tests/testthat/test-development-contract-docs.R",
+      " M tests/testthat/test-explore-bundle.R",
+      " M tests/testthat/test-filter-cell-qc-metadata.R",
+      " M tests/testthat/test-subset-cells.R",
+      " M tests/testthat/test-warning-capture.R",
+      " M vitest.config.js",
+      "?? benchmarks/explore-1m.spec.js",
+      "?? benchmarks/explore_1m_helpers.R",
+      "?? benchmarks/run_explore_1m_app.R",
+      "?? benchmarks/run_explore_1m_benchmark.R",
+      "?? dev/check_package.R",
+      "?? playwright.benchmark.config.js",
+      "?? playwright.config.js",
+      "?? tests/e2e/create-analysis-fixture.R",
+      "?? tests/e2e/run-analysis-app.R",
+      "?? tests/e2e/subset-restore.spec.js",
+      "?? tests/testthat/helper-source-path.R",
+      "?? tests/testthat/test-benchmark-explore-1m.R"
+    ],
+    "fixture_generator": "benchmarks/explore_1m_helpers.R",
+    "artifact_kind": "synthetic_structural_workload",
+    "biological_representativeness": "not claimed"
+  },
+  "workload": {
+    "fixture_kind": "synthetic_structural_workload",
+    "biological_representativeness": "not claimed",
+    "cell_count": 1000000,
+    "feature_count": 2,
+    "selected_gene": "BENCHMARK_GENE",
+    "selected_gene_nonzero_cells": 50000,
+    "reduction": "umap",
+    "storage": "Explore Parquet bundle with zstd-compressed Parquet files"
+  },
+  "environment": {
+    "timestamp_utc": "2026-08-09 18:25:42 UTC",
+    "os": "Linux 7.0.0-28-generic x86_64",
+    "r_version": "R version 4.4.3 (2025-02-28)",
+    "package_versions": {
+      "scSpotlight": "0.0.5.9000",
+      "arrow": "24.0.0",
+      "duckdb": "1.5.2"
+    },
+    "cpu_model": "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+    "memory_total_kb": 115012572,
+    "available_cores": 32
+  },
+  "artifact": {
+    "archive_bytes": 28548494,
+    "archive_md5": "094221cd15e6455f0ca2c58ac28722cf",
+    "bundle_bytes": 28547012
+  },
+  "server_direct": {
+    "bundle_open_and_validation_ms": 478,
+    "bundle_open_rss_before_kb": 502688,
+    "bundle_open_rss_after_kb": 551772,
+    "bundle_open_hwm_after_kb": 637336,
+    "metadata_query_to_ipc": {
+      "method": "production DuckDB query plus chunked Arrow IPC writer",
+      "summary_ms": {
+        "samples": [
+          2227,
+          1224,
+          1210
+        ],
+        "min": 1210,
+        "median": 1224,
+        "max": 2227
+      },
+      "samples": [
+        {
+          "elapsed_ms": 2227,
+          "output_bytes": 53006016,
+          "rss_before_kb": 551832,
+          "rss_after_kb": 824124,
+          "hwm_after_kb": 903764
+        },
+        {
+          "elapsed_ms": 1224,
+          "output_bytes": 53006016,
+          "rss_before_kb": 824124,
+          "rss_after_kb": 852700,
+          "hwm_after_kb": 1085164
+        },
+        {
+          "elapsed_ms": 1210,
+          "output_bytes": 53006016,
+          "rss_before_kb": 852700,
+          "rss_after_kb": 876512,
+          "hwm_after_kb": 1150664
+        }
+      ]
+    },
+    "reduction_query_to_ipc": {
+      "method": "production DuckDB query plus chunked Arrow IPC writer",
+      "summary_ms": {
+        "samples": [
+          648,
+          187,
+          187
+        ],
+        "min": 187,
+        "median": 187,
+        "max": 648
+      },
+      "samples": [
+        {
+          "elapsed_ms": 648,
+          "output_bytes": 8002096,
+          "rss_before_kb": 898000,
+          "rss_after_kb": 923980,
+          "hwm_after_kb": 1150664
+        },
+        {
+          "elapsed_ms": 187,
+          "output_bytes": 8002096,
+          "rss_before_kb": 862664,
+          "rss_after_kb": 899636,
+          "hwm_after_kb": 1150664
+        },
+        {
+          "elapsed_ms": 187,
+          "output_bytes": 8002096,
+          "rss_before_kb": 912940,
+          "rss_after_kb": 952576,
+          "hwm_after_kb": 1150664
+        }
+      ]
+    },
+    "selected_gene_expression_query_to_ipc": {
+      "method": "production DuckDB query plus chunked Arrow IPC writer",
+      "summary_ms": {
+        "samples": [
+          394,
+          294,
+          275
+        ],
+        "min": 275,
+        "median": 294,
+        "max": 394
+      },
+      "samples": [
+        {
+          "elapsed_ms": 394,
+          "output_bytes": 4001576,
+          "rss_before_kb": 953844,
+          "rss_after_kb": 1047120,
+          "hwm_after_kb": 1150664
+        },
+        {
+          "elapsed_ms": 294,
+          "output_bytes": 4001576,
+          "rss_before_kb": 1047128,
+          "rss_after_kb": 1038144,
+          "hwm_after_kb": 1150664
+        },
+        {
+          "elapsed_ms": 275,
+          "output_bytes": 4001576,
+          "rss_before_kb": 1038148,
+          "rss_after_kb": 1046064,
+          "hwm_after_kb": 1150664
+        }
+      ]
+    }
+  },
+  "browser": {
+    "method": {
+      "first_view": "Elapsed wall time from selecting the local Explore archive to the rendered 1,000,000-cell count.",
+      "selected_gene": "Elapsed wall time from selecting BENCHMARK_GENE to the received client sparkline.",
+      "server_rss": "Linux /proc sampled every 100 ms for the single-threaded R Shiny process.",
+      "browser_memory": "Chromium renderer JS heap and DOM counters after a one-second settled period."
+    },
+    "first_view_latency_ms": 29648,
+    "selected_gene_expression_end_to_end_latency_ms": 981,
+    "server_rss": {
+      "pid": 237189,
+      "baseline_rss_kb": 591664,
+      "peak_sampled_rss_kb": 1115852,
+      "peak_process_hwm_kb": 1115852,
+      "sample_interval_ms": 100,
+      "sample_count": 433
+    },
+    "browser_memory": {
+      "renderer_js_heap_used_bytes": 120840588,
+      "renderer_js_heap_total_bytes": 148430848,
+      "runtime_heap_used_bytes": 120840588,
+      "runtime_heap_total_bytes": 148430848,
+      "dom_nodes": 2421,
+      "dom_documents": 2,
+      "performance_memory": {
+        "usedJsHeapSize": 225000000,
+        "totalJsHeapSize": 254000000,
+        "jsHeapSizeLimit": 3760000000
+      }
+    },
+    "environment": {
+      "browser_version": "149.0.7827.55",
+      "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/149.0.7827.55 Safari/537.36",
+      "viewport": {
+        "width": 1280,
+        "height": 720
+      }
+    }
+  }
+}

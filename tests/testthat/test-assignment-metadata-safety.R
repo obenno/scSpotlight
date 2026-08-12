@@ -234,7 +234,7 @@ test_that("assignment validation rejects browser-trusted current-version fallbac
   )
 
   app_source <- paste(
-    readLines(testthat::test_path("..", "..", "R", "app_server.R"), warn = FALSE),
+    readLines(scspotlight_test_source_path("R", "app_server.R"), warn = FALSE),
     collapse = "\n"
   )
   expect_false(

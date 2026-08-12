@@ -119,7 +119,8 @@ load_analysis_input_file <- function(
   }
 
   input_name <- input_name %||% basename(input_file)
-  backend_root <- backend_root %||% tempfile("scspotlight_analysis_layers_")
+  backend_root <- backend_root %||%
+    scspotlight_temp_path("scspotlight_analysis_layers_")
   temp_root <- temp_root %||% dirname(backend_root)
   dir.create(backend_root, recursive = TRUE, showWarnings = FALSE)
   dir.create(temp_root, recursive = TRUE, showWarnings = FALSE)
@@ -258,7 +259,11 @@ load_analysis_input_file <- function(
     )
   } else if (str_detect(input_name, compressionFormatPattern)) {
     status("Decompressing...")
-    dataDir <- decompress_matrix_input(input_name, input_file)
+    dataDir <- decompress_matrix_input(
+      input_name,
+      input_file,
+      temp_root = temp_root
+    )
     if (isTruthy(find_scspotlight_explore_bundle_root(dataDir))) {
       message <- paste(
         "This file is an Explore Parquet bundle, which is read-only and can only be opened in Explore Mode.",
@@ -361,7 +366,8 @@ mod_dataInput_server <- function(
   metaUpdateIndicator,
   reductionUpdateIndicator,
   analysisTransition = NULL,
-  resetAnalysisUi = NULL
+  resetAnalysisUi = NULL,
+  clearViewFilter = NULL
 ) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
@@ -393,7 +399,7 @@ mod_dataInput_server <- function(
     )
 
     capture_load_warnings <- function(expr) {
-      result <- capture_warnings(expr)
+      result <- capture_operation_warnings(expr)
       if (length(result$warnings)) {
         loadWarnings(unique(c(loadWarnings(), result$warnings)))
       }
@@ -479,6 +485,19 @@ mod_dataInput_server <- function(
         req(inputFilePath(), inputFileName())
         message("inputFilePath() is ", isolate(inputFilePath()))
         loadWarnings(character(0))
+        scspotlight_benchmark_timing_event(
+          session,
+          phase = "server_dataset_load",
+          state = "start",
+          details = list(
+            inputKind = if (isTruthy(input$dataDirFile)) {
+              "server_data_dir"
+            } else {
+              "browser_upload"
+            },
+            inputName = basename(inputFileName())
+          )
+        )
         ##req(isTruthy(input$dataInput) || isTruthy(input$dataDirFile))
         waiter_show(html = waiting_screen(), color = "var(--bs-primary)")
         ## Init seuratObj
@@ -505,9 +524,26 @@ mod_dataInput_server <- function(
             html = waiting_screen("Decompressing Explore bundle...")
           )
           dataDir <- capture_load_warnings(
-            decompress_matrix_input(inputFileName(), inputFilePath())
+            decompress_matrix_input(
+              inputFileName(),
+              inputFilePath(),
+              temp_root = session$userData$tempDir,
+              timing = function(phase, state, elapsed_ms = NULL, details = list()) {
+                scspotlight_benchmark_timing_event(
+                  session,
+                  phase = phase,
+                  state = state,
+                  elapsed_ms = elapsed_ms,
+                  details = details
+                )
+              }
+            )
           )
-          exploreBundleRoot <- find_scspotlight_explore_bundle_root(dataDir)
+          exploreBundleRoot <- scspotlight_benchmark_timing_measure(
+            session,
+            phase = "server_bundle_locate",
+            find_scspotlight_explore_bundle_root(dataDir)
+          )
           if (!isTruthy(exploreBundleRoot)) {
             waiter_update(
               html = waiting_screen(
@@ -521,8 +557,12 @@ mod_dataInput_server <- function(
           }
 
           waiter_update(html = waiting_screen("Reading Explore bundle..."))
-          seuratObj <- capture_load_warnings(
-            read_scspotlight_explore_bundle(exploreBundleRoot)
+          seuratObj <- scspotlight_benchmark_timing_measure(
+            session,
+            phase = "server_bundle_open_and_validate",
+            capture_load_warnings(
+              read_scspotlight_explore_bundle(exploreBundleRoot)
+            )
           )
         } else {
           seuratObj <- capture_load_warnings(
@@ -589,6 +629,9 @@ mod_dataInput_server <- function(
           if (is.function(resetAnalysisUi)) {
             resetAnalysisUi()
           }
+          if (is.function(clearViewFilter)) {
+            clearViewFilter()
+          }
           session$sendCustomMessage(
             type = "clear_expr",
             # Invalidate queued expression work from the prior Analysis epoch.
@@ -597,14 +640,22 @@ mod_dataInput_server <- function(
           show_load_warnings(inputFileName())
         }
 
-        ## Update indicators
-        metaUpdateIndicator(metaUpdateIndicator() + 1)
-        reductionUpdateIndicator(reductionUpdateIndicator() + 1)
-        geneUpdateIndicator(geneUpdateIndicator() + 1)
+        scspotlight_benchmark_timing_event(
+          session,
+          phase = "server_dataset_load",
+          state = "end"
+        )
+
+        # Arm the browser-side initial-render handshake before transfer observers
+        # can send IPC payloads for a fast local dataset.
         session$sendCustomMessage(
           type = "await_initial_plot_ready",
           message = list()
         )
+        ## Update indicators
+        metaUpdateIndicator(metaUpdateIndicator() + 1)
+        reductionUpdateIndicator(reductionUpdateIndicator() + 1)
+        geneUpdateIndicator(geneUpdateIndicator() + 1)
       },
       priority = 10
     )
@@ -639,7 +690,7 @@ BPCells_Read10X <- function(
   cell.column = 1,
   unique.features = TRUE,
   strip.suffix = FALSE,
-  temp_root = tempdir()
+  temp_root = scspotlight_temp_root()
 ) {
   full.data <- list()
   has_dt <- requireNamespace("data.table", quietly = TRUE) &&
@@ -685,7 +736,7 @@ BPCells_Read10X <- function(
       row_names = NULL,
       col_names = NULL,
       row_major = FALSE,
-      tmpdir = tempdir(),
+      tmpdir = temp_root,
       load_bytes = 4194304L,
       sort_bytes = 1073741824L
     )
@@ -1046,7 +1097,43 @@ assert_safe_archive_entries <- function(
   invisible(entries)
 }
 
-decompress_matrix_input <- function(fileName, filePath) {
+decompress_matrix_input <- function(
+  fileName,
+  filePath,
+  temp_root = scspotlight_temp_root(),
+  timing = NULL
+) {
+  time_phase <- function(phase, expr, details = list()) {
+    if (!is.function(timing)) {
+      return(force(expr))
+    }
+
+    started <- proc.time()[["elapsed"]]
+    timing(phase, "start", details = details)
+    tryCatch(
+      {
+        value <- force(expr)
+        timing(
+          phase,
+          "end",
+          elapsed_ms = (proc.time()[["elapsed"]] - started) * 1000,
+          details = details
+        )
+        value
+      },
+      error = function(error) {
+        timing(
+          phase,
+          "error",
+          elapsed_ms = (proc.time()[["elapsed"]] - started) * 1000,
+          details = details
+        )
+        stop(error)
+      }
+    )
+  }
+
+  dir.create(temp_root, recursive = TRUE, showWarnings = FALSE)
   if (
     str_detect(fileName, "\\.tar.gz$") ||
       str_detect(fileName, "\\.tgz$") ||
@@ -1057,20 +1144,26 @@ decompress_matrix_input <- function(fileName, filePath) {
       list_tar_archive_entries(filePath),
       archive_type = "tar"
     )
-    tmpMatrixDir <- tempfile(pattern = "matrixDir")
+    tmpMatrixDir <- tempfile(pattern = "matrixDir", tmpdir = temp_root)
     dir.create(tmpMatrixDir)
     untar(tarfile = filePath, exdir = tmpMatrixDir)
   } else if (str_detect(fileName, "\\.[Zz][Ii][Pp]$")) {
     if (!requireNamespace("zip", quietly = TRUE)) {
       stop("The 'zip' package is required to decompress zip archives.")
     }
-    assert_safe_archive_entries(
-      list_zip_archive_entries(filePath),
-      archive_type = "zip"
+    time_phase(
+      "server_archive_list_and_validate",
+      assert_safe_archive_entries(
+        list_zip_archive_entries(filePath),
+        archive_type = "zip"
+      )
     )
-    tmpMatrixDir <- tempfile(pattern = "matrixDir")
+    tmpMatrixDir <- tempfile(pattern = "matrixDir", tmpdir = temp_root)
     dir.create(tmpMatrixDir)
-    zip::unzip(zipfile = filePath, exdir = tmpMatrixDir)
+    time_phase(
+      "server_archive_extract",
+      zip::unzip(zipfile = filePath, exdir = tmpMatrixDir)
+    )
   } else {
     stop("Compression format is not supported.")
   }

@@ -89,7 +89,9 @@ mod_AssignCellCluster_server <- function(
   backend_root = NULL,
   currentMetadataVersion = NULL,
   currentGroupBy = NULL,
-  currentSplitBy = NULL
+  currentSplitBy = NULL,
+  currentViewFilter = NULL,
+  currentViewFilterVersion = NULL
 ) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
@@ -100,6 +102,14 @@ mod_AssignCellCluster_server <- function(
 
     current_metadata_version <- function() {
       normalize_analysis_version(current_value(currentMetadataVersion))
+    }
+
+    current_view_filter_version <- function() {
+      normalize_analysis_version(current_value(currentViewFilterVersion))
+    }
+
+    current_view_filter <- function() {
+      current_value(currentViewFilter)
     }
 
     validate_selection_identity <- function(payload) {
@@ -116,6 +126,18 @@ mod_AssignCellCluster_server <- function(
           !identical(metadata_version, active_metadata_version)
       ) {
         return(reject("stale_analysis_version"))
+      }
+
+      view_filter_version <- normalize_analysis_version(payload$viewFilterVersion)
+      active_view_filter_version <- current_view_filter_version()
+      if (
+        !is.null(active_view_filter_version) &&
+          (
+            is.null(view_filter_version) ||
+              !identical(view_filter_version, active_view_filter_version)
+          )
+      ) {
+        return(reject("stale_view_filter"))
       }
 
       expected_version <- normalize_analysis_version(payload$analysisVersion)
@@ -147,6 +169,17 @@ mod_AssignCellCluster_server <- function(
           anyDuplicated(cells)
       ) {
         return(reject("no_valid_cells"))
+      }
+
+      view_filter <- current_view_filter()
+      if (!is.null(view_filter)) {
+        visible_cells <- tryCatch(
+          resolve_view_filter_cells(seuratObj(), view_filter),
+          error = function(...) NULL
+        )
+        if (is.null(visible_cells) || any(!cells %in% visible_cells)) {
+          return(reject("stale_view_filter"))
+        }
       }
 
       c(identity, list(cells = cells))
@@ -207,17 +240,36 @@ mod_AssignCellCluster_server <- function(
         return(reject("invalid_category_context"))
       }
 
-      c(
-        identity,
-        list(
-          category = list(
-            groupBy = category_group,
-            groupLevels = group_levels,
-            splitBy = category_split,
-            splitLevels = split_levels
-          )
-        )
+      category_intent <- list(
+        groupBy = category_group,
+        groupLevels = group_levels,
+        splitBy = category_split,
+        splitLevels = split_levels
       )
+      view_filter <- current_view_filter()
+      if (is.null(view_filter)) {
+        return(c(identity, list(category = category_intent)))
+      }
+
+      category_result <- tryCatch(
+        resolve_analysis_category_cells(seuratObj(), category_intent),
+        error = function(...) list(reason_code = "invalid_category_context")
+      )
+      if (!is.null(category_result$reason_code)) {
+        return(reject(category_result$reason_code))
+      }
+      visible_cells <- tryCatch(
+        resolve_view_filter_cells(seuratObj(), view_filter),
+        error = function(...) NULL
+      )
+      selected_cells <- category_result$cells[
+        category_result$cells %in% visible_cells
+      ]
+      if (!length(selected_cells)) {
+        return(reject("no_valid_cells"))
+      }
+
+      c(identity, list(cells = selected_cells))
     }
 
     selectionIntent <- reactive({

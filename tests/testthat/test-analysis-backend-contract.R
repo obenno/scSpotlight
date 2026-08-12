@@ -289,8 +289,8 @@ test_that("Analysis Mode transfer adapters write Arrow IPC without mirrored Duck
 })
 
 test_that("Analysis Mode source guards keep futures path-based and DuckDB-free", {
-  adapter_path <- test_path("..", "..", "R", "fct_backend_transfer_adapter.R")
-  input_feature_path <- test_path("..", "..", "R", "mod_InputFeature.R")
+  adapter_path <- scspotlight_test_source_path("R", "fct_backend_transfer_adapter.R")
+  input_feature_path <- scspotlight_test_source_path("R", "mod_InputFeature.R")
   skip_if_not(file.exists(adapter_path))
   skip_if_not(file.exists(input_feature_path))
 

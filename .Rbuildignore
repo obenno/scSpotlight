@@ -6,6 +6,7 @@
 ^data-raw$
 dev_history.R
 ^dev$
+^benchmarks$
 $run_dev.*
 ^.here$
 ^srcjs$

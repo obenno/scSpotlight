@@ -119,6 +119,57 @@ let activePcaRequestSeq = 0;
 let activePcaRequest = null;
 let activePcaVersion = null;
 let pcaTransferFailed = false;
+const startupTimingEnabled = () => globalThis.SCSPOTLIGHT_BENCHMARK_STARTUP_TIMING === true;
+
+const recordStartupTiming = (phase, state = "mark", details = {}) => {
+  if (!startupTimingEnabled()) return;
+  const event = {
+    source: "browser",
+    phase,
+    state,
+    browserTimestampMs: performance.now(),
+    browserTimestampEpochMs: Date.now(),
+    ...details,
+  };
+  globalThis.scspotlightBenchmarkStartupTimings = [
+    ...(globalThis.scspotlightBenchmarkStartupTimings || []),
+    event,
+  ];
+};
+
+const recordServerStartupTiming = (event = {}) => {
+  if (!startupTimingEnabled()) return;
+  globalThis.scspotlightBenchmarkStartupTimings = [
+    ...(globalThis.scspotlightBenchmarkStartupTimings || []),
+    {
+      ...event,
+      browserReceivedTimestampMs: performance.now(),
+      browserReceivedTimestampEpochMs: Date.now(),
+    },
+  ];
+};
+
+const measureStartupTiming = (phase, fn, details = {}) => {
+  if (!startupTimingEnabled()) {
+    return fn();
+  }
+  const started = performance.now();
+  recordStartupTiming(phase, "start", details);
+  try {
+    const value = fn();
+    recordStartupTiming(phase, "end", {
+      ...details,
+      elapsedMs: performance.now() - started,
+    });
+    return value;
+  } catch (error) {
+    recordStartupTiming(phase, "error", {
+      ...details,
+      elapsedMs: performance.now() - started,
+    });
+    throw error;
+  }
+};
 
 const notifyInitialPlotReady = (requestId) => {
   if (
@@ -128,6 +179,7 @@ const notifyInitialPlotReady = (requestId) => {
     return;
   }
   pendingInitialPlotRequestId = 0;
+  recordStartupTiming("browser_initial_plot_ready", "mark", { requestId });
   Shiny.setInputValue("initialPlotReady", Date.now(), { priority: "event" });
 };
 
@@ -534,14 +586,28 @@ const resolveDataResourceUrl = (resourcePrefix, kind, fileName) => {
   return `${window.location.origin}/${encodeURIComponent(normalizedPrefix)}/${kind}/${encodeURIComponent(basename)}`;
 };
 
-const plotReductionBuffer = (buffer, shouldMutate = () => true) => {
-  const reductionData = decodeReductionBuffer(buffer);
+const plotReductionBuffer = (
+  buffer,
+  shouldMutate = () => true,
+  timingDetails = {},
+) => {
+  const reductionData = measureStartupTiming(
+    "browser_active_reduction_decode",
+    () => decodeReductionBuffer(buffer),
+    timingDetails,
+  );
   if (!shouldMutate()) {
     return;
   }
-  clearPlotTransferError();
-  reglElementData.updateReductionData(reductionData);
-  Shiny.setInputValue("reductionProcessed", true, { priority: "event" });
+  measureStartupTiming(
+    "browser_active_reduction_apply",
+    () => {
+      clearPlotTransferError();
+      reglElementData.updateReductionData(reductionData);
+      Shiny.setInputValue("reductionProcessed", true, { priority: "event" });
+    },
+    timingDetails,
+  );
 };
 
 // init normal shelter for webR to gain better control of the r objects
@@ -555,8 +621,13 @@ document.addEventListener(
     (async () => {
       const fullScreenSpinner = initFullScreenSpinner("App Loading...");
       document.body.prepend(fullScreenSpinner);
+      recordStartupTiming("browser_webr_initialize", "start");
+      const webRStarted = performance.now();
       webR = await initWebRInstance();
       shelter = await initShelter(webR);
+      recordStartupTiming("browser_webr_initialize", "end", {
+        elapsedMs: performance.now() - webRStarted,
+      });
       removeFullScreenSpinner();
     })();
 
@@ -818,7 +889,14 @@ Shiny.addCustomMessageHandler("await_initial_plot_ready", (_msg) => {
   initialPlotRequestSeq += 1;
   pendingInitialPlotRequestId = initialPlotRequestSeq;
   renderedInitialPlotRequestId = 0;
+  recordStartupTiming("browser_initial_plot_wait", "mark", {
+    requestId: pendingInitialPlotRequestId,
+  });
   notifyInitialPlotReady(pendingInitialPlotRequestId);
+});
+
+Shiny.addCustomMessageHandler("benchmark_timing", (event) => {
+  recordServerStartupTiming(event);
 });
 
 Shiny.addCustomMessageHandler("reduction_ready", (msg) => {
@@ -928,7 +1006,16 @@ Shiny.addCustomMessageHandler("reductions_ready", (msg) => {
           "reduction",
           activeReduction.reductionFile,
         );
+      recordStartupTiming("browser_active_reduction_fetch", "start", {
+        reductionName: activeReduction.reductionName,
+      });
+      const activeFetchStarted = performance.now();
       const activeBuffer = await fetchArrowIPCBuffer(activeURL);
+      recordStartupTiming("browser_active_reduction_fetch", "end", {
+        reductionName: activeReduction.reductionName,
+        elapsedMs: performance.now() - activeFetchStarted,
+        outputBytes: activeBuffer.byteLength,
+      });
       if (!isCurrentReductionRequest(transferRequest)) {
         return;
       }
@@ -939,7 +1026,11 @@ Shiny.addCustomMessageHandler("reductions_ready", (msg) => {
         REDUCTION_CACHE_LIMIT,
       );
       updateReductionCacheKeys();
-      plotReductionBuffer(activeBuffer, () => isCurrentReductionRequest(transferRequest));
+      plotReductionBuffer(
+        activeBuffer,
+        () => isCurrentReductionRequest(transferRequest),
+        { reductionName: activeReduction.reductionName },
+      );
 
       await Promise.all(
         inactiveReductions.map(async (reduction) => {
@@ -1338,12 +1429,14 @@ const currentRenameContext = () => ({
   groupBy: normalizePlotContextValue(reglElementData.plotMetaData.group_by),
   splitBy: normalizePlotContextValue(reglElementData.plotMetaData.split_by),
   metaVersion: activeMetaVersion,
+  viewFilterVersion: reglElementData.plotMetaData.viewFilterVersion,
 });
 
 const currentAnalysisSelectionContext = () => ({
   metaVersion: activeMetaVersion,
   analysisVersion: reglElementData.plotMetaData.analysisVersion,
   analysisLineageId: reglElementData.plotMetaData.analysisLineageId,
+  viewFilterVersion: reglElementData.plotMetaData.viewFilterVersion,
 });
 
 const getCurrentCellIds = () => {
@@ -1507,6 +1600,10 @@ const buildRenameAssignmentIntent = () => {
     setRenameAssignmentFeedback("Select cells in the current plot context before assigning.");
     return null;
   }
+  if ((reglElementData.plotData.selectedCells || []).length === 0) {
+    setRenameAssignmentFeedback("Selected category levels are not visible in the current View.");
+    return null;
+  }
   const validGroupLevels = new Set(getMetaLevels(metaData[groupBy]));
   if (selectedGroupLevels.some((level) => !validGroupLevels.has(level))) {
     setRenameAssignmentFeedback("Selected group levels are no longer available.");
@@ -1617,13 +1714,14 @@ const applyRenameCategorySelection = () => {
   const categoryContext = getRenameCategorySelectionContext();
   const selectedCells = computeRenameCategorySelectedCells();
   reglElementData.setSelectedCells(selectedCells, { source: selectedCells.length > 0 ? "category" : null });
+  const visibleSelectedCells = reglElementData.plotData.selectedCells || [];
   Shiny.setInputValue(renameClusterIds.selectedCellsPayload, null, { priority: "event" });
   Shiny.setInputValue(
     renameClusterIds.categorySelectionContext,
-    selectedCells.length > 0 ? categoryContext : null,
+    visibleSelectedCells.length > 0 ? categoryContext : null,
     { priority: "event" },
   );
-  updateRenameSelectedCellsText(selectedCells.length);
+  updateRenameSelectedCellsText(visibleSelectedCells.length);
 };
 
 const syncRenameClusterSelectionUi = () => {
@@ -1774,19 +1872,27 @@ Shiny.addCustomMessageHandler("meta_ready", (msg) => {
       if (mainPlotSpinner.style.display === "none") {
         mainPlotSpinner.style.display = "flex";
       }
-      const table = await readArrowIPC(metaURL);
-      const out = parseMetaFromArrow(table);
+      const table = await readArrowIPC(metaURL, {
+        onFetch: (event) => recordStartupTiming("browser_metadata_fetch", event.state, event),
+        onDecode: (event) => recordStartupTiming("browser_metadata_decode", event.state, event),
+      });
+      const out = measureStartupTiming(
+        "browser_metadata_parse",
+        () => parseMetaFromArrow(table),
+      );
       if (!isCurrentMetaRequest(transferRequest)) {
         return;
       }
       console.log("metaData", out);
-      const previousCellIds = getCurrentCellIds();
-      clearPlotTransferError();
-      reglElementData.updateCellMetaData(out);
-      if (cellIdOrderChanged(previousCellIds, getCurrentCellIds())) {
-        handleFullObjectReplacementState();
-      }
-      syncMetaUiAfterUpdate({ fullTransfer: true });
+      measureStartupTiming("browser_metadata_apply_and_ui", () => {
+        const previousCellIds = getCurrentCellIds();
+        clearPlotTransferError();
+        reglElementData.updateCellMetaData(out);
+        if (cellIdOrderChanged(previousCellIds, getCurrentCellIds())) {
+          handleFullObjectReplacementState();
+        }
+        syncMetaUiAfterUpdate({ fullTransfer: true });
+      });
 
       // do not hide the spinner, since it will trigger the reglScatter_plot immediately
     })().catch((error) => {
@@ -2124,11 +2230,16 @@ Shiny.addCustomMessageHandler("addNewMeta", (msg) => {
 
 Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
   const requestId = pendingInitialPlotRequestId;
+  const scatterRenderStarted = performance.now();
+  recordStartupTiming("browser_scatter_render", "start", { requestId });
   const previousReglElementData = reglElementData;
   const previousPlotEl = previousReglElementData.plotEl;
   const previousCatLegendEl = previousReglElementData.catLegendEl;
   const previousExpLegendEl = previousReglElementData.expLegendEl;
   const previousPlotMetaData = { ...previousReglElementData.plotMetaData };
+  const previousSelectedCells = [...(previousReglElementData.plotData.selectedCells || [])];
+  const previousSelectionSource = previousReglElementData.selectionSource;
+  const isViewFilterRender = msg.viewFilterOnly === true;
   const nextReglElementData = previousReglElementData.createRenderReplacement();
   const parentDiv = document.getElementById(mainPlotElId);
   const replacesRenderedScatter = previousPlotEl?.parentNode === parentDiv;
@@ -2151,14 +2262,21 @@ Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
     const moduleScore = msg.moduleScore;
 
     nextReglElementData.updatePlotMetaData(group_by, split_by, moduleScore);
+    nextReglElementData.plotMetaData.viewFilter = msg.viewFilter || null;
+    nextReglElementData.plotMetaData.viewFilterVersion = msg.viewFilterVersion ?? 0;
     nextReglElementData.plotMetaData.analysisVersion = msg.analysisVersion;
     nextReglElementData.plotMetaData.analysisLineageId = msg.analysisLineageId;
     console.log("reglElementData.plotMetaData: ", nextReglElementData.plotMetaData);
 
     console.log("Generating plotEl");
+    const renderDetails = { requestId };
     // regenerate plot elements
     console.profile("Generating plotEl");
-    nextReglElementData.generatePlotEl();
+    measureStartupTiming(
+      "browser_scatter_model_and_dom",
+      () => nextReglElementData.generatePlotEl(),
+      renderDetails,
+    );
     console.profileEnd("Generating plotEl");
     console.log("reglElementData :", nextReglElementData);
     const nextPlotEl = nextReglElementData.plotEl;
@@ -2175,7 +2293,11 @@ Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
     }
     parentDiv.appendChild(nextPlotEl);
     // create deck instance after plot element is mounted in DOM
-    nextReglElementData.mountDeck();
+    measureStartupTiming(
+      "browser_deck_create",
+      () => nextReglElementData.mountDeck(),
+      renderDetails,
+    );
     if (previousCatLegendEl?.parentNode === categoryAccordionBody) {
       categoryAccordionBody.removeChild(previousCatLegendEl);
     }
@@ -2186,7 +2308,7 @@ Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
     categoryAccordionBody.appendChild(nextExpLegendEl);
 
     reglElementData = nextReglElementData;
-    if (replacesRenderedScatter) {
+    if (replacesRenderedScatter && !isViewFilterRender) {
       // Render replacements do not retain lasso geometry. Clear the matching
       // server transport so a visually cleared lasso cannot mutate later state.
       clearSelectedCellsAfterSelectionInvalidation();
@@ -2218,6 +2340,15 @@ Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
     });
 
     initRenameClusterClientSelection();
+    if (isViewFilterRender && previousSelectionSource === "lasso") {
+      reglElementData.setSelectedCells(previousSelectedCells, { source: "lasso" });
+      const reconciledCells = reglElementData.plotData.selectedCells;
+      if (reconciledCells.length > 0) {
+        reglElementData.selectionHandlers.onSelect({ selectedCells: reconciledCells });
+      } else {
+        reglElementData.selectionHandlers.onDeselect();
+      }
+    }
 
     nextPlotEl.style.display = "flex";
     previousReglElementData.destroy();
@@ -2229,6 +2360,10 @@ Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
       console.log("mainPlotSpinner: ", mainPlotSpinner.style.display);
     }
     renderedInitialPlotRequestId = requestId;
+    recordStartupTiming("browser_scatter_render", "end", {
+      requestId,
+      elapsedMs: performance.now() - scatterRenderStarted,
+    });
     notifyInitialPlotReady(requestId);
     //featurePlot().then({});
     markVlnPlotDirty();
@@ -2272,6 +2407,10 @@ Shiny.addCustomMessageHandler("reglScatter_plot", (msg) => {
     reglElementData = previousReglElementData;
     reglElementData.plotMetaData = previousPlotMetaData;
     mainPlotSpinner.style.display = "none";
+    recordStartupTiming("browser_scatter_render", "error", {
+      requestId,
+      elapsedMs: performance.now() - scatterRenderStarted,
+    });
     notifyInitialPlotSettled(requestId);
   }
 });

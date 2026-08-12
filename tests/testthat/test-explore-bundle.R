@@ -84,6 +84,146 @@ test_that("Explore bundles round-trip backend queries", {
   expect_equal(get_backend_expr(bundle, features = "g3")$g3, c(3, 0, 4))
 })
 
+test_that("Explore bundle writer streams bounded expression chunks", {
+  explore_bundle_path <- scspotlight_test_source_path(
+    "R",
+    "fct_explore_bundle.R"
+  )
+  skip_if_not(file.exists(explore_bundle_path))
+
+  source_lines <- readLines(explore_bundle_path, warn = FALSE)
+  writer_start <- grep(
+    "write_scspotlight_explore_bundle <- function",
+    source_lines,
+    fixed = TRUE
+  )[[1]]
+  next_symbol <- grep(
+    "^read_explore_conversion_source <- function",
+    source_lines
+  )[[1]]
+  writer_source <- source_lines[seq(writer_start, next_symbol - 1L)]
+
+  expect_false(any(grepl(
+    "order(block_df\\$feature_idx, block_df\\$cell_idx)",
+    writer_source
+  )))
+  expect_false(any(grepl(
+    "block_mat <- mat\\[row_idx, , drop = FALSE\\]",
+    writer_source
+  )))
+  expect_match(
+    paste(writer_source, collapse = "\n"),
+    "explore_write_expression_block(",
+    fixed = TRUE
+  )
+  expect_match(
+    paste(writer_source, collapse = "\n"),
+    "cell_chunk_size = expression_cell_chunk_size",
+    fixed = TRUE
+  )
+  expression_start <- grep(
+    "progress(message = \"Writing expression blocks\")",
+    writer_source,
+    fixed = TRUE
+  )[[1]]
+  expect_match(
+    paste(writer_source[seq_len(expression_start + 4L)], collapse = "\n"),
+    "rm(feature_blocks, object)",
+    fixed = TRUE
+  )
+
+  writer_helper_start <- grep(
+    "explore_write_expression_block <- function",
+    source_lines,
+    fixed = TRUE
+  )[[1]]
+  writer_helper_end <- grep(
+    "^explore_empty_expression_frame <- function",
+    source_lines
+  )[[1]]
+  writer_helper_source <- source_lines[
+    seq(writer_helper_start, writer_helper_end - 1L)
+  ]
+  expect_match(
+    paste(writer_helper_source, collapse = "\n"),
+    "for (cell_start in seq.int(1L, cell_count, by = cell_chunk_size))",
+    fixed = TRUE
+  )
+  expect_match(
+    paste(writer_helper_source, collapse = "\n"),
+    "arrow::ParquetFileWriter$create",
+    fixed = TRUE
+  )
+  expect_match(
+    paste(writer_helper_source, collapse = "\n"),
+    "rm(sparse_summary, chunk_mat)",
+    fixed = TRUE
+  )
+
+  conversion_start <- grep(
+    "convert_to_explore_bundle <- function",
+    source_lines,
+    fixed = TRUE
+  )[[1]]
+  conversion_source <- source_lines[seq(conversion_start, length(source_lines))]
+  expect_match(
+    paste(conversion_source, collapse = "\n"),
+    "object = ensure_normalized_layer(",
+    fixed = TRUE
+  )
+  expect_false(any(grepl(
+    "^  object <- read_explore_conversion_source",
+    conversion_source
+  )))
+})
+
+test_that("Explore expression chunk writer preserves global cell indexes", {
+  skip_if_not_installed("arrow")
+
+  explore_write_expression_block <- getFromNamespace(
+    "explore_write_expression_block",
+    "scSpotlight"
+  )
+  mat <- Matrix::Matrix(
+    c(
+      1,
+      0,
+      3,
+      0,
+      2,
+      0,
+      5,
+      0,
+      4,
+      0,
+      6,
+      0,
+      7,
+      0,
+      8
+    ),
+    nrow = 3,
+    sparse = TRUE
+  )
+  path <- tempfile("explore_expression_chunk_", fileext = ".parquet")
+  on.exit(unlink(path, force = TRUE), add = TRUE)
+
+  explore_write_expression_block(
+    mat = mat,
+    row_idx = c(1L, 3L),
+    path = path,
+    cell_chunk_size = 2L
+  )
+
+  actual <- as.data.frame(arrow::read_parquet(path))
+  expected <- data.frame(
+    feature_idx = c(0L, 2L, 0L, 2L, 0L, 2L),
+    cell_idx = c(0L, 0L, 2L, 2L, 4L, 4L),
+    value = c(1, 3, 5, 4, 7, 8)
+  )
+  expect_equal(actual, expected)
+})
+
 test_that("Explore bundle root discovery finds archives after extraction", {
   skip_if_not_installed("Seurat")
   skip_if_not_installed("arrow")
@@ -483,8 +623,14 @@ test_that("backend transfer adapter writes Explore bundle IPC payloads", {
 })
 
 test_that("Explore expression transfer resources are scoped and closed", {
-  explore_bundle_path <- test_path("..", "..", "R", "fct_explore_bundle.R")
-  adapter_path <- test_path("..", "..", "R", "fct_backend_transfer_adapter.R")
+  explore_bundle_path <- scspotlight_test_source_path(
+    "R",
+    "fct_explore_bundle.R"
+  )
+  adapter_path <- scspotlight_test_source_path(
+    "R",
+    "fct_backend_transfer_adapter.R"
+  )
   skip_if_not(file.exists(explore_bundle_path))
   skip_if_not(file.exists(adapter_path))
 
@@ -690,6 +836,110 @@ test_that("Explore metadata transfer keeps categorical schemas stable across chu
     as.character(metadata_table$cells),
     c("cell-a", "cell-b", "cell-c", "cell-d")
   )
+})
+
+test_that("Explore metadata transfer streams canonical indexes without a join", {
+  skip_if_not_installed("arrow")
+  skip_if_not_installed("duckdb")
+
+  stream_canonical_metadata <- getFromNamespace(
+    "try_extract_canonical_explore_metadata_to_ipc",
+    "scSpotlight"
+  )
+
+  work_dir <- tempfile("explore_canonical_metadata_")
+  dir.create(work_dir)
+  on.exit(unlink(work_dir, recursive = TRUE, force = TRUE), add = TRUE)
+
+  metadata_path <- file.path(work_dir, "metadata.parquet")
+  arrow::write_parquet(
+    data.frame(
+      cluster = c("b", "a", "b", "c"),
+      flag = c(TRUE, FALSE, NA, TRUE),
+      nCount = c(1, Inf, NaN, 4),
+      .scspotlight_cell_idx = 0:3,
+      check.names = FALSE,
+      stringsAsFactors = FALSE
+    ),
+    metadata_path
+  )
+  cells_path <- file.path(work_dir, "cells.parquet")
+  arrow::write_parquet(
+    data.frame(
+      cell_idx = 0:3,
+      cell_id = c("cell-a", "cell-b", "cell-c", "cell-d")
+    ),
+    cells_path
+  )
+
+  output_file <- file.path(work_dir, "metadata.arrow")
+  expect_true(stream_canonical_metadata(
+    metadata_path = metadata_path,
+    cells_path = cells_path,
+    output_file = output_file,
+    selected_cols = c("cluster", "flag", "nCount"),
+    chunk_size = 2L,
+    expected_cell_count = 4L
+  ))
+
+  metadata_table <- arrow::read_ipc_stream(output_file)
+  expect_s3_class(metadata_table$cluster, "factor")
+  expect_equal(as.vector(metadata_table$cluster), c("b", "a", "b", "c"))
+  expect_s3_class(metadata_table$flag, "factor")
+  expect_equal(
+    as.character(metadata_table$flag),
+    c("TRUE", "FALSE", NA, "TRUE")
+  )
+  expect_equal(as.numeric(metadata_table$nCount), c(1, NA, NA, 4))
+  expect_type(metadata_table$cells, "character")
+  expect_equal(
+    as.character(metadata_table$cells),
+    c("cell-a", "cell-b", "cell-c", "cell-d")
+  )
+})
+
+test_that("Explore metadata transfer falls back when physical order is not canonical", {
+  skip_if_not_installed("arrow")
+  skip_if_not_installed("duckdb")
+
+  stream_canonical_metadata <- getFromNamespace(
+    "try_extract_canonical_explore_metadata_to_ipc",
+    "scSpotlight"
+  )
+
+  work_dir <- tempfile("explore_reordered_metadata_")
+  dir.create(work_dir)
+  on.exit(unlink(work_dir, recursive = TRUE, force = TRUE), add = TRUE)
+
+  metadata_path <- file.path(work_dir, "metadata.parquet")
+  arrow::write_parquet(
+    data.frame(
+      cluster = c("late", "early", "middle"),
+      .scspotlight_cell_idx = c(2L, 0L, 1L),
+      check.names = FALSE,
+      stringsAsFactors = FALSE
+    ),
+    metadata_path
+  )
+  cells_path <- file.path(work_dir, "cells.parquet")
+  arrow::write_parquet(
+    data.frame(
+      cell_idx = 0:2,
+      cell_id = c("cell-0", "cell-1", "cell-2")
+    ),
+    cells_path
+  )
+
+  output_file <- file.path(work_dir, "metadata.arrow")
+  expect_false(stream_canonical_metadata(
+    metadata_path = metadata_path,
+    cells_path = cells_path,
+    output_file = output_file,
+    selected_cols = "cluster",
+    chunk_size = 2L,
+    expected_cell_count = 3L
+  ))
+  expect_false(file.exists(output_file))
 })
 
 test_that("Explore metadata transfer rejects invalid canonical cell indexes", {

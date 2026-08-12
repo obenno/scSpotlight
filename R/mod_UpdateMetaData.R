@@ -96,6 +96,13 @@ mod_UpdateMetaData_server <- function(
         metaProcessed(FALSE)
         metaVersion <- allocate_full_metadata_version()
         dirPath <- file.path(session$userData$tempDir, "meta")
+        metadata_started <- proc.time()[["elapsed"]]
+        scspotlight_benchmark_timing_event(
+          session,
+          phase = "server_metadata_ipc",
+          state = "start",
+          details = list(metaVersion = metaVersion)
+        )
         transfer <- prepare_backend_metadata_transfer(
           seuratObj(),
           dir_path = dirPath,
@@ -103,13 +110,28 @@ mod_UpdateMetaData_server <- function(
           resource_prefix = session$userData$dataResourcePrefix
         )
         meta_promise <- future_promise({
-          capture_warnings(write_backend_metadata_transfer(transfer))
+          capture_operation_warnings(write_backend_metadata_transfer(transfer))
         }) %...>%
           (function(result) {
             show_captured_warnings(
               result$warnings,
               title = "Metadata export completed with warnings",
               session = session
+            )
+            output_bytes <- if (file.exists(transfer$filePath)) {
+              unname(file.info(transfer$filePath)$size)
+            } else {
+              NA_real_
+            }
+            scspotlight_benchmark_timing_event(
+              session,
+              phase = "server_metadata_ipc",
+              state = "end",
+              elapsed_ms = (proc.time()[["elapsed"]] - metadata_started) * 1000,
+              details = list(
+                metaVersion = metaVersion,
+                outputBytes = output_bytes
+              )
             )
             session$sendCustomMessage(
               type = "meta_ready",
@@ -118,7 +140,14 @@ mod_UpdateMetaData_server <- function(
             result$value
           }) %...!%
           (function(error) {
-            message("Metadata export failed during IPC write.")
+            message("Metadata export failed during IPC write: ", conditionMessage(error))
+            scspotlight_benchmark_timing_event(
+              session,
+              phase = "server_metadata_ipc",
+              state = "error",
+              elapsed_ms = (proc.time()[["elapsed"]] - metadata_started) * 1000,
+              details = list(metaVersion = metaVersion)
+            )
             session$sendCustomMessage(
               type = "transfer_error",
               message = make_transfer_error_payload(
@@ -191,7 +220,7 @@ mod_UpdateMetaData_server <- function(
           resource_prefix = session$userData$dataResourcePrefix
         )
         meta_patch_promise <- future_promise({
-          capture_warnings(write_backend_metadata_transfer(transfer))
+          capture_operation_warnings(write_backend_metadata_transfer(transfer))
         }) %...>%
           (function(result) {
             show_captured_warnings(
@@ -207,7 +236,7 @@ mod_UpdateMetaData_server <- function(
             result$value
           }) %...!%
           (function(error) {
-            message("Metadata patch export failed during IPC write.")
+            message("Metadata patch export failed during IPC write: ", conditionMessage(error))
             session$sendCustomMessage(
               type = "transfer_error",
               message = make_transfer_error_payload(

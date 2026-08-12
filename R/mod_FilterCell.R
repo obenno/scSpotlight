@@ -7,26 +7,15 @@
 #' @noRd
 #'
 #' @importFrom shiny NS tagList
-#' @importFrom shinyWidgets sliderTextInput
 #'
 mod_FilterCell_ui <- function(id) {
   ns <- NS(id)
   tagList(
-    cellFiltering_settings <- list(
-      shinyWidgets::sliderTextInput(
-        inputId = ns("min.cells"),
-        label = "Features observed in at least below number of cells:",
-        choices = seq(1, 20, by = 1),
-        selected = 3,
-        grid = TRUE
-      ),
-      shinyWidgets::sliderTextInput(
-        inputId = ns("min.features"),
-        label = "Cells containing at least below number of features:",
-        choices = seq(50, 500, by = 50),
-        selected = 200,
-        grid = TRUE
-      ),
+    p(
+      "View filters only change the cells shown in the current plot. ",
+      "Use Subset to create a new Analysis from selected cells."
+    ),
+    list(
       numericInput(
         inputId = ns("nFeature_min"),
         label = "nFeature min value",
@@ -47,10 +36,17 @@ mod_FilterCell_ui <- function(id) {
       ),
       actionButton(
         inputId = ns("filter_cell"),
-        label = "Filter Cells",
+        label = "Apply View Filter",
         icon = icon("filter"),
         style = "width:200px",
         class = "border border-1 border-primary shadow"
+      ),
+      actionButton(
+        inputId = ns("clear_view_filter"),
+        label = "Clear View Filter",
+        icon = icon("times-circle"),
+        style = "width:200px",
+        class = "border border-1 border-secondary shadow"
       )
     )
   )
@@ -58,58 +54,217 @@ mod_FilterCell_ui <- function(id) {
 
 #' FilterCell Server Functions
 #'
-#' @importFrom scales label_comma
-#' @importFrom SeuratObject Cells Features Reductions
-#' @importFrom DBI dbConnect dbDisconnect
-#' @importFrom tibble rownames_to_column
-#'
 #' @noRd
-ensure_filter_cell_qc_metadata <- function(
-  object,
-  assay = NULL,
-  force = FALSE
-) {
-  assay <- assay %||% DefaultAssay(object)
-
-  misc <- slot(object, "misc")
-  cached_assay <- misc$scSpotlight$filterCell$percentMtAssay %||% NULL
-
+normalize_view_filter_number <- function(value, label) {
   if (
-    !isTRUE(force) &&
-      "percent.mt" %in% colnames(object[[]]) &&
-      is.null(cached_assay)
+    length(value) != 1L ||
+      !is.numeric(value) ||
+      !is.finite(value)
   ) {
-    misc$scSpotlight <- misc$scSpotlight %||% list()
-    misc$scSpotlight$filterCell <- misc$scSpotlight$filterCell %||% list()
-    misc$scSpotlight$filterCell$percentMtAssay <- assay
-    slot(object, "misc") <- misc
-    return(object)
+    stop(paste0(label, " must be a finite number."), call. = FALSE)
   }
 
+  as.numeric(value)
+}
+
+#' @noRd
+normalize_view_filter_column <- function(value, label) {
   if (
-    !isTRUE(force) &&
-      "percent.mt" %in% colnames(object[[]]) &&
-      identical(cached_assay, assay)
+    length(value) != 1L ||
+      !is.character(value) ||
+      is.na(value) ||
+      !nzchar(value)
   ) {
-    return(object)
+    stop(paste0(label, " must be a metadata column name."), call. = FALSE)
   }
 
-  percent_mt <- tryCatch(
-    Seurat::PercentageFeatureSet(object, assay = assay, pattern = "^(MT-|mt-)"),
-    error = function(...) {
-      stats::setNames(
-        rep(0, length(SeuratObject::Cells(object))),
-        SeuratObject::Cells(object)
-      )
-    }
+  value
+}
+
+#' @noRd
+view_filter_metadata <- function(object) {
+  metadata <- tryCatch(object[[]], error = function(...) NULL)
+  cells <- colnames(object)
+  metadata_cells <- rownames(metadata)
+  if (
+    !is.data.frame(metadata) ||
+      !length(cells) ||
+      nrow(metadata) != length(cells) ||
+      is.null(metadata_cells) ||
+      !identical(as.character(metadata_cells), as.character(cells))
+  ) {
+    stop(
+      "View filtering requires metadata aligned to the active Analysis.",
+      call. = FALSE
+    )
+  }
+
+  list(metadata = metadata, cells = cells)
+}
+
+#' @noRd
+normalize_view_filter_spec <- function(view_filter) {
+  if (is.null(view_filter)) {
+    return(NULL)
+  }
+  if (!is.list(view_filter)) {
+    stop("View filter is invalid.", call. = FALSE)
+  }
+
+  n_feature <- view_filter$nFeature
+  percent_mt <- view_filter$percentMt
+  if (!is.list(n_feature) || !is.list(percent_mt)) {
+    stop("View filter is invalid.", call. = FALSE)
+  }
+
+  n_feature_column <- normalize_view_filter_column(
+    n_feature$column,
+    "nFeature filter"
+  )
+  n_feature_min <- normalize_view_filter_number(
+    n_feature$min,
+    "nFeature minimum"
+  )
+  n_feature_max <- normalize_view_filter_number(
+    n_feature$max,
+    "nFeature maximum"
+  )
+  percent_mt_column <- normalize_view_filter_column(
+    percent_mt$column,
+    "Mitochondrial filter"
+  )
+  percent_mt_max <- normalize_view_filter_number(
+    percent_mt$max,
+    "Mitochondrial maximum"
   )
 
-  object[["percent.mt"]] <- percent_mt
-  misc$scSpotlight <- misc$scSpotlight %||% list()
-  misc$scSpotlight$filterCell <- misc$scSpotlight$filterCell %||% list()
-  misc$scSpotlight$filterCell$percentMtAssay <- assay
-  slot(object, "misc") <- misc
-  object
+  if (n_feature_min >= n_feature_max) {
+    stop(
+      "nFeature minimum must be smaller than the maximum.",
+      call. = FALSE
+    )
+  }
+
+  list(
+    nFeature = list(
+      column = n_feature_column,
+      min = n_feature_min,
+      max = n_feature_max
+    ),
+    percentMt = list(
+      column = percent_mt_column,
+      max = percent_mt_max
+    )
+  )
+}
+
+#' @noRd
+validate_view_filter_spec <- function(object, view_filter) {
+  view_filter <- normalize_view_filter_spec(view_filter)
+  if (is.null(view_filter)) {
+    return(NULL)
+  }
+
+  filter_metadata <- view_filter_metadata(object)
+  metadata <- filter_metadata$metadata
+  required_columns <- c(
+    view_filter$nFeature$column,
+    view_filter$percentMt$column
+  )
+  missing_columns <- setdiff(required_columns, colnames(metadata))
+  if (length(missing_columns)) {
+    stop(
+      "View filtering requires the selected assay QC metadata.",
+      call. = FALSE
+    )
+  }
+  if (
+    !is.numeric(metadata[[view_filter$nFeature$column]]) ||
+      !is.numeric(metadata[[view_filter$percentMt$column]])
+  ) {
+    stop(
+      "View filtering requires numeric QC metadata.",
+      call. = FALSE
+    )
+  }
+
+  view_filter
+}
+
+#' @noRd
+view_filter_cell_mask <- function(object, view_filter) {
+  view_filter <- validate_view_filter_spec(object, view_filter)
+  filter_metadata <- view_filter_metadata(object)
+  if (is.null(view_filter)) {
+    return(rep(TRUE, length(filter_metadata$cells)))
+  }
+
+  metadata <- filter_metadata$metadata
+  n_feature <- metadata[[view_filter$nFeature$column]]
+  percent_mt <- metadata[[view_filter$percentMt$column]]
+  is.finite(n_feature) &
+    is.finite(percent_mt) &
+    n_feature > view_filter$nFeature$min &
+    n_feature < view_filter$nFeature$max &
+    percent_mt < view_filter$percentMt$max
+}
+
+#' @noRd
+resolve_view_filter_cells <- function(object, view_filter) {
+  filter_metadata <- view_filter_metadata(object)
+  filter_metadata$cells[view_filter_cell_mask(object, view_filter)]
+}
+
+#' @noRd
+new_view_filter_spec <- function(
+  object,
+  assay,
+  n_feature_min,
+  n_feature_max,
+  percent_mt_max
+) {
+  assay <- normalize_view_filter_column(assay, "Selected assay")
+  validate_view_filter_spec(
+    object,
+    list(
+      nFeature = list(
+        column = paste0("nFeature_", assay),
+        min = n_feature_min,
+        max = n_feature_max
+      ),
+      percentMt = list(
+        column = "percent.mt",
+        max = percent_mt_max
+      )
+    )
+  )
+}
+
+#' @noRd
+new_view_filter_controller <- function() {
+  view_filter <- shiny::reactiveVal(NULL)
+  version <- shiny::reactiveVal(0L)
+
+  set_filter <- function(next_filter) {
+    next_filter <- normalize_view_filter_spec(next_filter)
+    if (identical(shiny::isolate(view_filter()), next_filter)) {
+      return(invisible(FALSE))
+    }
+    view_filter(next_filter)
+    version(version() + 1L)
+    invisible(TRUE)
+  }
+
+  list(
+    value = function() view_filter(),
+    version = function() version(),
+    state = shiny::reactive(list(
+      filter = view_filter(),
+      version = version()
+    )),
+    set = set_filter,
+    clear = function() set_filter(NULL)
+  )
 }
 
 #' @noRd
@@ -117,66 +272,59 @@ mod_FilterCell_server <- function(
   id,
   seuratObj,
   selectedAssay,
-  hvgSelectMethod,
-  clusterDims,
-  clusterResolution,
-  geneUpdateIndicator,
-  metaUpdateIndicator,
-  reductionUpdateIndicator
+  setViewFilter
 ) {
   moduleServer(id, function(input, output, session) {
-    ns <- session$ns
+    if (!is.function(setViewFilter)) {
+      stop("FilterCell requires a View Filter state setter.", call. = FALSE)
+    }
+
     observeEvent(input$filter_cell, {
       req(seuratObj())
-      withProgress(message = "Filtering Cells & Updating Reductions...", {
-        obj <- ensure_filter_cell_qc_metadata(
-          seuratObj(),
-          assay = selectedAssay()
-        )
-        nGeneColName <- paste0("nFeature_", selectedAssay())
-        selectedCells <- obj[[]] %>%
-          filter(
-            !!as.symbol(nGeneColName) > input$nFeature_min,
-            !!as.symbol(nGeneColName) < input$nFeature_max,
-            percent.mt < input$percent.mt_max
-          ) %>%
-          rownames()
-        backend_root <- if (isTruthy(session$userData$backendDir)) {
-          file.path(session$userData$backendDir, "layers")
-        } else {
-          NULL
+      tryCatch(
+        {
+          view_filter <- new_view_filter_spec(
+            object = seuratObj(),
+            assay = selectedAssay(),
+            n_feature_min = input$nFeature_min,
+            n_feature_max = input$nFeature_max,
+            percent_mt_max = input$percent.mt_max
+          )
+          setViewFilter(view_filter)
+          showNotification(
+            ui = "View filter applied. The active Analysis is unchanged.",
+            action = NULL,
+            duration = 5,
+            closeButton = TRUE,
+            type = "message",
+            session = session
+          )
+        },
+        error = function(error) {
+          message("View filter rejected: ", conditionMessage(error))
+          showNotification(
+            ui = "View filter could not be applied. Check the QC thresholds and selected assay.",
+            action = NULL,
+            duration = 6,
+            closeButton = TRUE,
+            type = "error",
+            session = session
+          )
         }
-        obj <- safe_subset_seurat_object(
-          obj,
-          cells = selectedCells,
-          backend_root = backend_root,
-          input_label = "Filter selection"
-        )
-        obj <- standard_process_seurat(
-          obj,
-          normalization = FALSE,
-          hvg_method = hvgSelectMethod(),
-          ndims = clusterDims(),
-          res = clusterResolution(),
-          backend_root = backend_root
-        )
-        seuratObj(obj)
-      })
-
-      nCells <- length(Cells(seuratObj()))
-      showNotification(
-        ui = paste0(scales::label_comma()(nCells), " Cells Left."),
-        action = NULL,
-        duration = 5,
-        closeButton = TRUE,
-        type = "message",
-        session = session
       )
+    })
 
-      message("FilterCell module updated metadata and reduction")
-      geneUpdateIndicator(geneUpdateIndicator() + 1)
-      metaUpdateIndicator(metaUpdateIndicator() + 1)
-      reductionUpdateIndicator(reductionUpdateIndicator() + 1)
+    observeEvent(input$clear_view_filter, {
+      if (isTRUE(setViewFilter(NULL))) {
+        showNotification(
+          ui = "View filter cleared. The active Analysis is unchanged.",
+          action = NULL,
+          duration = 5,
+          closeButton = TRUE,
+          type = "message",
+          session = session
+        )
+      }
     })
   })
 }

@@ -6,6 +6,7 @@ import { ScatterRenderer } from "./scatter/scatterRenderer.js";
 import { ScatterOverlay } from "./scatter/scatterOverlay.js";
 import { ScatterInteractions } from "./scatter/scatterInteractions.js";
 import { ScatterLifecycle } from "./scatter/scatterLifecycle.js";
+import { buildHoverText } from "./scatter/scatterTooltip.js";
 import {
   computePanelGrid,
   computePanelLayout,
@@ -24,7 +25,6 @@ import {
   projectWorldToCanvas,
   parsePanelIndexFromPickInfo,
 } from "./scatter/scatterCoordinates.js";
-import { buildHoverText } from "./scatter/scatterTooltip.js";
 import {
   getPanelViewRects,
   hasInvalidPanelRects,
@@ -1479,9 +1479,9 @@ export class reglScatterCanvas {
 
   setSelectedCells(selectedCells = [], { source = null } = {}) {
     const requestedCells = [...new Set((selectedCells || []).filter((value) => value !== undefined))];
-    this.selectionSource = source;
 
     if (requestedCells.length === 0) {
+      this.selectionSource = null;
       this.plotData.selectedCells = [];
       this.clearHighlight();
       this.updateCellCount({ selectedCount: 0 });
@@ -1506,11 +1506,13 @@ export class reglScatterCanvas {
     this.plotData.selectedCells = normalizedCells;
 
     if (normalizedCells.length === 0) {
+      this.selectionSource = null;
       this.clearHighlight();
       this.updateCellCount({ selectedCount: 0 });
       return;
     }
 
+    this.selectionSource = source;
     this.highlightByPanel = highlightByPanel;
     this.applyHighlight();
     this.updateCellCount({ selectedCount: normalizedCells.length });
@@ -1557,10 +1559,18 @@ export class reglScatterCanvas {
     const metaData = this.origData.cellMetaData;
     const expressionData = this.origData.expressionData;
     const plotFeature = this.plotData.plotFeature;
+    const sourcePointId = this.plotData.sourceIndices?.[spIndex]?.[pointId];
 
     const groupByArray = group_by ? expandMeta(metaData[group_by]) : [];
     const splitByArray = split_by ? expandMeta(metaData[split_by]) : [];
     const exprValues = plotFeature ? expressionData[plotFeature] : [];
+
+    if (sourcePointId !== undefined) {
+      if (this.plotData.zType[spIndex] === "category") {
+        return `Cat: ${groupByArray[sourcePointId]}`;
+      }
+      return `Expr: ${d3.format(".3f")(exprValues[sourcePointId])}`;
+    }
 
     return buildHoverText({
       mode,
@@ -1570,7 +1580,7 @@ export class reglScatterCanvas {
       splitByValues: splitByArray,
       expressionValues: exprValues,
       splitArrByMeta,
-      formatExpr: (v) => d3.format(".3f")(v),
+      formatExpr: (value) => d3.format(".3f")(value),
     });
   }
 
@@ -1593,7 +1603,8 @@ export class reglScatterCanvas {
 
   createCellCount(countId) {
     const cellMeta = this.origData?.cellMetaData?.cells;
-    const count = cellMeta ? expandMeta(cellMeta).length : 0;
+    const count = this.plotData.visibleCellCount ??
+      (cellMeta ? expandMeta(cellMeta).length : 0);
     createCellCountElement({ plotEl: this.plotEl, id: countId, count });
   }
 

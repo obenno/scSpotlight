@@ -1,7 +1,7 @@
 #' Capture warnings while evaluating an expression
 #'
 #' @noRd
-capture_warnings <- function(expr) {
+capture_operation_warnings <- function(expr) {
   warnings <- character(0)
   value <- withCallingHandlers(
     expr,

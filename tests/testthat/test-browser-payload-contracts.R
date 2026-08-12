@@ -1,6 +1,4 @@
-browser_payload_contract_path <- testthat::test_path(
-  "..",
-  "..",
+browser_payload_contract_path <- scspotlight_test_source_path(
   "inst",
   "protocol",
   "browser-payload-contracts.json"
@@ -509,7 +507,7 @@ test_that("assignment metadata mutation reuses existing scoped patch contract", 
   expect_true("meta_patch_ready" %in% names(contract$messages))
   expect_false("assignment_ready" %in% names(contract$messages))
 
-  app_server_path <- testthat::test_path("..", "..", "R", "app_server.R")
+  app_server_path <- scspotlight_test_source_path("R", "app_server.R")
   expect_true(file.exists(app_server_path))
   app_server_source <- paste(
     readLines(app_server_path, warn = FALSE),
@@ -564,7 +562,7 @@ test_that("browser IPC payload contracts require a session resource prefix", {
 
   index_source <- paste(
     readLines(
-      testthat::test_path("..", "..", "srcjs", "index.js"),
+      scspotlight_test_source_path("srcjs", "index.js"),
       warn = FALSE
     ),
     collapse = "\n"

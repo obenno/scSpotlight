@@ -5,3 +5,7 @@ docs/*
 !docs/agents/**
 .pixi
 .codegraph/
+playwright-report/
+test-results/
+tests/e2e/.tmp/
+benchmarks/.tmp/

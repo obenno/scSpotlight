@@ -89,10 +89,13 @@ vi.mock("./modules/deckScatter.js", () => {
         split_by: null,
         moduleScore: null,
         selectedFeatures: [],
+        viewFilter: null,
+        viewFilterVersion: 0,
       };
       this.plotData = {
         selectedCells: [],
         cells: [["c1", "c2", "c3"]],
+        visibleCellCount: 3,
       };
       this.origData = {
         cellMetaData: {},
@@ -123,7 +126,25 @@ vi.mock("./modules/deckScatter.js", () => {
       this.plotMetaData.moduleScore = moduleScore;
     }
 
-    generatePlotEl() {}
+    generatePlotEl() {
+      const cells = this.origData.cellMetaData.cells?.value || ["c1", "c2", "c3"];
+      const nFeature = this.origData.cellMetaData.nFeature_RNA?.value || [];
+      const percentMt = this.origData.cellMetaData.percent_mt?.value || [];
+      const filter = this.plotMetaData.viewFilter;
+      const visibleCells = !filter
+        ? cells
+        : cells.filter((cell, index) => {
+          const nFeatureValue = Number(nFeature[index]);
+          const percentMtValue = Number(percentMt[index]);
+          return Number.isFinite(nFeatureValue) &&
+            Number.isFinite(percentMtValue) &&
+            nFeatureValue > Number(filter.nFeature?.min) &&
+            nFeatureValue < Number(filter.nFeature?.max) &&
+            percentMtValue < Number(filter.percentMt?.max);
+        });
+      this.plotData.cells = [visibleCells];
+      this.plotData.visibleCellCount = visibleCells.length;
+    }
 
     mountDeck() {}
 
@@ -189,7 +210,9 @@ vi.mock("./modules/deckScatter.js", () => {
 
     setSelectedCells(selectedCells = [], { source = null } = {}) {
       this.selectionSource = source;
-      this.plotData.selectedCells = [...new Set(selectedCells)];
+      const visibleCells = new Set((this.plotData.cells || []).flat());
+      this.plotData.selectedCells = [...new Set(selectedCells)]
+        .filter((cell) => visibleCells.has(cell));
     }
 
     setSelectionHandlers(handlers) {
@@ -290,10 +313,13 @@ const resetReglInstance = () => {
     split_by: null,
     moduleScore: null,
     selectedFeatures: [],
+    viewFilter: null,
+    viewFilterVersion: 0,
   };
   testState.reglInstance.plotData = {
     selectedCells: [],
     cells: [["c1", "c2", "c3"]],
+    visibleCellCount: 3,
   };
   testState.reglInstance.origData = {
     cellMetaData: {},
@@ -578,6 +604,7 @@ describe("rename cluster client selection", () => {
       metaVersion: null,
       analysisVersion: 17,
       analysisLineageId: 4,
+      viewFilterVersion: 0,
     });
     expect(latestInputValue("renameCluster-categorySelectionContext")).not.toHaveProperty("cells");
   });
@@ -604,6 +631,50 @@ describe("rename cluster client selection", () => {
       selectedCells: ["c1", "c3"],
       newMetaCol: "single_activation",
       assignAs: "manual",
+    });
+  });
+
+  it("reconciles a lasso selection to the visible View without changing Analysis identity", () => {
+    testState.reglInstance.origData.cellMetaData = {
+      cells: { type: "cell_id", value: ["c1", "c2", "c3"] },
+      clusterA: { type: "category", value: { A: [0, 1], B: [2] } },
+      nFeature_RNA: { type: "number", value: [100, 250, 400] },
+      percent_mt: { type: "number", value: [5, 10, 20] },
+    };
+    testState.handlers.reglScatter_plot({
+      group_by: "clusterA",
+      split_by: "None",
+      moduleScore: null,
+      analysisVersion: 17,
+      analysisLineageId: 4,
+      viewFilterVersion: 0,
+    });
+    const originalAnalysisVersion = testState.reglInstance.plotMetaData.analysisVersion;
+    testState.reglInstance.setSelectedCells(["c1", "c2"], { source: "lasso" });
+    testState.reglInstance.selectionHandlers.onSelect({ selectedCells: ["c1", "c2"] });
+
+    testState.handlers.reglScatter_plot({
+      group_by: "clusterA",
+      split_by: "None",
+      moduleScore: null,
+      analysisVersion: 17,
+      analysisLineageId: 4,
+      viewFilterVersion: 1,
+      viewFilterOnly: true,
+      viewFilter: {
+        nFeature: { column: "nFeature_RNA", min: 150, max: 350 },
+        percentMt: { column: "percent_mt", max: 15 },
+      },
+    });
+
+    expect(testState.reglInstance.plotData.cells[0]).toEqual(["c2"]);
+    expect(testState.reglInstance.plotData.selectedCells).toEqual(["c2"]);
+    expect(testState.reglInstance.plotMetaData.analysisVersion).toBe(originalAnalysisVersion);
+    expect(latestInputValue("renameCluster-selectedCellsPayload")).toMatchObject({
+      cells: ["c2"],
+      analysisVersion: 17,
+      analysisLineageId: 4,
+      viewFilterVersion: 1,
     });
   });
 
@@ -880,7 +951,9 @@ describe("rename cluster client selection", () => {
       split_by: "None",
       moduleScore: null,
     });
-    testState.reglInstance.setSelectedCells(["c1", "missing-cell"], { source: "lasso" });
+    // Simulate a stale lasso payload that survives outside the renderer.
+    testState.reglInstance.selectionSource = "lasso";
+    testState.reglInstance.plotData.selectedCells = ["c1", "missing-cell"];
     setAssignmentInputs({ colName: "", value: "manual selection" });
 
     clickAssign();

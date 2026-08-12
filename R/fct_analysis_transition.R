@@ -74,10 +74,31 @@ normalize_analysis_context_levels <- function(value, allow_empty = FALSE) {
   if (is.null(value) || length(value) == 0L) {
     return(if (isTRUE(allow_empty)) character(0) else NULL)
   }
+
+  # Browser JSON arrays arrive through Shiny as unnamed lists. Accept only a
+  # flat array of scalar strings, not arbitrary nested browser objects.
+  if (is.list(value)) {
+    list_names <- names(value)
+    if (
+      (!is.null(list_names) && any(nzchar(list_names))) ||
+        any(!vapply(
+          value,
+          function(item) {
+            length(item) == 1L &&
+              !is.list(item) &&
+              (is.character(item) || is.factor(item))
+          },
+          logical(1)
+        ))
+    ) {
+      return(NULL)
+    }
+    value <- vapply(value, as.character, character(1), USE.NAMES = FALSE)
+  }
+
   if (
-    is.list(value) ||
-      !is.atomic(value) ||
-      (!is.character(value) && !is.factor(value))
+    !is.atomic(value) ||
+    (!is.character(value) && !is.factor(value))
   ) {
     return(NULL)
   }

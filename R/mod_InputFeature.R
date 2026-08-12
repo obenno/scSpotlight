@@ -230,7 +230,7 @@ mod_InputFeature_server <- function(
       expression_active <<- TRUE
 
       expr_promise <- future_promise({
-        capture_warnings(write_backend_expression_transfer(job$transfer))
+        capture_operation_warnings(write_backend_expression_transfer(job$transfer))
       }) %...>%
         (function(result) {
           show_captured_warnings(

@@ -5,6 +5,7 @@ function makeUtils() {
   const expandMeta = (x) => {
     if (Array.isArray(x)) return x;
     if (x && Array.isArray(x.value)) return x.value;
+    if (x && ArrayBuffer.isView(x.value)) return x.value;
     return [];
   };
 
@@ -95,6 +96,14 @@ function createFixture() {
       },
       groupMissing: {
         value: ["A", "", "B", undefined, "undefined", null, "A", "B"],
+      },
+      nFeature_RNA: {
+        type: "number",
+        value: new Int32Array([100, 200, 300, 400, 500, 600, 700, 800]),
+      },
+      percent_mt: {
+        type: "number",
+        value: new Float32Array([5, 10, 15, 20, 25, 30, 35, 40]),
       },
     },
     expressionData: {
@@ -229,6 +238,78 @@ describe("ScatterModel mode derivation", () => {
 });
 
 describe("ScatterModel panel data assembly", () => {
+  it("applies a View Filter without replacing browser-resident source data", () => {
+    const model = buildModel();
+    const sourceMetadata = model.origData.cellMetaData;
+    const sourceReduction = model.origData.reductionData;
+    model.setConfig({
+      selectedFeatures: [],
+      moduleScore: false,
+      viewFilter: {
+        nFeature: { column: "nFeature_RNA", min: 150, max: 650 },
+        percentMt: { column: "percent_mt", max: 31 },
+      },
+      viewFilterVersion: 1,
+    });
+    model.derivePlotMetaData("group", null, false);
+    const plot = model.buildPlotData();
+
+    expect(plot.visibleCellCount).toBe(5);
+    expect(plot.cells[0]).toEqual(["c2", "c3", "c4", "c5", "c6"]);
+    expect(Array.from(plot.sourceIndices[0])).toEqual([1, 2, 3, 4, 5]);
+    expect(plot.pointsData[0].x).toBeInstanceOf(Float32Array);
+    expect(plot.pointsData[0].x).toHaveLength(5);
+    expect(model.origData.cellMetaData).toBe(sourceMetadata);
+    expect(model.origData.reductionData).toBe(sourceReduction);
+    expect(model.origData.cellMetaData.cells.value).toEqual([
+      "c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8",
+    ]);
+  });
+
+  it("filters split and expression panels by canonical source indexes", () => {
+    const model = buildModel();
+    model.setConfig({
+      selectedFeatures: ["GeneA"],
+      moduleScore: false,
+      viewFilter: {
+        nFeature: { column: "nFeature_RNA", min: 150, max: 650 },
+        percentMt: { column: "percent_mt", max: 31 },
+      },
+    });
+    model.derivePlotMetaData("group", "split", false);
+    const plot = model.buildPlotData();
+
+    expect(plot.visibleCellCount).toBe(5);
+    expect(plot.cells).toEqual([
+      ["c2", "c3", "c4"],
+      ["c2", "c3", "c4"],
+      ["c5", "c6"],
+      ["c5", "c6"],
+    ]);
+    expect(Array.from(plot.sourceIndices[0])).toEqual([1, 2, 3]);
+    expect(Array.from(plot.sourceIndices[2])).toEqual([4, 5]);
+    expect(plot.pointsData.map((panel) => panel.x.length)).toEqual([3, 3, 2, 2]);
+  });
+
+  it("renders an empty View when the filter excludes every cell", () => {
+    const model = buildModel();
+    model.setConfig({
+      selectedFeatures: [],
+      moduleScore: false,
+      viewFilter: {
+        nFeature: { column: "nFeature_RNA", min: 900, max: 1000 },
+        percentMt: { column: "percent_mt", max: 1 },
+      },
+    });
+    model.derivePlotMetaData("group", null, false);
+    const plot = model.buildPlotData();
+
+    expect(plot.visibleCellCount).toBe(0);
+    expect(plot.cells[0]).toEqual([]);
+    expect(plot.pointsData[0].x).toHaveLength(0);
+    expect(Array.from(plot.sourceIndices[0])).toEqual([]);
+  });
+
   it("keeps canonical Cell IDs indexable in cluster-only mode", () => {
     const model = buildModel();
     model.setConfig({ selectedFeatures: [], moduleScore: false });

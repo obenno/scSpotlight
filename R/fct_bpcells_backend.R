@@ -201,6 +201,13 @@ drop_dense_scale_data <- function(object, assays = NULL) {
 
 #' @noRd
 assert_no_dense_scale_data <- function(object, assays = NULL) {
+  if (!isTruthy(object) || inherits(object, "scspotlight_explore_bundle")) {
+    return(invisible(TRUE))
+  }
+  if (!inherits(object, "Seurat")) {
+    stop("Expected a Seurat object or Explore bundle.", call. = FALSE)
+  }
+
   scale_layers <- dense_scale_data_layers(object, assays = assays)
   if (nrow(scale_layers)) {
     labels <- paste0(scale_layers$assay, "/", scale_layers$layer)
@@ -245,7 +252,8 @@ safe_subset_seurat_object <- function(
 
   should_ensure_backing <- isTruthy(backend_root) || isTRUE(was_bpcells_backed)
   if (isTRUE(should_ensure_backing) && bpcells_available()) {
-    backing_root <- backend_root %||% tempfile("scspotlight_subset_layers_")
+    backing_root <- backend_root %||%
+      scspotlight_temp_path("scspotlight_subset_layers_")
     subset_object <- ensure_bpcells_backing(
       subset_object,
       root_dir = backing_root,
@@ -686,7 +694,27 @@ h5ad_read_attrs <- function(path, name) {
   if (!requireNamespace("rhdf5", quietly = TRUE)) {
     stop("rhdf5 must be installed for native .h5ad import")
   }
+  name <- h5ad_normalize_path(name)
   tryCatch(rhdf5::h5readAttributes(path, name), error = function(...) list())
+}
+
+#' @noRd
+h5ad_with_open_file <- function(path, code) {
+  if (!requireNamespace("rhdf5", quietly = TRUE)) {
+    stop("rhdf5 must be installed for native .h5ad import")
+  }
+
+  if (!is.function(code)) {
+    stop("h5ad_with_open_file requires a read function", call. = FALSE)
+  }
+
+  if (!is.character(path)) {
+    return(code(path))
+  }
+
+  fid <- rhdf5::H5Fopen(path)
+  on.exit(rhdf5::H5Fclose(fid), add = TRUE)
+  code(fid)
 }
 
 #' @noRd
@@ -710,6 +738,7 @@ h5ad_read_dataset <- function(path, name) {
   if (!requireNamespace("rhdf5", quietly = TRUE)) {
     stop("rhdf5 must be installed for native .h5ad import")
   }
+  name <- h5ad_normalize_path(name)
   h5ad_simplify_value(rhdf5::h5read(path, name, compoundAsDataFrame = TRUE))
 }
 
@@ -812,34 +841,39 @@ h5ad_read_dataframe <- function(path, index, group) {
     return(NULL)
   }
 
-  attrs <- h5ad_read_attrs(path, group)
-  index_key <- as.character(h5ad_simplify_value(
-    attrs[["_index"]] %||% "_index"
-  ))
-  if (
-    !h5ad_path_exists(index, file.path(group, index_key)) &&
-      h5ad_path_exists(index, file.path(group, "bpcells_name"))
-  ) {
-    index_key <- "bpcells_name"
-  }
-  col_order <- h5ad_simplify_value(attrs[["column-order"]])
-  if (is.null(col_order)) {
-    col_order <- setdiff(
-      h5ad_group_children(index, group),
-      c(index_key, "__categories")
-    )
-  }
-  col_order <- as.character(col_order)
+  # Keep one HDF5 handle open for an entire dataframe. Large CellxGene obs
+  # tables can contain dozens of categorical datasets; repeatedly reopening
+  # the file while BPCells also has matrix handles open is not reliable.
+  h5ad_with_open_file(path, function(file) {
+    attrs <- h5ad_read_attrs(file, group)
+    index_key <- as.character(h5ad_simplify_value(
+      attrs[["_index"]] %||% "_index"
+    ))
+    if (
+      !h5ad_path_exists(index, file.path(group, index_key)) &&
+        h5ad_path_exists(index, file.path(group, "bpcells_name"))
+    ) {
+      index_key <- "bpcells_name"
+    }
+    col_order <- h5ad_simplify_value(attrs[["column-order"]])
+    if (is.null(col_order)) {
+      col_order <- setdiff(
+        h5ad_group_children(index, group),
+        c(index_key, "__categories")
+      )
+    }
+    col_order <- as.character(col_order)
 
-  row_names <- h5ad_read_dataset(path, file.path(group, index_key))
-  row_names <- as.character(h5ad_simplify_value(row_names))
-  data <- lapply(col_order, function(column) {
-    h5ad_read_dataframe_column(path, index, group, column)
+    row_names <- h5ad_read_dataset(file, file.path(group, index_key))
+    row_names <- as.character(h5ad_simplify_value(row_names))
+    data <- lapply(col_order, function(column) {
+      h5ad_read_dataframe_column(file, index, group, column)
+    })
+    names(data) <- col_order
+    out <- as.data.frame(data, stringsAsFactors = FALSE, optional = TRUE)
+    rownames(out) <- row_names
+    out
   })
-  names(data) <- col_order
-  out <- as.data.frame(data, stringsAsFactors = FALSE, optional = TRUE)
-  rownames(out) <- row_names
-  out
 }
 
 #' @noRd
@@ -1091,6 +1125,15 @@ import_h5ad_as_seurat_bpcells <- function(
   }
 
   index <- h5ad_h5ls(input_file)
+  # Read obs before BPCells opens its long-lived AnnData matrix handles.
+  # This avoids HDF5 file-access contention on large native CellxGene inputs.
+  meta <- h5ad_read_dataframe(input_file, index, "obs")
+  if (is.null(meta)) {
+    warning(
+      "No 'obs' dataframe found in h5ad file. Proceeding without metadata."
+    )
+  }
+
   counts_info <- tryCatch(
     h5ad_open_counts_matrix(input_file, index),
     error = function(...) NULL
@@ -1108,12 +1151,6 @@ import_h5ad_as_seurat_bpcells <- function(
     h5ad_open_data_matrix(input_file, index, counts_group)
   } else {
     NULL
-  }
-  meta <- h5ad_read_dataframe(input_file, index, "obs")
-  if (is.null(meta)) {
-    warning(
-      "No 'obs' dataframe found in h5ad file. Proceeding without metadata."
-    )
   }
 
   if (is.null(counts)) {
@@ -1426,6 +1463,19 @@ get_backend_pca_stdev <- function(object) {
 }
 
 #' @noRd
+unwrap_bpcells_matrix_source <- function(mat) {
+  if (inherits(mat, "AnnDataMatrixH5")) {
+    return(mat)
+  }
+
+  if (isS4(mat) && "matrix" %in% methods::slotNames(mat)) {
+    return(unwrap_bpcells_matrix_source(methods::slot(mat, "matrix")))
+  }
+
+  mat
+}
+
+#' @noRd
 get_bpcells_layer_ref <- function(
   object,
   assay = NULL,
@@ -1449,6 +1499,25 @@ get_bpcells_layer_ref <- function(
     ))
   }
 
+  source_mat <- unwrap_bpcells_matrix_source(mat)
+  if (inherits(source_mat, "AnnDataMatrixH5")) {
+    h5ad_path <- methods::slot(source_mat, "path")
+    h5ad_group <- methods::slot(source_mat, "group")
+    if (length(h5ad_path) != 1L || !file.exists(h5ad_path)) {
+      stop("Unable to resolve AnnData h5ad path for ", assay, "/", layer)
+    }
+    if (length(h5ad_group) != 1L || !nzchar(h5ad_group)) {
+      stop("Unable to resolve AnnData matrix group for ", assay, "/", layer)
+    }
+
+    return(list(
+      assay = assay,
+      layer = layer,
+      h5ad_path = normalizePath(h5ad_path, winslash = "/", mustWork = TRUE),
+      h5ad_group = h5ad_group
+    ))
+  }
+
   if (!isTruthy(backend_root)) {
     stop("Unable to resolve BPCells matrix directory for ", assay, "/", layer)
   }
@@ -1466,13 +1535,21 @@ get_bpcells_layer_ref <- function(
 
 #' @noRd
 extract_bpcells_expr_to_ipc <- function(
-  matrix_dir,
+  matrix_dir = NULL,
   feature,
   output_file,
+  h5ad_path = NULL,
+  h5ad_group = "X",
   chunk_size = scspotlight_expression_transfer_chunk_size
 ) {
   assert_bpcells_available()
-  mat <- BPCells::open_matrix_dir(matrix_dir)
+  mat <- if (isTruthy(matrix_dir)) {
+    BPCells::open_matrix_dir(matrix_dir)
+  } else if (isTruthy(h5ad_path)) {
+    BPCells::open_matrix_anndata_hdf5(h5ad_path, group = h5ad_group)
+  } else {
+    stop("A BPCells matrix directory or AnnData h5ad path is required.")
+  }
   feature_idx <- match(feature, rownames(mat))
   if (is.na(feature_idx)) {
     stop(sprintf("Feature '%s' not found", feature))
@@ -2172,7 +2249,7 @@ write_h5ad_scanpy <- function(
   }
 
   if (!is_seurat_bpcells(object, assay = assay)) {
-    export_backend_root <- tempfile("scspotlight_h5ad_layers_")
+    export_backend_root <- scspotlight_temp_path("scspotlight_h5ad_layers_")
     dir.create(export_backend_root, recursive = TRUE, showWarnings = FALSE)
     on.exit(
       unlink(export_backend_root, recursive = TRUE, force = TRUE),
@@ -2463,7 +2540,7 @@ convert_to_scanpy_h5ad <- function(
     stop("output_file must not overwrite input_file")
   }
 
-  work_root <- tempfile("scspotlight_h5ad_export_")
+  work_root <- scspotlight_temp_path("scspotlight_h5ad_export_")
   dir.create(work_root, recursive = TRUE, showWarnings = FALSE)
   on.exit(unlink(work_root, recursive = TRUE, force = TRUE), add = TRUE)
 
@@ -2847,7 +2924,7 @@ convert_to_bpcells_bundle <- function(input_file, output_file = NULL) {
     stop("input_file must point to a .Rds or .h5ad file")
   }
 
-  work_root <- tempfile("scspotlight_bundle_work_")
+  work_root <- scspotlight_temp_path("scspotlight_bundle_work_")
   dir.create(work_root, recursive = TRUE, showWarnings = FALSE)
   on.exit(unlink(work_root, recursive = TRUE, force = TRUE), add = TRUE)
 

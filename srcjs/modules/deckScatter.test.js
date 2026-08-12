@@ -261,6 +261,20 @@ describe("reglScatterCanvas lasso selection", () => {
     expect(plotEl.querySelector(".cell-count-total").textContent).toBe("12,345");
     expect(plotEl.querySelector(".cell-count-selected").textContent).toBe("6,789");
   });
+
+  it("uses the visible View count rather than the full Analysis count", () => {
+    const canvas = Object.create(reglScatterCanvas.prototype);
+    const plotEl = document.createElement("div");
+    canvas.plotEl = plotEl;
+    canvas.plotData = { visibleCellCount: 2 };
+    canvas.origData = {
+      cellMetaData: { cells: { type: "cell_id", value: ["c1", "c2", "c3"] } },
+    };
+
+    canvas.createCellCount("cellCount");
+
+    expect(plotEl.querySelector(".cell-count-total").textContent).toBe("2");
+  });
 });
 
 describe("reglScatterCanvas category labels", () => {

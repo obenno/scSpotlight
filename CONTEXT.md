@@ -9,20 +9,24 @@ An immutable, addressable package of single-cell data with its schema and proven
 _Avoid_: raw dataset, live object, input file
 
 **Analysis**:
-A versioned scientific interpretation of a Dataset Artifact, including derived measurements, reductions, annotations, filters, and analysis choices.
+A versioned scientific interpretation of a Dataset Artifact, including derived measurements, reductions, annotations, and analysis choices. A temporary View Filter is Session state and is not part of an Analysis.
 _Avoid_: session state, view, object state
 
 **Session**:
-A temporary user workspace that references a Dataset Artifact and an Analysis while holding interaction choices such as selections, active views, and pending work.
+A temporary user workspace that references a Dataset Artifact and an Analysis while holding interaction choices such as selections, active views, a temporary View Filter and its version, and pending work.
 _Avoid_: analysis, dataset, browser state
 
 **View**:
 A user-facing projection of an Analysis for visual exploration. A View may change without changing the underlying Analysis.
 _Avoid_: plot state, rendering, visualization object
 
-**Filter**:
-A temporary restriction on a View that changes what the user sees without changing the underlying Analysis.
+**View Filter**:
+A Session-owned temporary restriction on a View that changes which cells are shown without changing the underlying Analysis, Analysis Version, Analysis Lineage, or Change-set.
 _Avoid_: subset, permanent selection
+
+**View Filter Version**:
+A Session-owned monotonic value that identifies the current View Filter state. Browser selection and assignment contexts carry this value so stale or no-longer-visible cells cannot be used to mutate an Analysis.
+_Avoid_: Analysis Version, lineage ID, browser render count
 
 **Subset**:
 An intentional transformation that creates a new Analysis containing a reduced cell population from an existing Analysis.
@@ -33,7 +37,7 @@ A Session request describing a proposed change to an Analysis before that change
 _Avoid_: browser mutation, applied change
 
 **Analysis Version**:
-A named scientific state in the lineage of an Analysis. A new version is published only after a successful Analysis mutation or restore.
+A named scientific state in the lineage of an Analysis. A new version is published only after a successful Analysis Mutation or Restore, never after applying or clearing a View Filter.
 _Avoid_: object copy, session revision, browser version
 
 **Restore**:

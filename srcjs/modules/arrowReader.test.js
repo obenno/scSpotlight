@@ -9,6 +9,7 @@ import {
   makeBuilder,
 } from "apache-arrow";
 import {
+  fetchArrowIPCBuffer,
   readArrowIPC,
   getFloat32Column,
   parseMetaFromArrow,
@@ -117,6 +118,21 @@ describe("parseMetaFromArrow", () => {
 });
 
 describe("readArrowIPC", () => {
+  it("bypasses the browser HTTP cache for versioned IPC buffers", async () => {
+    const originalFetch = globalThis.fetch;
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      arrayBuffer: async () => new ArrayBuffer(0),
+    });
+    globalThis.fetch = fetchMock;
+    try {
+      await fetchArrowIPCBuffer("/test/url");
+      expect(fetchMock).toHaveBeenCalledWith("/test/url", { cache: "no-store" });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("rejects on HTTP error", async () => {
     // Mock fetch to return 404
     const originalFetch = globalThis.fetch;
@@ -149,6 +165,34 @@ describe("readArrowIPC", () => {
       expect(table.numCols).toBe(2);
       const x = table.getChild("X").toArray();
       expect(Array.from(x)).toEqual([1, 2, 3]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("reports optional fetch and decode timing without changing the result", async () => {
+    const buf = makeIPCBuffer({ X: Float32Array.from([1, 2, 3]) });
+    const originalFetch = globalThis.fetch;
+    const fetchEvents = [];
+    const decodeEvents = [];
+    globalThis.fetch = async () => ({
+      ok: true,
+      arrayBuffer: async () => buf.buffer,
+    });
+    try {
+      const table = await readArrowIPC("/test/url", {
+        onFetch: (event) => fetchEvents.push(event),
+        onDecode: (event) => decodeEvents.push(event),
+      });
+
+      expect(table.numRows).toBe(3);
+      expect(fetchEvents[0]).toEqual({ state: "start" });
+      expect(fetchEvents[1].state).toBe("end");
+      expect(fetchEvents[1].outputBytes).toBe(buf.buffer.byteLength);
+      expect(fetchEvents[1].elapsedMs).toBeTypeOf("number");
+      expect(decodeEvents[0]).toEqual({ state: "start" });
+      expect(decodeEvents[1].state).toBe("end");
+      expect(decodeEvents[1].elapsedMs).toBeTypeOf("number");
     } finally {
       globalThis.fetch = originalFetch;
     }

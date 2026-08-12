@@ -327,8 +327,9 @@ test_that("browser category context resolves subsets server-side in source cell 
     {
       session$setInputs(
         categorySelectionContext = make_category_selection_payload(
+          group_levels = list("A"),
           split_by = "batch",
-          split_levels = "batch1"
+          split_levels = list("batch1")
         )
       )
       session$setInputs("subsetCells-subsetData" = TRUE)
@@ -347,6 +348,25 @@ test_that("browser category context resolves subsets server-side in source cell 
       )
     }
   )
+})
+
+test_that("category level normalization accepts only flat browser arrays", {
+  normalize_analysis_context_levels <- getFromNamespace(
+    "normalize_analysis_context_levels",
+    "scSpotlight"
+  )
+
+  expect_identical(
+    normalize_analysis_context_levels(list("A", "B")),
+    c("A", "B")
+  )
+  expect_identical(
+    normalize_analysis_context_levels(list(), allow_empty = TRUE),
+    character(0)
+  )
+  expect_null(normalize_analysis_context_levels(list(list("A"))))
+  expect_null(normalize_analysis_context_levels(list(A = "A")))
+  expect_null(normalize_analysis_context_levels(list(1)))
 })
 
 test_that("category subset context rejects stale, mismatched, and manual-preempted requests", {
@@ -508,10 +528,71 @@ test_that("Analysis plot messages carry the current selection identity", {
       group_by = "cluster",
       split_by = NULL,
       moduleScore = FALSE,
+      viewFilter = NULL,
+      viewFilterVersion = 0L,
       analysisVersion = 0L,
       analysisLineageId = 1L
     )
   )
+})
+
+test_that("View Filter renders keep Analysis identity and are marked separately", {
+  object <- make_subset_object()
+  seurat_value <- shiny::reactiveVal(object)
+  analysis_transition <- make_analysis_transition(seurat_value)
+  reduction_processed <- shiny::reactiveVal(TRUE)
+  meta_processed <- shiny::reactiveVal(TRUE)
+  plot_refresh_indicator <- shiny::reactiveVal(0)
+  scatter_update_indicator <- shiny::reactiveVal(0)
+  view_filter_state <- shiny::reactiveVal(list(filter = NULL, version = 0L))
+  plot_messages <- list()
+
+  testthat::local_mocked_bindings(
+    reglScatter_plot = function(plotMetaData, session) {
+      plot_messages[[length(plot_messages) + 1L]] <<- plotMetaData
+    },
+    .package = "scSpotlight"
+  )
+
+  testServer(
+    mod_mainClusterPlot_server,
+    args = list(
+      reductionProcessed = reduction_processed,
+      metaProcessed = meta_processed,
+      plotRefreshIndicator = plot_refresh_indicator,
+      scatterUpdateIndicator = scatter_update_indicator,
+      group.by = shiny::reactive("cluster"),
+      split.by = shiny::reactive("None"),
+      moduleScore = shiny::reactive(FALSE),
+      analysisTransition = analysis_transition,
+      viewFilterState = function() view_filter_state()
+    ),
+    {
+      session$flushReact()
+      plot_refresh_indicator(1)
+      session$flushReact()
+      view_filter_state(list(
+        filter = list(
+          nFeature = list(column = "nFeature_RNA", min = 1, max = 6),
+          percentMt = list(column = "percent.mt", max = 50)
+        ),
+        version = 1L
+      ))
+      session$flushReact()
+    }
+  )
+
+  expect_length(plot_messages, 2L)
+  expect_false(isTRUE(plot_messages[[1]]$viewFilterOnly))
+  expect_identical(plot_messages[[1]]$analysisVersion, 0L)
+  expect_identical(plot_messages[[2]]$analysisVersion, 0L)
+  expect_identical(plot_messages[[2]]$analysisLineageId, 1L)
+  expect_true(isTRUE(plot_messages[[2]]$viewFilterOnly))
+  expect_identical(plot_messages[[2]]$viewFilterVersion, 1L)
+  expect_equal(plot_messages[[2]]$viewFilter, list(
+    nFeature = list(column = "nFeature_RNA", min = 1, max = 6),
+    percentMt = list(column = "percent.mt", max = 50)
+  ))
 })
 
 test_that("browser Cell ID payloads reject empty, mixed, and stale selections", {
@@ -625,14 +706,14 @@ test_that("browser Cell ID payloads reject empty, mixed, and stale selections", 
 test_that("subset module threads the session backend root into BPCells-safe subset backing", {
   subset_source <- paste(
     readLines(
-      testthat::test_path("..", "..", "R", "mod_SubsetCells.R"),
+      scspotlight_test_source_path("R", "mod_SubsetCells.R"),
       warn = FALSE
     ),
     collapse = "\n"
   )
   app_source <- paste(
     readLines(
-      testthat::test_path("..", "..", "R", "app_server.R"),
+      scspotlight_test_source_path("R", "app_server.R"),
       warn = FALSE
     ),
     collapse = "\n"

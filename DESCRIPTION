@@ -50,6 +50,7 @@ Imports:
     zip
 Suggests: 
     ellmer,
+    later,
     presto,
     R.utils,
     shinychat,

@@ -183,7 +183,10 @@ mod_Download_server <- function(id, seuratObj) {
             tibble::rownames_to_column("cell")
           readr::write_tsv(metaData, file)
         } else if (input$downloadFormat == "Explore Parquet") {
-          bundleDir <- tempfile(pattern = "scspotlight_explore_bundle_")
+          bundleDir <- scspotlight_temp_path(
+            pattern = "scspotlight_explore_bundle_",
+            root = session$userData$tempDir
+          )
           dir.create(bundleDir)
           on.exit(unlink(bundleDir, recursive = TRUE, force = TRUE), add = TRUE)
           progressr::withProgressShiny(
@@ -208,7 +211,10 @@ mod_Download_server <- function(id, seuratObj) {
             detail = "Preparing bundle"
           )
         } else if (input$downloadFormat == "BPCells") {
-          bundleDir <- tempfile(pattern = "scspotlight_bundle_")
+          bundleDir <- scspotlight_temp_path(
+            pattern = "scspotlight_bundle_",
+            root = session$userData$tempDir
+          )
           dir.create(bundleDir)
           on.exit(unlink(bundleDir, recursive = TRUE, force = TRUE), add = TRUE)
           progressr::withProgressShiny(

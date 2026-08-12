@@ -7,7 +7,8 @@
 import { tableFromIPC, Type } from "apache-arrow";
 
 export async function fetchArrowIPCBuffer(url) {
-  const response = await fetch(url);
+  // Versioned IPC buffers are retained by the application cache, not Chromium's disk cache.
+  const response = await fetch(url, { cache: "no-store" });
   if (!response.ok) {
     throw new Error(
       `Failed to fetch Arrow IPC ${url}: ${response.status} ${response.statusText}`,
@@ -64,9 +65,34 @@ function getChunkIndices(chunk) {
  * @param {string} url - URL to the .arrow file served via addResourcePath
  * @returns {Promise<import("apache-arrow").Table>}
  */
-export async function readArrowIPC(url) {
+export async function readArrowIPC(url, timing = {}) {
+  const now = () => globalThis.performance?.now?.() ?? Date.now();
+  const report = (callback, payload) => {
+    if (typeof callback !== "function") return;
+    try {
+      callback(payload);
+    } catch {
+      // Benchmark instrumentation must never affect a data transfer.
+    }
+  };
+
+  const fetchStarted = now();
+  report(timing.onFetch, { state: "start" });
   const buffer = await fetchArrowIPCBuffer(url);
-  return decodeArrowIPC(buffer);
+  report(timing.onFetch, {
+    state: "end",
+    elapsedMs: now() - fetchStarted,
+    outputBytes: buffer.byteLength,
+  });
+
+  const decodeStarted = now();
+  report(timing.onDecode, { state: "start" });
+  const table = decodeArrowIPC(buffer);
+  report(timing.onDecode, {
+    state: "end",
+    elapsedMs: now() - decodeStarted,
+  });
+  return table;
 }
 
 /**

@@ -93,6 +93,7 @@ mod_SubsetCells_server <- function(
         original_state_failed = "Unable to preserve the original dataset safely.",
         restore_failed = "Unable to restore the original dataset safely.",
         stale_analysis_version = "Analysis state is stale. Refresh and try again.",
+        stale_view_filter = "View state is stale. Refresh the plot and try again.",
         invalid_intent = "Analysis request could not be understood.",
         invalid_operation = "Analysis operation is not supported.",
         stale_analysis_lineage = "Analysis state is stale. Refresh and try again.",

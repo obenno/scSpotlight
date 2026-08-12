@@ -313,9 +313,12 @@ prepare_backend_expression_transfer <- function(
     expr_version
   ))
 
-  list(
-    backend = "bpcells",
-    matrix_dir = layer_ref$matrix_dir,
+  transfer <- list(
+    backend = if (!is.null(layer_ref$matrix_dir)) {
+      "bpcells"
+    } else {
+      "bpcells_anndata_hdf5"
+    },
     feature = feature,
     assay = layer_ref$assay,
     layer = layer_ref$layer,
@@ -327,6 +330,15 @@ prepare_backend_expression_transfer <- function(
       exprFile = file_name
     ))
   )
+
+  if (!is.null(layer_ref$matrix_dir)) {
+    transfer$matrix_dir <- layer_ref$matrix_dir
+  } else {
+    transfer$h5ad_path <- layer_ref$h5ad_path
+    transfer$h5ad_group <- layer_ref$h5ad_group
+  }
+
+  transfer
 }
 
 write_backend_expression_transfer <- function(transfer) {
@@ -345,6 +357,16 @@ write_backend_expression_transfer <- function(transfer) {
       matrix_dir = transfer$matrix_dir,
       feature = transfer$feature,
       output_file = transfer$output_file
+    )
+    return(transfer$payload)
+  }
+
+  if (identical(transfer$backend, "bpcells_anndata_hdf5")) {
+    extract_bpcells_expr_to_ipc(
+      feature = transfer$feature,
+      output_file = transfer$output_file,
+      h5ad_path = transfer$h5ad_path,
+      h5ad_group = transfer$h5ad_group
     )
     return(transfer$payload)
   }

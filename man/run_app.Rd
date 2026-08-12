@@ -61,7 +61,7 @@ provider-managed credentials, never from Shiny inputs.}
 \item{llmModel}{Model name for the selected provider.}
 
 \item{llmBaseUrl}{Base URL for local/OpenAI-compatible providers. For Ollama,
-defaults to \code{OLLAMA_BASE_URL} or \code{http://localhost:11434}.}
+defaults to \code{OLLAMA_BASE_URL} or \verb{http://localhost:11434}.}
 
 \item{...}{arguments to pass to golem_opts.
 See \code{?golem::get_golem_options} for more details.}

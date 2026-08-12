@@ -108,26 +108,25 @@ test_that("safe subset helper preserves BPCells backing when available", {
   expect_mutation_no_scale_data(subsetted)
 })
 
-test_that("filter mutation source validates cells before processing and refreshes downstream state", {
+test_that("View Filter source validates QC metadata without mutating Analysis state", {
   filter_source <- paste(
-    readLines(testthat::test_path("..", "..", "R", "mod_FilterCell.R"), warn = FALSE),
+    readLines(scspotlight_test_source_path("R", "mod_FilterCell.R"), warn = FALSE),
     collapse = "\n"
   )
 
-  expect_match(filter_source, "safe_subset_seurat_object", fixed = TRUE)
-  expect_true(grepl(
-    "safe_subset_seurat_object[\\s\\S]*standard_process_seurat",
-    filter_source,
-    perl = TRUE
-  ))
+  expect_match(filter_source, "new_view_filter_spec", fixed = TRUE)
+  expect_match(filter_source, "setViewFilter(view_filter)", fixed = TRUE)
+  expect_match(filter_source, "clear_view_filter", fixed = TRUE)
+  expect_match(filter_source, "View filter applied. The active Analysis is unchanged.", fixed = TRUE)
   expect_false(grepl(
-    "subset\\(obj,\\s*cells\\s*=\\s*selectedCells",
+    "safe_subset_seurat_object",
     filter_source,
-    perl = TRUE
+    fixed = TRUE
   ))
-  expect_match(filter_source, "geneUpdateIndicator(geneUpdateIndicator() + 1)", fixed = TRUE)
-  expect_match(filter_source, "metaUpdateIndicator(metaUpdateIndicator() + 1)", fixed = TRUE)
-  expect_match(filter_source, "reductionUpdateIndicator(reductionUpdateIndicator() + 1)", fixed = TRUE)
+  expect_false(grepl("standard_process_seurat", filter_source, fixed = TRUE))
+  expect_false(grepl("geneUpdateIndicator", filter_source, fixed = TRUE))
+  expect_false(grepl("metaUpdateIndicator", filter_source, fixed = TRUE))
+  expect_false(grepl("reductionUpdateIndicator", filter_source, fixed = TRUE))
 })
 
 test_that("cluster update helper preserves update-mode indicator semantics and no scale.data", {
@@ -318,11 +317,11 @@ test_that("cell-cycle module requests one exact metadata patch for scoring colum
 
 test_that("metadata patches share one monotonic version with full metadata refreshes", {
   app_source <- paste(
-    readLines(testthat::test_path("..", "..", "R", "app_server.R"), warn = FALSE),
+    readLines(scspotlight_test_source_path("R", "app_server.R"), warn = FALSE),
     collapse = "\n"
   )
   cell_cycle_source <- paste(
-    readLines(testthat::test_path("..", "..", "R", "mod_CellCyling.R"), warn = FALSE),
+    readLines(scspotlight_test_source_path("R", "mod_CellCyling.R"), warn = FALSE),
     collapse = "\n"
   )
   mutation_source <- paste(app_source, cell_cycle_source, sep = "\n")
