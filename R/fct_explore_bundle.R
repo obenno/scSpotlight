@@ -119,9 +119,12 @@ validate_scspotlight_explore_cells_file <- function(
 validate_scspotlight_explore_metadata_cell_index <- function(
   metadata_path,
   cells_path,
-  expected_cell_count
+  expected_cell_count,
+  metadata_cols = NULL
 ) {
-  metadata_cols <- explore_parquet_columns(metadata_path)
+  if (is.null(metadata_cols)) {
+    metadata_cols <- explore_parquet_columns(metadata_path)
+  }
   if (!".scspotlight_cell_idx" %in% metadata_cols) {
     stop(
       "Explore bundle metadata.parquet is missing required column: ",
@@ -187,13 +190,17 @@ validate_scspotlight_explore_metadata_cell_index <- function(
 
 validate_scspotlight_explore_reduction_cell_index <- function(
   reduction_path,
-  expected_cell_count = NULL
+  expected_cell_count = NULL,
+  reduction_cols = NULL
 ) {
   if (!file.exists(reduction_path)) {
     stop("Explore bundle reduction file is missing: ", reduction_path)
   }
 
-  if (!"cell_idx" %in% explore_parquet_columns(reduction_path)) {
+  if (is.null(reduction_cols)) {
+    reduction_cols <- explore_parquet_columns(reduction_path)
+  }
+  if (!"cell_idx" %in% reduction_cols) {
     stop(
       "Explore bundle reduction is missing required column cell_idx: ",
       reduction_path
@@ -380,7 +387,8 @@ validate_scspotlight_explore_bundle_files <- function(bundle_root, manifest) {
   validate_scspotlight_explore_metadata_cell_index(
     file.path(bundle_root, "metadata.parquet"),
     file.path(bundle_root, "cells.parquet"),
-    expected_cell_count = cell_count
+    expected_cell_count = cell_count,
+    metadata_cols = metadata_cols
   )
 
   reductions <- as.character(manifest$reductions %||% character())
@@ -410,7 +418,8 @@ validate_scspotlight_explore_bundle_files <- function(bundle_root, manifest) {
     }
     validate_scspotlight_explore_reduction_cell_index(
       reduction_files[[i]],
-      expected_cell_count = cell_count
+      expected_cell_count = cell_count,
+      reduction_cols = reduction_cols
     )
   }
 

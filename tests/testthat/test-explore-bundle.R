@@ -1119,3 +1119,108 @@ test_that("Explore bundle loader rejects incomplete bundles", {
     "umap"
   )
 })
+
+test_that("Explore bundle load probes each metadata and reduction schema once", {
+  skip_if_not_installed("arrow")
+  skip_if_not_installed("duckdb")
+
+  read_scspotlight_explore_bundle <- getFromNamespace(
+    "read_scspotlight_explore_bundle",
+    "scSpotlight"
+  )
+  original_explore_parquet_columns <- getFromNamespace(
+    "explore_parquet_columns",
+    "scSpotlight"
+  )
+  bundle_type <- getFromNamespace(
+    "scspotlight_explore_bundle_type",
+    "scSpotlight"
+  )
+
+  bundle_dir <- tempfile("explore_schema_probe_")
+  dir.create(bundle_dir)
+  dir.create(file.path(bundle_dir, "reductions"))
+  dir.create(file.path(bundle_dir, "expression"))
+  on.exit(unlink(bundle_dir, recursive = TRUE, force = TRUE), add = TRUE)
+
+  jsonlite::write_json(
+    list(
+      bundle_type = bundle_type,
+      schema_version = 1L,
+      cell_count = 2L,
+      feature_count = 1L,
+      assay = "RNA",
+      default_assay = "RNA",
+      assays = list(list(name = "RNA", layers = list("data"))),
+      reductions = c("umap", "tsne")
+    ),
+    file.path(bundle_dir, "manifest.json"),
+    auto_unbox = TRUE
+  )
+  arrow::write_parquet(
+    data.frame(cell_idx = 0:1, cell_id = c("c1", "c2")),
+    file.path(bundle_dir, "cells.parquet")
+  )
+  arrow::write_parquet(
+    data.frame(
+      cluster = c("a", "b"),
+      .scspotlight_cell_idx = 0:1,
+      check.names = FALSE
+    ),
+    file.path(bundle_dir, "metadata.parquet")
+  )
+  arrow::write_parquet(
+    data.frame(
+      feature_idx = 0L,
+      feature = "g1",
+      assay = "RNA",
+      layer = "data",
+      block = 0L
+    ),
+    file.path(bundle_dir, "features.parquet")
+  )
+  arrow::write_parquet(
+    data.frame(
+      cell_idx = 0:1,
+      UMAP_1 = c(1, 2),
+      UMAP_2 = c(3, 4)
+    ),
+    file.path(bundle_dir, "reductions", "umap.parquet")
+  )
+  arrow::write_parquet(
+    data.frame(
+      cell_idx = 0:1,
+      tSNE_1 = c(5, 6),
+      tSNE_2 = c(7, 8)
+    ),
+    file.path(bundle_dir, "reductions", "tsne.parquet")
+  )
+  arrow::write_parquet(
+    data.frame(
+      feature_idx = integer(),
+      cell_idx = integer(),
+      value = numeric()
+    ),
+    file.path(bundle_dir, "expression", "block_00000.parquet")
+  )
+
+  schema_probe_paths <- character()
+  testthat::local_mocked_bindings(
+    explore_parquet_columns = function(path) {
+      schema_probe_paths <<- c(
+        schema_probe_paths,
+        normalizePath(path, winslash = "/", mustWork = TRUE)
+      )
+      original_explore_parquet_columns(path)
+    },
+    .package = "scSpotlight"
+  )
+
+  bundle <- read_scspotlight_explore_bundle(bundle_dir)
+  schema_probe_files <- basename(schema_probe_paths)
+
+  expect_s3_class(bundle, "scspotlight_explore_bundle")
+  expect_equal(sum(schema_probe_files == "metadata.parquet"), 1L)
+  expect_equal(sum(schema_probe_files == "umap.parquet"), 1L)
+  expect_equal(sum(schema_probe_files == "tsne.parquet"), 1L)
+})

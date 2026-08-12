@@ -1125,6 +1125,19 @@ Expression queries must use DuckDB. The app selects the correct block from `feat
 - `R/fct_bpcells_backend.R` exposes backend-agnostic helpers so app modules can work with either Seurat/BPCells objects or Explore bundles.
 - Explore Mode transfer futures should receive paths/query plans only, not live bundle objects or eager data frames. Metadata, reductions, and expression all stream DuckDB fetch batches into Arrow IPC writers to keep server-side peak memory bounded by chunk size.
 - Before an Explore metadata transfer, validate the dense unique `cells.parquet` index and Cell IDs plus the complete unique metadata index join. The IPC writer then joins on `.scspotlight_cell_idx` and emits canonical Cell IDs in `cells`.
+- A bundle-load validation pass owns one bounded DuckDB schema inspection per
+  metadata or reduction Parquet file. `validate_scspotlight_explore_bundle_files()`
+  passes those known column names into the corresponding integrity validators,
+  which retain their own schema inspection only when called independently.
+  This removes duplicate startup filesystem and DuckDB work without weakening
+  dense index, Cell-ID, metadata join, reduction, feature, or expression-block
+  validation.
+- Affected files: `R/fct_explore_bundle.R` and
+  `tests/testthat/test-explore-bundle.R`. Validation passed with
+  `pixi run Rscript -e "devtools::test(filter = '^explore-bundle$')"` and
+  `pixi run Rscript -e "devtools::test()"`; the focused test instruments the
+  schema-query helper and verifies exactly one metadata and reduction probe per
+  successful bundle load.
 
 ## Scatter Interaction Notes
 
