@@ -20,6 +20,25 @@ transfer_error_context_fields <- list(
   expression = c("geneName", "assay")
 )
 
+make_clear_expr_payload <- function(invalidate_version = NULL) {
+  if (is.null(invalidate_version)) {
+    # Shiny serializes a named empty list as the contract's empty JSON object.
+    return(structure(list(), names = character()))
+  }
+
+  if (
+    !is.numeric(invalidate_version) ||
+      length(invalidate_version) != 1L ||
+      is.na(invalidate_version) ||
+      !is.finite(invalidate_version) ||
+      invalidate_version < 0
+  ) {
+    stop("`invalidate_version` must be a finite non-negative number.")
+  }
+
+  list(invalidateVersion = unname(as.numeric(invalidate_version)))
+}
+
 sanitize_transfer_error_value <- function(value) {
   value <- as.character(value)
   value <- vapply(

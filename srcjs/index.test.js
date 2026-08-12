@@ -385,6 +385,7 @@ const browserContractMessageNames = [
   "expr_ready",
   "reduction_cached",
   "expr_cached",
+  "clear_expr",
   "transfer_error",
 ];
 
@@ -465,7 +466,7 @@ const expectPlotTransferError = ({ heading, body }) => {
   expect(overlay.textContent).toContain(body);
 };
 
-describe("rename cluster client selection", () => {
+describe("browser message handlers", () => {
   beforeAll(async () => {
     console.profile = console.profile || vi.fn();
     console.profileEnd = console.profileEnd || vi.fn();
@@ -2100,6 +2101,90 @@ describe("rename cluster client selection", () => {
 
     await vi.waitFor(() => {
       expect(testState.reglInstance.origData.expressionData.GeneA).toBeDefined();
+    });
+  });
+
+  it("clears ordinary feature state without invalidating its expression epoch", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    addFeatureSparkLine("GeneA");
+    arrowReader.fetchArrowIPCBuffer.mockResolvedValue(
+      encodeLabelBuffer("gene-a-ordinary-clear"),
+    );
+    arrowReader.decodeArrowIPC.mockImplementation((buffer) => ({
+      label: decodeLabelBuffer(buffer),
+    }));
+    arrowReader.getFloat32Column.mockReturnValue(new Float32Array([4, 5]));
+
+    testState.handlers.expr_ready({
+      exprFile: "gene-a-ordinary-clear",
+      geneName: "GeneA",
+      assay: "RNA",
+      exprVersion: 300000,
+    });
+    await vi.waitFor(() => {
+      expect(testState.reglInstance.origData.expressionData.GeneA).toBeDefined();
+    });
+
+    testState.handlers.clear_expr({});
+
+    expect(testState.reglInstance.origData.expressionData).toEqual({});
+    expect(document.getElementById("featureSparkLine").children).toHaveLength(0);
+    expect(latestInputValue("inputFeatures-cachedExprKeys")).toEqual([]);
+
+    addFeatureSparkLine("GeneA");
+    testState.handlers.expr_ready({
+      exprFile: "gene-a-ordinary-clear",
+      geneName: "GeneA",
+      assay: "RNA",
+      exprVersion: 300000,
+    });
+
+    await vi.waitFor(() => {
+      expect(Array.from(testState.reglInstance.origData.expressionData.GeneA)).toEqual([4, 5]);
+    });
+  });
+
+  it("normalizes malformed clear_expr payloads without creating an epoch barrier", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    addFeatureSparkLine("GeneA");
+    arrowReader.fetchArrowIPCBuffer.mockResolvedValue(
+      encodeLabelBuffer("gene-a-malformed-clear"),
+    );
+    arrowReader.decodeArrowIPC.mockImplementation((buffer) => ({
+      label: decodeLabelBuffer(buffer),
+    }));
+    arrowReader.getFloat32Column.mockReturnValue(new Float32Array([6, 7]));
+
+    testState.handlers.expr_ready({
+      exprFile: "gene-a-malformed-clear",
+      geneName: "GeneA",
+      assay: "RNA",
+      exprVersion: 310000,
+    });
+    await vi.waitFor(() => {
+      expect(testState.reglInstance.origData.expressionData.GeneA).toBeDefined();
+    });
+
+    testState.handlers.clear_expr({ invalidateVersion: true });
+    expect(() => {
+      testState.handlers.clear_expr(null);
+      testState.handlers.clear_expr("");
+      testState.handlers.clear_expr([]);
+      testState.handlers.clear_expr({ invalidateVersion: -1 });
+      testState.handlers.clear_expr({ invalidateVersion: Infinity });
+      testState.handlers.clear_expr({ invalidateVersion: Number.NaN });
+    }).not.toThrow();
+
+    addFeatureSparkLine("GeneA");
+    testState.handlers.expr_ready({
+      exprFile: "gene-a-malformed-clear",
+      geneName: "GeneA",
+      assay: "RNA",
+      exprVersion: 310000,
+    });
+
+    await vi.waitFor(() => {
+      expect(Array.from(testState.reglInstance.origData.expressionData.GeneA)).toEqual([6, 7]);
     });
   });
 });

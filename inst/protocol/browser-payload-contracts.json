@@ -52,6 +52,17 @@
       "version_field": "exprVersion",
       "cache_family": "expression"
     },
+    "clear_expr": {
+      "required_fields": [],
+      "optional_fields": ["invalidateVersion"],
+      "payload_shape": "object",
+      "invalidation": {
+        "field": "invalidateVersion",
+        "allowed_form": "finite_nonnegative_number",
+        "absent_semantics": "clear_expression_state_without_advancing_the_invalidated_epoch",
+        "present_semantics": "reject_expr_versions_at_or_below_the_invalidated_epoch"
+      }
+    },
     "transfer_error": {
       "required_fields": ["payloadType", "reasonCode", "version"],
       "optional_fields": [

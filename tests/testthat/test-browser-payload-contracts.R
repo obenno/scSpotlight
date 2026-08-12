@@ -13,6 +13,7 @@ browser_payload_messages <- c(
   "expr_ready",
   "reduction_cached",
   "expr_cached",
+  "clear_expr",
   "transfer_error"
 )
 
@@ -226,6 +227,86 @@ test_that("browser payload manifest enumerates XFER-05 message contracts", {
         use.names = FALSE
       )
   ))
+
+  clear_expr_contract <- contract$messages$clear_expr
+  expect_identical(clear_expr_contract$payload_shape, "object")
+  expect_length(clear_expr_contract$required_fields, 0)
+  expect_identical(
+    unlist(clear_expr_contract$optional_fields, use.names = FALSE),
+    "invalidateVersion"
+  )
+  expect_identical(
+    clear_expr_contract$invalidation$field,
+    "invalidateVersion"
+  )
+  expect_identical(
+    clear_expr_contract$invalidation$allowed_form,
+    "finite_nonnegative_number"
+  )
+  expect_identical(
+    clear_expr_contract$invalidation$absent_semantics,
+    "clear_expression_state_without_advancing_the_invalidated_epoch"
+  )
+  expect_identical(
+    clear_expr_contract$invalidation$present_semantics,
+    "reject_expr_versions_at_or_below_the_invalidated_epoch"
+  )
+})
+
+test_that("clear_expr producers use the typed browser payload contract", {
+  contract <- read_browser_payload_contract()
+  make_clear_expr_payload <- getFromNamespace(
+    "make_clear_expr_payload",
+    "scSpotlight"
+  )
+
+  ordinary_clear <- make_clear_expr_payload()
+  expect_identical(names(ordinary_clear), character())
+  expect_identical(as.character(shiny:::toJSON(ordinary_clear)), "{}")
+  expect_payload_satisfies_contract(contract, "clear_expr", ordinary_clear)
+
+  analysis_replacement <- make_clear_expr_payload(42L)
+  expect_identical(analysis_replacement, list(invalidateVersion = 42))
+  expect_identical(
+    as.character(shiny:::toJSON(analysis_replacement)),
+    "{\"invalidateVersion\":42}"
+  )
+  expect_payload_satisfies_contract(
+    contract,
+    "clear_expr",
+    analysis_replacement
+  )
+
+  expect_error(make_clear_expr_payload(-1), "finite non-negative number")
+  expect_error(make_clear_expr_payload(Inf), "finite non-negative number")
+  expect_error(make_clear_expr_payload("42"), "finite non-negative number")
+
+  producer_paths <- c(
+    scspotlight_test_source_path("R", "mod_InputFeature.R"),
+    scspotlight_test_source_path("R", "mod_SubsetCells.R"),
+    scspotlight_test_source_path("R", "mod_dataInput.R")
+  )
+  for (producer_path in producer_paths) {
+    producer_source <- readLines(producer_path, warn = FALSE)
+    clear_expr_lines <- grep(
+      "type = \"clear_expr\"",
+      producer_source,
+      fixed = TRUE
+    )
+    expect_equal(length(clear_expr_lines), 1L, info = producer_path)
+    message_window <- producer_source[seq(
+      clear_expr_lines[[1]],
+      min(length(producer_source), clear_expr_lines[[1]] + 5L)
+    )]
+    expect_true(
+      any(grepl(
+        "message = make_clear_expr_payload",
+        message_window,
+        fixed = TRUE
+      )),
+      info = producer_path
+    )
+  }
 })
 
 test_that("transfer error payload helper satisfies the browser path policy", {

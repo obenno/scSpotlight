@@ -449,7 +449,10 @@ mod_InputFeature_server <- function(
           value = FALSE
         )
         ## clear gene expression stored
-        session$sendCustomMessage(type = "clear_expr", "")
+        session$sendCustomMessage(
+          type = "clear_expr",
+          message = make_clear_expr_payload()
+        )
       },
       priority = 10
     )

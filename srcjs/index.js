@@ -333,6 +333,23 @@ const isCurrentExpressionRequest = (msg, generation) => (
   isCurrentExpressionPayload(msg)
 );
 
+const normalizeClearExprPayload = (msg) => {
+  if (!msg || typeof msg !== "object" || Array.isArray(msg)) {
+    return {};
+  }
+
+  const { invalidateVersion } = msg;
+  if (
+    typeof invalidateVersion !== "number" ||
+    !Number.isFinite(invalidateVersion) ||
+    invalidateVersion < 0
+  ) {
+    return {};
+  }
+
+  return { invalidateVersion };
+};
+
 const getCurrentReductionName = () => {
   const el = document.getElementById("updateReduction-reduction");
   return el?.value && el.value !== "None" ? el.value : null;
@@ -2148,7 +2165,7 @@ Shiny.addCustomMessageHandler("expr_cached", (msg) => {
 
 Shiny.addCustomMessageHandler("clear_expr", (msg) => {
   // purge expression data and associated client cache/state
-  clearExpressionState({ invalidateVersion: msg?.invalidateVersion });
+  clearExpressionState(normalizeClearExprPayload(msg));
 });
 
 Shiny.addCustomMessageHandler("selectPointsByCategory", (msg) => {

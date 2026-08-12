@@ -737,7 +737,7 @@ test_that("subset module threads the session backend root into BPCells-safe subs
   )
   expect_match(
     subset_source,
-    "message = list(invalidateVersion = geneUpdateIndicator())",
+    "message = make_clear_expr_payload(geneUpdateIndicator())",
     fixed = TRUE
   )
   expect_true(

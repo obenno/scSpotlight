@@ -210,7 +210,7 @@ mod_SubsetCells_server <- function(
         type = "clear_expr",
         # Invalidate the just-replaced Analysis epoch, including jobs that have
         # not yet reached the browser cache.
-        message = list(invalidateVersion = geneUpdateIndicator())
+        message = make_clear_expr_payload(geneUpdateIndicator())
       )
       increment_subset_refresh_indicators()
     })

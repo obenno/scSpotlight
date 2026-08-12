@@ -577,6 +577,7 @@ The manifest currently defines these browser message contracts:
 - `expr_ready`: feature-expression Arrow IPC notification with `exprFile`, `geneName`, `assay`, and `exprVersion`.
 - `reduction_cached`: request to rehydrate an already-cached reduction payload for the current `reductionVersion`.
 - `expr_cached`: request to rehydrate an already-cached expression payload for the current `exprVersion`.
+- `clear_expr`: object-only expression-state clear notification. Its optional numeric `invalidateVersion` rejects stale expression payloads at or below the replaced Analysis expression epoch; an absent field clears only the current browser expression state.
 - `transfer_error`: sanitized transfer failure notification with `payloadType`, `reasonCode`, `version`, and scoped context fields such as `reductionName`, `activeReduction`, `geneName`, `assay`, or `cols`.
 
 Browser payload file fields are resource basenames, not local paths. Resource-backed payloads include the session-scoped `resourcePrefix`, and the browser fetches files by combining that prefix with the metadata, reduction, or expression basename. Payloads must not use global `/data` paths or expose producer-local `filePath`, `output_file`, or `matrix_dir` fields.
@@ -1781,3 +1782,47 @@ Validation performed on August 12, 2026:
 - The runs use the same retained archive and version-2 timing schema as the
   August 11 baseline. Phase durations overlap and must not be added as a single
   critical-path total.
+
+### 39. Typed `clear_expr` invalidation contract
+
+Decision:
+
+- `clear_expr` always crosses the R-to-browser boundary as an object payload.
+- An ordinary feature clear sends `{}`. It clears feature selections, decoded
+  expression values, and browser expression-cache entries without advancing an
+  invalidated Analysis expression epoch.
+- An Analysis replacement sends `{ invalidateVersion: <previous expression
+  epoch> }`, where the version is a finite non-negative number. The browser
+  rejects `expr_ready` and expression `transfer_error` payloads at or below
+  that epoch.
+- Browser messages that are not an object, have an absent invalidation field,
+  or provide an invalid invalidation value normalize to the ordinary-clear
+  behavior. They cannot synthesize an invalidation barrier.
+
+Why:
+
+- Analysis replacement needs a numeric stale-payload barrier even when an old
+  expression request has not populated the browser cache yet.
+- Feature clearing needs no barrier because its Analysis remains valid and a
+  subsequent request in the same expression epoch must still be accepted.
+- A single documented shape prevents R producers from mixing empty strings,
+  lists, booleans, or implicit payload forms.
+
+Implementation notes:
+
+- `inst/protocol/browser-payload-contracts.json` is the source of truth for
+  the message shape and absence semantics.
+- `make_clear_expr_payload()` constructs all R producer payloads.
+  `mod_InputFeature.R` uses it for ordinary feature clears; `mod_SubsetCells.R`
+  and `mod_dataInput.R` use it with the prior `geneUpdateIndicator()` during
+  Analysis replacement.
+- `srcjs/index.js` validates the external `clear_expr` payload before calling
+  its internal expression-state reset. The internal full-object replacement
+  helper retains its separate cached-version invalidation behavior.
+
+Validation performed:
+
+- `tests/testthat/test-browser-payload-contracts.R` covers manifest semantics,
+  typed R producer usage, ordinary clearing, and numeric Analysis invalidation.
+- `srcjs/index.test.js` covers ordinary clear behavior, explicit stale-epoch
+  rejection, delayed stale application, and malformed payload normalization.

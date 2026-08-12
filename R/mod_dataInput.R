@@ -635,7 +635,7 @@ mod_dataInput_server <- function(
           session$sendCustomMessage(
             type = "clear_expr",
             # Invalidate queued expression work from the prior Analysis epoch.
-            message = list(invalidateVersion = geneUpdateIndicator())
+            message = make_clear_expr_payload(geneUpdateIndicator())
           )
           show_load_warnings(inputFileName())
         }
