@@ -1416,7 +1416,7 @@ decompress_matrix_input <- function(
     dataDir
   }
 
-  retainExtraction <- TRUE
+  retainExtraction <- isTRUE(return_extraction_details) || length(dataDir) > 0L
   result
 }
 

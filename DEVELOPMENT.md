@@ -1934,11 +1934,13 @@ Implementation notes:
   the legacy matrix-first path instead of being reclassified by another
   manifest in the archive.
 - `decompress_matrix_input()` removes an extraction root it created when
-  extraction or post-extraction discovery fails. After successful extraction,
-  the Explore boundary owns that root and removes it if manifest discovery,
-  validation, or backend accessor preparation rejects the upload. Successful
-  bundles retain their extraction root because their Parquet paths remain the
-  active backend until Session teardown removes the Session temp directory.
+  extraction fails or its default Analysis/benchmark contract finds no
+  recognized matrix, RDS, or Explore payload. When extraction details are
+  requested, the Explore boundary assumes ownership of the root and removes it
+  if manifest discovery, validation, or backend accessor preparation rejects
+  the upload. Successful bundles retain their extraction root because their
+  Parquet paths remain the active backend until Session teardown removes the
+  Session temp directory.
 - `mod_dataInput_server()` returns before applying state or advancing transfer
   indicators after a rejected Explore input and explicitly hides the full-screen
   waiter. Raw warning rendering remains limited to Analysis Mode. Analysis Mode
@@ -1955,14 +1957,17 @@ Implementation notes:
   roots while successful bundles retain their backing files, and covers the
   successful Analysis Mode publication path shared by the refactored module
   block.
+- `tests/testthat/test-bundle-archive.R` additionally verifies that the default
+  decompression contract preserves its empty result for an unrecognized archive
+  while releasing the generated extraction root.
 
 Validation performed on August 13, 2026:
 
 - `pixi run Rscript -e "devtools::test(filter = 'explore-load-errors',
   stop_on_failure = TRUE)"` passed 205 assertions without warnings.
 - The adjacent Explore archive, bundle loader, bundle validation, and Explore UI
-  regression set passed 325 assertions without testthat warnings.
-- `pixi run Rscript -e "devtools::test()"` passed 1,108 assertions with the same
+  regression set passed 327 assertions without testthat warnings.
+- `pixi run Rscript -e "devtools::test()"` passed 1,110 assertions with the same
   40 existing small-fixture/library warnings.
 - `pixi run test-js` passed all 15 JavaScript test files and 155 tests.
 - `pixi run r-check` completed with 0 errors and 0 warnings. Its 6 notes are the

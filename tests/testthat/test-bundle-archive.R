@@ -80,6 +80,48 @@ test_that("create_bundle_archive preserves bundle paths across directories", {
   expect_true(file.exists(file.path(extract_dir, "bundle", "README.txt")))
 })
 
+test_that("decompress_matrix_input removes unrecognized default extractions", {
+  skip_if_not_installed("zip")
+
+  decompress_matrix_input <- getFromNamespace(
+    "decompress_matrix_input",
+    "scSpotlight"
+  )
+
+  root_dir <- tempfile("unrecognized_archive_")
+  dir.create(root_dir)
+  on.exit(unlink(root_dir, recursive = TRUE, force = TRUE), add = TRUE)
+
+  source_dir <- file.path(root_dir, "source")
+  dir.create(source_dir)
+  writeLines(
+    "not a supported Dataset Artifact",
+    file.path(source_dir, "README.txt")
+  )
+
+  archive_file <- file.path(root_dir, "unrecognized.zip")
+  old_wd <- getwd()
+  on.exit(setwd(old_wd), add = TRUE)
+  setwd(source_dir)
+  zip::zipr(archive_file, "README.txt")
+
+  temp_root <- file.path(root_dir, "extract")
+  result <- decompress_matrix_input(
+    basename(archive_file),
+    archive_file,
+    temp_root = temp_root
+  )
+  extraction_roots <- list.files(
+    temp_root,
+    pattern = "^matrixDir",
+    full.names = TRUE,
+    all.files = TRUE
+  )
+
+  expect_identical(result, character())
+  expect_identical(extraction_roots, character())
+})
+
 test_that("convert_to_bpcells_bundle writes relative output beside caller cwd", {
   skip_if_not_installed("zip")
   skip_if_not_installed("BPCells")
