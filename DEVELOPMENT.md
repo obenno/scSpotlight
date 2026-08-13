@@ -1885,3 +1885,86 @@ Validation performed:
   small-fixture and underlying-library warnings.
 - `pixi run build-js` completed successfully and regenerated
   `inst/app/www/index.js` plus `inst/app/www/index.js.map`.
+
+### 41. Explore load failures have a sanitized input boundary
+
+Decision:
+
+- Explore Mode archive suffix, decompression, manifest discovery, Parquet schema,
+  canonical index, reduction, expression-block, and bundle-open failures are
+  handled at the file-input boundary before they can become Shiny errors.
+- Unsupported file names receive a stable message explaining that Explore Mode
+  requires `.explore-parquet.zip`. A manifest with one explicit, well-formed
+  alternate `bundle_type` receives a stable unsupported-bundle message. Archives
+  that have the supported suffix but cannot be opened, including missing or
+  malformed manifests and archives with multiple unsupported/malformed manifest
+  candidates, receive a separate stable message describing an incomplete or
+  damaged archive and recommending creation of a new Explore bundle.
+- Browser-visible waiter text and notifications never include local paths, raw
+  DuckDB/Arrow conditions, stack traces, or validation implementation details.
+- The server log retains the input path, condition classes, and full raw
+  condition message for diagnosis. Raw warnings are also logged even when a
+  later validation error rejects the archive, while successful loads expose
+  only one generic warning notification. Low-level validation helpers and
+  rejection criteria remain unchanged.
+
+Why:
+
+- Explore validation intentionally includes precise file and schema details for
+  maintainers, but uploaded archives are untrusted and those details can reveal
+  server-local extraction paths or library internals if allowed to propagate
+  through Shiny.
+- One boundary keeps public error wording stable without weakening validation or
+  duplicating path-redaction logic across every bundle helper.
+
+Implementation notes:
+
+- `load_explore_input_file()` in `R/mod_dataInput.R` owns the boundary and keeps
+  the existing startup timing hooks around extraction, bundle location, and
+  validation. It captures and muffles raw warnings, logs them server-side, and
+  returns the validated bundle together with precomputed assay/default-assay
+  state so those accessors cannot fail after Session state publication.
+- Explore loading asks `decompress_matrix_input()` for both its legacy-selected
+  data path and the extraction root. Matrix-first dispatch, supported-root
+  selection, malformed-manifest rejection, and the helper's default
+  Analysis/benchmark return value remain unchanged. Only when legacy discovery
+  selects no recognized input does the boundary inspect one manifest candidate
+  to distinguish an explicit unsupported type from invalid or ambiguous input.
+  An archive that also contains a discoverable matrix therefore continues down
+  the legacy matrix-first path instead of being reclassified by another
+  manifest in the archive.
+- `decompress_matrix_input()` removes an extraction root it created when
+  extraction or post-extraction discovery fails. After successful extraction,
+  the Explore boundary owns that root and removes it if manifest discovery,
+  validation, or backend accessor preparation rejects the upload. Successful
+  bundles retain their extraction root because their Parquet paths remain the
+  active backend until Session teardown removes the Session temp directory.
+- `mod_dataInput_server()` returns before applying state or advancing transfer
+  indicators after a rejected Explore input and explicitly hides the full-screen
+  waiter. Raw warning rendering remains limited to Analysis Mode. Analysis Mode
+  continues through `load_analysis_input_file()` unchanged.
+- `tests/testthat/test-explore-load-errors.R` uses path-like private fixture
+  locations and covers unsupported suffixes and bundle types, missing,
+  malformed, extra, and multiple manifests, mixed matrix/manifest archives,
+  missing required files, invalid schemas, indexes and assay metadata, missing
+  reductions and expression blocks, corrupt ZIP/Parquet input, warning-only
+  loads, and warning-then-error loads. It asserts generic browser messages while
+  checking that server diagnostics retain the original path, warning, and
+  failure reason, verifies rejected module loads do not replace active Session
+  state, verifies rejected and partially extracted archives release their temp
+  roots while successful bundles retain their backing files, and covers the
+  successful Analysis Mode publication path shared by the refactored module
+  block.
+
+Validation performed on August 13, 2026:
+
+- `pixi run Rscript -e "devtools::test(filter = 'explore-load-errors',
+  stop_on_failure = TRUE)"` passed 205 assertions without warnings.
+- The adjacent Explore archive, bundle loader, bundle validation, and Explore UI
+  regression set passed 325 assertions without testthat warnings.
+- `pixi run Rscript -e "devtools::test()"` passed 1,108 assertions with the same
+  40 existing small-fixture/library warnings.
+- `pixi run test-js` passed all 15 JavaScript test files and 155 tests.
+- `pixi run r-check` completed with 0 errors and 0 warnings. Its 6 notes are the
+  existing optional-package/import-count, hidden-file, installed-size,
+  timestamp, top-level-file, and generated Rd line-width notes.

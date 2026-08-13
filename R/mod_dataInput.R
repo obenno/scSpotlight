@@ -347,6 +347,256 @@ load_analysis_input_file <- function(
   finalize_analysis_object(seuratObj)
 }
 
+#' Explore Mode input loading helper
+#'
+#' @noRd
+find_explore_manifest_candidate_root <- function(path) {
+  if (!is.character(path) || length(path) != 1L || !nzchar(path)) {
+    return(NULL)
+  }
+
+  if (file.exists(path) && identical(basename(path), "manifest.json")) {
+    manifest_paths <- path
+  } else if (dir.exists(path)) {
+    manifest_paths <- list.files(
+      path,
+      pattern = "^manifest\\.json$",
+      recursive = TRUE,
+      full.names = TRUE
+    )
+  } else {
+    return(NULL)
+  }
+
+  if (!length(manifest_paths)) {
+    return(NULL)
+  }
+  if (length(manifest_paths) != 1L) {
+    stop(
+      "Explore archive contains multiple manifest.json files: ",
+      paste(manifest_paths, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  normalizePath(dirname(manifest_paths[[1]]), winslash = "/", mustWork = TRUE)
+}
+
+#' @noRd
+load_explore_input_file <- function(
+  input_file,
+  input_name = basename(input_file),
+  temp_root = scspotlight_temp_root(),
+  status = function(...) NULL,
+  notify = function(...) NULL,
+  diagnostic = function(message) base::message(message),
+  session = NULL
+) {
+  unsupported_file_message <- paste(
+    "Explore Mode only supports files ending in .explore-parquet.zip.",
+    "Choose a scSpotlight Explore Parquet archive."
+  )
+  unsupported_archive_message <- paste(
+    "This Explore archive uses an unsupported bundle type.",
+    "Create it with a supported version of scSpotlight and try again."
+  )
+  invalid_archive_message <- paste(
+    "The Explore archive could not be opened. It may be incomplete or damaged.",
+    "Create a new scSpotlight Explore Parquet bundle and try again."
+  )
+  warning_message <- paste(
+    "The Explore archive loaded with warnings.",
+    "If data appears incomplete, create a new bundle or contact the server administrator."
+  )
+  show_public_error <- function(message) {
+    status(message)
+    notify(message, type = "error", duration = 8)
+    invisible(NULL)
+  }
+  input_path <- if (
+    is.character(input_file) && length(input_file) == 1L && nzchar(input_file)
+  ) {
+    input_file
+  } else {
+    "<invalid input path>"
+  }
+  extraction_root <- NULL
+  retain_extraction <- FALSE
+  on.exit(
+    {
+      if (
+        !retain_extraction &&
+          is.character(extraction_root) &&
+          length(extraction_root) == 1L &&
+          nzchar(extraction_root) &&
+          dir.exists(extraction_root)
+      ) {
+        try(
+          unlink(extraction_root, recursive = TRUE, force = TRUE),
+          silent = TRUE
+        )
+        if (dir.exists(extraction_root)) {
+          try(
+            diagnostic(paste0(
+              "Explore bundle cleanup failed for '",
+              input_path,
+              "': ",
+              extraction_root
+            )),
+            silent = TRUE
+          )
+        }
+      }
+    },
+    add = TRUE
+  )
+
+  if (
+    !is.character(input_name) ||
+      length(input_name) != 1L ||
+      !grepl(scspotlight_explore_archive_pattern, input_name)
+  ) {
+    show_public_error(unsupported_file_message)
+    return(NULL)
+  }
+
+  warnings <- character()
+  failure_kind <- "invalid_archive"
+  result <- tryCatch(
+    withCallingHandlers(
+      {
+        status("Decompressing Explore bundle...")
+        extracted <- decompress_matrix_input(
+          input_name,
+          input_file,
+          temp_root = temp_root,
+          return_extraction_details = TRUE,
+          timing = function(
+            phase,
+            state,
+            elapsed_ms = NULL,
+            details = list()
+          ) {
+            scspotlight_benchmark_timing_event(
+              session,
+              phase = phase,
+              state = state,
+              elapsed_ms = elapsed_ms,
+              details = details
+            )
+          }
+        )
+        extraction_root <- extracted$extraction_root
+        bundle_root <- scspotlight_benchmark_timing_measure(
+          session,
+          phase = "server_bundle_locate",
+          find_scspotlight_explore_bundle_root(extracted$data_dir)
+        )
+        if (!isTruthy(bundle_root) && !length(extracted$data_dir)) {
+          bundle_root <- find_explore_manifest_candidate_root(
+            extracted$extraction_root
+          )
+        }
+        if (!isTruthy(bundle_root)) {
+          stop(
+            "Explore bundle manifest not found after extraction: ",
+            extracted$extraction_root,
+            call. = FALSE
+          )
+        }
+        manifest <- read_scspotlight_explore_manifest(bundle_root)
+        if (!is.list(manifest)) {
+          stop(
+            "Explore bundle manifest is missing or invalid: ",
+            bundle_root,
+            call. = FALSE
+          )
+        }
+        bundle_type <- manifest$bundle_type
+        explicit_bundle_type <- is.character(bundle_type) &&
+          length(bundle_type) == 1L &&
+          !is.na(bundle_type) &&
+          nzchar(bundle_type) &&
+          identical(bundle_type, trimws(bundle_type))
+        if (
+          explicit_bundle_type &&
+            !identical(bundle_type, scspotlight_explore_bundle_type)
+        ) {
+          failure_kind <- "unsupported_archive"
+          stop(
+            "Unsupported Explore bundle type: ",
+            bundle_type,
+            call. = FALSE
+          )
+        }
+        if (!identical(bundle_type, scspotlight_explore_bundle_type)) {
+          stop(
+            "Explore bundle manifest has a missing or malformed bundle_type: ",
+            file.path(bundle_root, "manifest.json"),
+            call. = FALSE
+          )
+        }
+
+        status("Reading Explore bundle...")
+        bundle <- scspotlight_benchmark_timing_measure(
+          session,
+          phase = "server_bundle_open_and_validate",
+          read_scspotlight_explore_bundle(bundle_root)
+        )
+        list(
+          object = bundle,
+          assays = get_backend_assays(bundle),
+          default_assay = get_backend_default_assay(bundle)
+        )
+      },
+      warning = function(warning) {
+        warning_text <- conditionMessage(warning)
+        if (!warning_text %in% warnings) {
+          warnings <<- c(warnings, warning_text)
+          try(
+            diagnostic(paste0(
+              "Explore bundle load warning for '",
+              input_path,
+              "': ",
+              warning_text
+            )),
+            silent = TRUE
+          )
+        }
+        invokeRestart("muffleWarning")
+      }
+    ),
+    error = function(error) {
+      diagnostic_message <- paste0(
+        "Explore bundle load failed for '",
+        input_path,
+        "' [",
+        paste(class(error), collapse = "/"),
+        "]: ",
+        conditionMessage(error)
+      )
+      try(diagnostic(diagnostic_message), silent = TRUE)
+      show_public_error(
+        if (identical(failure_kind, "unsupported_archive")) {
+          unsupported_archive_message
+        } else {
+          invalid_archive_message
+        }
+      )
+      NULL
+    }
+  )
+
+  if (!is.null(result) && length(warnings)) {
+    notify(warning_message, type = "warning", duration = 12)
+  }
+  if (!is.null(result)) {
+    retain_extraction <- TRUE
+  }
+
+  result
+}
+
 #' dataInput Server Functions
 #'
 #' @import Seurat
@@ -392,11 +642,6 @@ mod_dataInput_server <- function(
       )
     }
     loadWarnings <- reactiveVal(character(0))
-
-    analysis_explore_bundle_message <- paste(
-      "This file is an Explore Parquet bundle, which is read-only and can only be opened in Explore Mode.",
-      "Restart scSpotlight with runningMode = 'explore' to open it, or choose a Seurat RDS, h5ad, BPCells bundle, or 10x matrix archive for Analysis Mode."
-    )
 
     capture_load_warnings <- function(expr) {
       result <- capture_operation_warnings(expr)
@@ -502,68 +747,38 @@ mod_dataInput_server <- function(
         waiter_show(html = waiting_screen(), color = "var(--bs-primary)")
         ## Init seuratObj
         seuratObj <- NULL
+        backendAssays <- NULL
+        backendDefaultAssay <- NULL
+        update_load_status <- function(message) {
+          waiter_update(html = waiting_screen(message))
+        }
+        notify_load <- function(ui, type = "default", duration = NULL) {
+          showNotification(
+            ui = ui,
+            action = NULL,
+            duration = duration,
+            closeButton = TRUE,
+            type = type,
+            session = session
+          )
+        }
         if (identical(runningMode, "explore")) {
-          if (
-            !str_detect(
-              inputFileName(),
-              scspotlight_explore_archive_pattern
-            )
-          ) {
-            waiter_update(
-              html = waiting_screen(
-                "Explore Mode only supports .explore-parquet.zip files."
-              )
-            )
-            stop(
-              "Explore Mode only supports .explore-parquet.zip files",
-              call. = FALSE
-            )
+          exploreLoad <- load_explore_input_file(
+            input_file = inputFilePath(),
+            input_name = inputFileName(),
+            temp_root = session$userData$tempDir,
+            status = update_load_status,
+            notify = notify_load,
+            session = session
+          )
+          if (!isTruthy(exploreLoad)) {
+            loadWarnings(character(0))
+            waiter::waiter_hide()
+            return(invisible(NULL))
           }
-
-          waiter_update(
-            html = waiting_screen("Decompressing Explore bundle...")
-          )
-          dataDir <- capture_load_warnings(
-            decompress_matrix_input(
-              inputFileName(),
-              inputFilePath(),
-              temp_root = session$userData$tempDir,
-              timing = function(phase, state, elapsed_ms = NULL, details = list()) {
-                scspotlight_benchmark_timing_event(
-                  session,
-                  phase = phase,
-                  state = state,
-                  elapsed_ms = elapsed_ms,
-                  details = details
-                )
-              }
-            )
-          )
-          exploreBundleRoot <- scspotlight_benchmark_timing_measure(
-            session,
-            phase = "server_bundle_locate",
-            find_scspotlight_explore_bundle_root(dataDir)
-          )
-          if (!isTruthy(exploreBundleRoot)) {
-            waiter_update(
-              html = waiting_screen(
-                "Explore Parquet archive is missing a valid manifest."
-              )
-            )
-            stop(
-              "Explore Parquet archive is missing a valid manifest",
-              call. = FALSE
-            )
-          }
-
-          waiter_update(html = waiting_screen("Reading Explore bundle..."))
-          seuratObj <- scspotlight_benchmark_timing_measure(
-            session,
-            phase = "server_bundle_open_and_validate",
-            capture_load_warnings(
-              read_scspotlight_explore_bundle(exploreBundleRoot)
-            )
-          )
+          seuratObj <- exploreLoad$object
+          backendAssays <- exploreLoad$assays
+          backendDefaultAssay <- exploreLoad$default_assay
         } else {
           seuratObj <- capture_load_warnings(
             load_analysis_input_file(
@@ -574,19 +789,8 @@ mod_dataInput_server <- function(
               nDims = clusterDims(),
               resolution = clusterResolution(),
               temp_root = session$userData$backendDir,
-              status = function(message) {
-                waiter_update(html = waiting_screen(message))
-              },
-              notify = function(ui, type = "default", duration = NULL) {
-                showNotification(
-                  ui = ui,
-                  action = NULL,
-                  duration = duration,
-                  closeButton = TRUE,
-                  type = type,
-                  session = session
-                )
-              }
+              status = update_load_status,
+              notify = notify_load
             )
           )
         }
@@ -612,19 +816,15 @@ mod_dataInput_server <- function(
             )
             return(invisible(NULL))
           }
+          if (identical(runningMode, "analysis")) {
+            backendAssays <- get_backend_assays(seuratObj)
+            backendDefaultAssay <- get_backend_default_assay(seuratObj)
+          }
           updateSelectizeInput(
             session = session,
             inputId = "selectAssay",
-            choices = ifelse(
-              isTruthy(seuratObj),
-              get_backend_assays(seuratObj),
-              ""
-            ),
-            selected = ifelse(
-              isTruthy(seuratObj),
-              get_backend_default_assay(seuratObj),
-              NULL
-            )
+            choices = ifelse(isTruthy(seuratObj), backendAssays, ""),
+            selected = ifelse(isTruthy(seuratObj), backendDefaultAssay, NULL)
           )
           if (is.function(resetAnalysisUi)) {
             resetAnalysisUi()
@@ -637,7 +837,9 @@ mod_dataInput_server <- function(
             # Invalidate queued expression work from the prior Analysis epoch.
             message = make_clear_expr_payload(geneUpdateIndicator())
           )
-          show_load_warnings(inputFileName())
+          if (identical(runningMode, "analysis")) {
+            show_load_warnings(inputFileName())
+          }
         }
 
         scspotlight_benchmark_timing_event(
@@ -1101,7 +1303,8 @@ decompress_matrix_input <- function(
   fileName,
   filePath,
   temp_root = scspotlight_temp_root(),
-  timing = NULL
+  timing = NULL,
+  return_extraction_details = FALSE
 ) {
   time_phase <- function(phase, expr, details = list()) {
     if (!is.function(timing)) {
@@ -1132,6 +1335,23 @@ decompress_matrix_input <- function(
       }
     )
   }
+
+  tmpMatrixDir <- NULL
+  retainExtraction <- FALSE
+  on.exit(
+    {
+      if (
+        !retainExtraction &&
+          is.character(tmpMatrixDir) &&
+          length(tmpMatrixDir) == 1L &&
+          nzchar(tmpMatrixDir) &&
+          dir.exists(tmpMatrixDir)
+      ) {
+        try(unlink(tmpMatrixDir, recursive = TRUE, force = TRUE), silent = TRUE)
+      }
+    },
+    add = TRUE
+  )
 
   dir.create(temp_root, recursive = TRUE, showWarnings = FALSE)
   if (
@@ -1174,20 +1394,30 @@ decompress_matrix_input <- function(
   } else {
     explore_bundle_root <- find_scspotlight_explore_bundle_root(tmpMatrixDir)
     if (!is.null(explore_bundle_root)) {
-      return(explore_bundle_root)
+      dataDir <- explore_bundle_root
+    } else {
+      ## BPCells Rds compressed tarball
+      subpath <- dir(
+        tmpMatrixDir,
+        recursive = TRUE,
+        pattern = "*.[Rr][Dd][Ss]$"
+      ) %>%
+        dirname()
+      dataDir <- file.path(tmpMatrixDir, subpath)
     }
-
-    ## BPCells Rds compressed tarball
-    subpath <- dir(
-      tmpMatrixDir,
-      recursive = TRUE,
-      pattern = "*.[Rr][Dd][Ss]$"
-    ) %>%
-      dirname()
-    dataDir <- file.path(tmpMatrixDir, subpath)
   }
 
-  return(dataDir)
+  result <- if (isTRUE(return_extraction_details)) {
+    list(
+      data_dir = dataDir,
+      extraction_root = tmpMatrixDir
+    )
+  } else {
+    dataDir
+  }
+
+  retainExtraction <- TRUE
+  result
 }
 
 #' standard_process_seurat
