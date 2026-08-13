@@ -20,6 +20,22 @@ Use the canonical labels `needs-triage`, `needs-info`, `ready-for-agent`, `ready
 
 This is a single-context repo using root `CONTEXT.md` and `docs/adr/`. See `docs/agents/domain.md`.
 
+### Skill routing
+
+When a request matches an available skill, invoke that skill before using general
+tools or answering directly. In particular:
+
+- Product ideas and brainstorming: `office-hours`.
+- Bugs, errors, and regressions: `investigate`.
+- Shipping, pushing, deployment, and pull requests: `ship`.
+- Application QA and bug finding: `qa`.
+- Branch, diff, and pull-request review: `review`.
+- Post-ship documentation synchronization: `document-release`.
+- Architecture and execution-plan review: `plan-eng-review`.
+- Visual QA and design polish: `design-review`.
+- Codebase health assessment: `health`.
+- Session checkpoints and resumption: `checkpoint`.
+
 ---
 
 ## Non-Negotiable Constraints
