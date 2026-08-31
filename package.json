@@ -15,6 +15,7 @@
     "test:scatter-model": "vitest run srcjs/modules/scatter/scatterModel.test.js",
     "install:e2e-browser": "playwright install chromium",
     "test:e2e": "npm run build && playwright test",
+    "test:e2e:llm": "playwright test -c playwright.llm.config.js",
     "benchmark:explore-1m": "Rscript benchmarks/run_explore_1m_benchmark.R && npm run build && playwright test -c playwright.benchmark.config.js",
     "benchmark:real-h5ad": "Rscript benchmarks/run_real_h5ad_processing_benchmark.R && npm run build && playwright test -c playwright.benchmark.config.js",
     "benchmark:real-explore": "Rscript benchmarks/run_real_explore_processing_benchmark.R && npm run build && playwright test -c playwright.benchmark.config.js"

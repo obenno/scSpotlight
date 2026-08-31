@@ -17,6 +17,12 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: [],
-    exclude: [...configDefaults.exclude, 'tests/e2e/**', 'benchmarks/**'],
+    exclude: [
+      ...configDefaults.exclude,
+      '.tmp/**',
+      '.review-tmp/**',
+      'tests/e2e/**',
+      'benchmarks/**',
+    ],
   },
 });

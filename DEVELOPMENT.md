@@ -1973,3 +1973,78 @@ Validation performed on August 13, 2026:
 - `pixi run r-check` completed with 0 errors and 0 warnings. Its 6 notes are the
   existing optional-package/import-count, hidden-file, installed-size,
   timestamp, top-level-file, and generated Rd line-width notes.
+
+### 42. Archive, assistant, transfer, and evidence hardening
+
+Decision:
+
+- Compressed Analysis archives are rejected before extraction when their entries
+  are unsafe, including traversal, links, duplicate PAX metadata, or GNU sparse
+  TAR metadata. Failed extraction removes any partial output.
+- LLM requests bind prompts and tools to one request snapshot. Assistant output
+  is rendered as escaped literal text, provider failures use stable generic
+  messages, and stale completions are discarded.
+- Reduction transfers carry a positive `transferAttemptId`. The server uses it
+  in IPC filenames and notification IDs; the browser uses it to reject an older
+  same-version completion after a newer attempt, cached selection, or cache miss.
+- Benchmark evidence is accepted only when a schema-2 representative artifact,
+  clean current revision, matching execution checkout and host environment,
+  environment/lockfile fingerprint, raw RSS gates, and passed evidence statuses
+  agree. Historical evidence remains inspectable but cannot satisfy the
+  current-evidence gate.
+
+Why:
+
+- Archive headers and asynchronous transfer completion order are untrusted input
+  boundaries.
+- LLM text, metadata labels, selected feature labels, and DEG labels can carry
+  instructions or sensitive identifiers and must never become executable output
+  or broad data disclosure.
+- A cached user selection must not be overwritten by a late background transfer.
+- Raw historical benchmark JSON cannot demonstrate current behavior after source,
+  dependency, or environment changes.
+
+Implementation notes:
+
+- `R/mod_dataInput.R` uses bounded archive preflight, internal TAR extraction
+  except where GNU base-256 fields require external `tar`, and cleanup on every
+  failed extraction path. `tests/testthat/test-bundle-archive.R` covers crafted
+  ZIP/TAR traversal, symlink, PAX, sparse, base-256, and cleanup cases.
+- `R/fct_llm_context.R` intersects selected features with the backend catalog,
+  filters instruction-like labels, bounds Explore metadata scans to projected
+  Arrow record batches, and keeps category-summary disclosure all-or-nothing.
+  `R/mod_LLMChat.R` owns escaped chat responses, snapshot lifecycle, and generic
+  user-visible failures. The focused Chromium fixture verifies that Markdown and
+  HTML remain literal text.
+- `R/mod_UpdateReduction.R`, `R/fct_backend_transfer_adapter.R`,
+  `inst/protocol/browser-payload-contracts.json`, and `srcjs/index.js` implement
+  attempt-scoped reduction messages. `reductions_ready` prefers the live dropdown
+  selection, while inactive prefetch errors log a warning without failing the
+  active scatter.
+- `dev/check_package.R` checks a built source archive from an isolated staging
+  tree. `dev/check_benchmark_evidence.R` applies the evidence gate, and
+  `.github/workflows/pr-quality.yaml` runs R, JavaScript, package-check, general
+  Playwright, and optional-LLM/escaped-output paths for pull requests to `dev`.
+- Benchmark runners load the same checkout that their provenance names and reject
+  an `SCSPOTLIGHT_BENCHMARK_SOURCE_ROOT` pointing elsewhere. The evidence gate
+  also compares OS, CPU model, memory, and core count with the active host.
+- `dev/check_benchmark_evidence.R` rejects the retained, untracked
+  `benchmarks/evidence/real-h5ad-2026-08-10.json` record when it is supplied
+  explicitly, rather than treating it as current performance evidence.
+
+Validation performed on September 1, 2026:
+
+- Focused archive/benchmark and LLM context/run-app-mode test groups passed.
+- Full R suite: 1,327 passing assertions, 40 expected small-fixture/library
+  warnings, and one expected skip for benchmark assets intentionally excluded
+  from built source archives.
+- JavaScript: 15 Vitest files and 159 tests passed.
+- General Analysis Mode browser regression: one Playwright test passed.
+- LLM browser fixture: one Chromium test passed.
+- Optional LLM profile verification passed for `ellmer`, `later`, and
+  `shinychat`.
+- The retained historical benchmark record was rejected when supplied to
+  `dev/check_benchmark_evidence.R`, as expected for an old schema, dirty/stale
+  revision, and incomplete environment provenance.
+- Isolated `r-check` completed with 0 errors and 0 warnings, plus the existing
+  six package-maintenance NOTES.

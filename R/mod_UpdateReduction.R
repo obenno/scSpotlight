@@ -22,6 +22,15 @@ mod_UpdateReduction_ui <- function(id) {
   )
 }
 
+reduction_transfer_notification_id <- function(transfer_attempt_id) {
+  transfer_attempt_id <- suppressWarnings(as.integer(transfer_attempt_id))
+  if (is.na(transfer_attempt_id) || transfer_attempt_id < 1L) {
+    stop("transfer_attempt_id must be a positive integer.", call. = FALSE)
+  }
+
+  paste0("update_reduction_notification_", transfer_attempt_id)
+}
+
 #' UpdateReduction Server Functions
 #'
 #' @noRd
@@ -39,6 +48,12 @@ mod_UpdateReduction_server <- function(
     ns <- session$ns
     prefetchingReductionVersion <- reactiveVal(NULL)
     prefetchingReductionNames <- reactiveVal(character(0))
+    reduction_transfer_attempt <- 0L
+
+    next_reduction_transfer_attempt <- function() {
+      reduction_transfer_attempt <<- reduction_transfer_attempt + 1L
+      reduction_transfer_attempt
+    }
 
     observeEvent(
       reductionUpdateIndicator(),
@@ -138,6 +153,8 @@ mod_UpdateReduction_server <- function(
     ##}, ignoreNULL = TRUE)
 
     invoke_reduction_transfer <- function(reduction_name) {
+      transferAttemptId <- next_reduction_transfer_attempt()
+      notification_id <- reduction_transfer_notification_id(transferAttemptId)
       showNotification(
         ui = div(
           div(
@@ -151,7 +168,7 @@ mod_UpdateReduction_server <- function(
         duration = NULL,
         closeButton = FALSE,
         type = "default",
-        id = "update_reduction_notification",
+        id = notification_id,
         session = session
       )
       message("Transferring reductionData...")
@@ -163,7 +180,8 @@ mod_UpdateReduction_server <- function(
         reduction_name = reduction_name,
         dir_path = dirPath,
         reduction_version = reductionVersion,
-        resource_prefix = session$userData$dataResourcePrefix
+        resource_prefix = session$userData$dataResourcePrefix,
+        transfer_attempt_id = transferAttemptId
       )
       reduction_promise <- future_promise({
         capture_operation_warnings(write_backend_reduction_transfer(transfer))
@@ -186,9 +204,12 @@ mod_UpdateReduction_server <- function(
             type = "transfer_error",
             message = make_transfer_error_payload(
               "reduction",
-              "write_failed",
-              reductionVersion,
-              list(reductionName = reduction_name),
+                "write_failed",
+                reductionVersion,
+                list(
+                  reductionName = reduction_name,
+                  transferAttemptId = transferAttemptId
+                ),
               resource_prefix = session$userData$dataResourcePrefix
             )
           )
@@ -206,7 +227,7 @@ mod_UpdateReduction_server <- function(
         reduction_promise,
         function() {
           removeNotification(
-            id = "update_reduction_notification",
+            id = notification_id,
             session = session
           )
         }
@@ -218,6 +239,8 @@ mod_UpdateReduction_server <- function(
       active_reduction_name
     ) {
       req(length(reduction_names) > 0)
+      transferAttemptId <- next_reduction_transfer_attempt()
+      notification_id <- reduction_transfer_notification_id(transferAttemptId)
       showNotification(
         ui = div(
           div(
@@ -231,7 +254,7 @@ mod_UpdateReduction_server <- function(
         duration = NULL,
         closeButton = FALSE,
         type = "default",
-        id = "update_reduction_notification",
+        id = notification_id,
         session = session
       )
       message("Transferring all reductionData...")
@@ -254,10 +277,11 @@ mod_UpdateReduction_server <- function(
       reduction_transfers <- lapply(reduction_names, function(reduction_name) {
         prepare_backend_reduction_transfer(
           seuratObj(),
-          reduction_name = reduction_name,
-          dir_path = dirPath,
-          reduction_version = reductionVersion,
-          resource_prefix = session$userData$dataResourcePrefix
+            reduction_name = reduction_name,
+            dir_path = dirPath,
+            reduction_version = reductionVersion,
+            resource_prefix = session$userData$dataResourcePrefix,
+            transfer_attempt_id = transferAttemptId
         )
       })
       names(reduction_transfers) <- reduction_names
@@ -283,6 +307,7 @@ mod_UpdateReduction_server <- function(
               reductions = result$value,
               activeReduction = active_reduction_name,
               reductionVersion = reductionVersion,
+              transferAttemptId = transferAttemptId,
               resourcePrefix = session$userData$dataResourcePrefix
             )
           )
@@ -330,7 +355,10 @@ mod_UpdateReduction_server <- function(
               "reductions",
               "write_failed",
               reductionVersion,
-              list(activeReduction = active_reduction_name),
+              list(
+                activeReduction = active_reduction_name,
+                transferAttemptId = transferAttemptId
+              ),
               resource_prefix = session$userData$dataResourcePrefix
             )
           )
@@ -350,7 +378,7 @@ mod_UpdateReduction_server <- function(
           prefetchingReductionVersion(NULL)
           prefetchingReductionNames(character(0))
           removeNotification(
-            id = "update_reduction_notification",
+            id = notification_id,
             session = session
           )
         }

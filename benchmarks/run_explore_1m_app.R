@@ -1,6 +1,7 @@
 source(file.path("benchmarks", "explore_1m_helpers.R"))
 
-devtools::load_all(".", quiet = TRUE, export_all = FALSE)
+source_root <- benchmark_execution_source_root()
+devtools::load_all(source_root, quiet = TRUE, export_all = FALSE)
 
 port <- suppressWarnings(as.integer(Sys.getenv("SCSPOTLIGHT_BENCHMARK_PORT", "8900")))
 if (is.na(port) || port < 1L || port > 65535L) {

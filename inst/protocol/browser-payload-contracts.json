@@ -15,15 +15,15 @@
       "ipc_contract": "meta_patch_ready"
     },
     "reduction_ready": {
-      "required_fields": ["reductionFile", "reductionName", "reductionVersion", "resourcePrefix"],
+      "required_fields": ["reductionFile", "reductionName", "reductionVersion", "transferAttemptId", "resourcePrefix"],
       "file_fields": ["reductionFile"],
       "version_field": "reductionVersion",
       "cache_family": "reduction",
       "ipc_contract": "reduction_ready"
     },
     "reductions_ready": {
-      "required_fields": ["reductions", "activeReduction", "reductionVersion", "resourcePrefix"],
-      "entry_required_fields": ["reductionFile", "reductionName", "reductionVersion", "resourcePrefix"],
+      "required_fields": ["reductions", "activeReduction", "reductionVersion", "transferAttemptId", "resourcePrefix"],
+      "entry_required_fields": ["reductionFile", "reductionName", "reductionVersion", "transferAttemptId", "resourcePrefix"],
       "file_fields": ["reductionFile"],
       "version_field": "reductionVersion",
       "cache_family": "reduction",
@@ -67,6 +67,7 @@
       "required_fields": ["payloadType", "reasonCode", "version"],
       "optional_fields": [
         "resourcePrefix",
+        "transferAttemptId",
         "reductionName",
         "activeReduction",
         "geneName",

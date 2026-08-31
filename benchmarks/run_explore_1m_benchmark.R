@@ -1,6 +1,7 @@
 source(file.path("benchmarks", "explore_1m_helpers.R"))
 
-devtools::load_all(".", quiet = TRUE, export_all = FALSE)
+source_root <- benchmark_execution_source_root()
+devtools::load_all(source_root, quiet = TRUE, export_all = FALSE)
 
 read_explore_bundle <- getFromNamespace(
   "read_scspotlight_explore_bundle",
@@ -94,7 +95,8 @@ metadata <- benchmark_transfer(
     prepare_metadata_transfer(
       bundle,
       dir_path = transfer_dir,
-      meta_version = iteration
+      meta_version = iteration,
+      resource_prefix = "benchmark-session"
     )
   }
 )
@@ -107,7 +109,9 @@ reduction <- benchmark_transfer(
       bundle,
       reduction_name = "umap",
       dir_path = transfer_dir,
-      reduction_version = iteration
+      reduction_version = iteration,
+      resource_prefix = "benchmark-session",
+      transfer_attempt_id = iteration
     )
   }
 )
@@ -121,16 +125,17 @@ expression <- benchmark_transfer(
       assay = "RNA",
       feature = "BENCHMARK_GENE",
       dir_path = transfer_dir,
-      expr_version = iteration
+      expr_version = iteration,
+      resource_prefix = "benchmark-session"
     )
   }
 )
 
 payload <- list(
-  schema_version = 1L,
+  schema_version = 2L,
   command = "pixi run benchmark-explore-1m",
   provenance = c(
-    benchmark_git_provenance(),
+    benchmark_git_provenance(source_root),
     list(
     fixture_generator = "benchmarks/explore_1m_helpers.R",
     artifact_kind = "synthetic_structural_workload",
@@ -147,7 +152,7 @@ payload <- list(
     reduction = "umap",
     storage = "Explore Parquet bundle with zstd-compressed Parquet files"
   ),
-  environment = benchmark_environment(),
+  environment = benchmark_environment(source_root),
   artifact = list(
     archive_bytes = unname(file.info(paths$archive)$size),
     archive_md5 = benchmark_file_md5(paths$archive),

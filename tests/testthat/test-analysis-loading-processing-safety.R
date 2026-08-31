@@ -284,6 +284,10 @@ test_that("compressed Analysis archives validate unsafe entries before extractio
 
   unsafe_entry_needles <- c(
     "assert_safe_archive_entries",
+    "list_tar_archive_entries",
+    "type_flag",
+    "max_expanded_bytes",
+    "max_compression_ratio",
     "\\.\\.",
     "Windows drive",
     "UNC",
@@ -298,9 +302,23 @@ test_that("compressed Analysis archives validate unsafe entries before extractio
     )
   }
 
-  expect_true(
-    grepl("untar\\s*\\([^)]*list\\s*=\\s*TRUE", mod_source, perl = TRUE),
-    info = "tar archives must be listed and validated before extraction"
+  expect_match(
+    mod_source,
+    "extract_validated_tar_archive",
+    fixed = TRUE,
+    info = "validated tar archives must use the archive extractor boundary"
+  )
+  expect_match(
+    mod_source,
+    'tar = "internal"',
+    fixed = TRUE,
+    info = "ordinary validated tar archives must retain the internal extractor"
+  )
+  expect_match(
+    mod_source,
+    "uses_base256_numeric",
+    fixed = TRUE,
+    info = "base-256 numeric tar headers must select a compatible extractor"
   )
   expect_match(
     mod_source,

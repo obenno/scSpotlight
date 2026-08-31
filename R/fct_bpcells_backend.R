@@ -1270,6 +1270,22 @@ get_backend_metadata <- function(object, cols = NULL) {
 }
 
 #' @noRd
+get_backend_metadata_columns <- function(object) {
+  if (is_scspotlight_explore_bundle(object)) {
+    return(setdiff(
+      explore_parquet_columns(explore_bundle_metadata_path(object)),
+      ".scspotlight_cell_idx"
+    ))
+  }
+
+  if (is.data.frame(object)) {
+    return(colnames(object))
+  }
+
+  colnames(object[[]])
+}
+
+#' @noRd
 has_normalized_layer <- function(object, assay = NULL) {
   assay <- assay %||% DefaultAssay(object)
   data_layer <- tryCatch(

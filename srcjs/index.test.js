@@ -1802,6 +1802,9 @@ describe("browser message handlers", () => {
       ]);
     });
 
+    document.getElementById("updateReduction-reduction").innerHTML = `
+      <option value="pca" selected>pca</option>
+    `;
     testState.handlers.reductions_ready({
       reductionVersion: 201,
       activeReduction: "pca",
@@ -1883,6 +1886,159 @@ describe("browser message handlers", () => {
 
     expect(getPlotTransferError()).toBeNull();
     expect(Array.from(testState.reglInstance.origData.reductionData.X)).toEqual([203]);
+  });
+
+  it("rejects an older same-version reduction attempt after a newer attempt starts", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    const currentFetch = createDeferred();
+    arrowReader.fetchArrowIPCBuffer.mockImplementation((url) => {
+      if (url.includes("pca-attempt-2")) return currentFetch.promise;
+      throw new Error(`Older same-version attempt should not fetch: ${url}`);
+    });
+    arrowReader.decodeArrowIPC.mockImplementation((buffer) => ({
+      url: decodeLabelBuffer(buffer),
+    }));
+    arrowReader.getFloat32Column.mockImplementation((table, colName) => {
+      const value = table.url.includes("pca-attempt-2") ? 205 : -1;
+      return new Float32Array([colName === "X" ? value : value + 0.5]);
+    });
+
+    testState.handlers.reduction_ready({
+      reductionFile: "pca-attempt-2",
+      reductionName: "pca",
+      reductionVersion: 205,
+      transferAttemptId: 2,
+    });
+    testState.handlers.reduction_ready({
+      reductionFile: "umap-attempt-1",
+      reductionName: "umap",
+      reductionVersion: 205,
+      transferAttemptId: 1,
+    });
+
+    currentFetch.resolve(encodeLabelBuffer("pca-attempt-2"));
+    await vi.waitFor(() => {
+      expect(Array.from(testState.reglInstance.origData.reductionData.X)).toEqual([205]);
+    });
+    expect(arrowReader.fetchArrowIPCBuffer).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a delayed same-version transfer notification after a cache selection", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    arrowReader.fetchArrowIPCBuffer.mockImplementation((url) => {
+      if (url.includes("pca-v208")) return Promise.resolve(encodeLabelBuffer("pca-v208"));
+      throw new Error(`Delayed transfer should not fetch: ${url}`);
+    });
+    arrowReader.decodeArrowIPC.mockImplementation((buffer) => ({
+      url: decodeLabelBuffer(buffer),
+    }));
+    arrowReader.getFloat32Column.mockImplementation((table, colName) => {
+      const value = table.url.includes("pca-v208") ? 208 : -1;
+      return new Float32Array([colName === "X" ? value : value + 0.5]);
+    });
+
+    testState.handlers.reduction_ready({
+      reductionFile: "pca-v208",
+      reductionName: "pca",
+      reductionVersion: 208,
+    });
+    await vi.waitFor(() => {
+      expect(Array.from(testState.reglInstance.origData.reductionData.X)).toEqual([208]);
+    });
+
+    document.getElementById("updateReduction-reduction").innerHTML = `
+      <option value="pca" selected>pca</option>
+    `;
+    testState.handlers.reduction_cached({
+      reductionName: "pca",
+      reductionVersion: 208,
+    });
+    testState.handlers.reduction_ready({
+      reductionFile: "umap-delayed-v208",
+      reductionName: "umap",
+      reductionVersion: 208,
+      transferAttemptId: 1,
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(arrowReader.fetchArrowIPCBuffer).toHaveBeenCalledTimes(1);
+    expect(Array.from(testState.reglInstance.origData.reductionData.X)).toEqual([208]);
+  });
+
+  it("prefers the current dropdown reduction over the stale prefetch selection", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    arrowReader.fetchArrowIPCBuffer.mockImplementation((url) => (
+      Promise.resolve(encodeLabelBuffer(url))
+    ));
+    arrowReader.decodeArrowIPC.mockImplementation((buffer) => ({
+      url: decodeLabelBuffer(buffer),
+    }));
+    arrowReader.getFloat32Column.mockImplementation((table, colName) => {
+      const value = table.url.includes("pca-v210") ? 210 : 211;
+      return new Float32Array([colName === "X" ? value : value + 0.5]);
+    });
+    document.getElementById("updateReduction-reduction").innerHTML = `
+      <option value="pca" selected>pca</option>
+    `;
+
+    testState.handlers.reductions_ready({
+      reductionVersion: 210,
+      activeReduction: "umap",
+      transferAttemptId: 1,
+      reductions: [
+        { reductionName: "umap", reductionFile: "umap-v210", transferAttemptId: 1 },
+        { reductionName: "pca", reductionFile: "pca-v210", transferAttemptId: 1 },
+      ],
+    });
+
+    await vi.waitFor(() => {
+      expect(Array.from(testState.reglInstance.origData.reductionData.X)).toEqual([210]);
+    });
+  });
+
+  it("keeps the active scatter available when an inactive prefetch fails", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    arrowReader.fetchArrowIPCBuffer.mockImplementation((url) => {
+      if (url.includes("pca-v211")) return Promise.resolve(encodeLabelBuffer(url));
+      if (url.includes("umap-v211")) return Promise.reject(new Error("prefetch failed"));
+      throw new Error(`Unexpected reduction URL ${url}`);
+    });
+    arrowReader.decodeArrowIPC.mockImplementation((buffer) => ({
+      url: decodeLabelBuffer(buffer),
+    }));
+    arrowReader.getFloat32Column.mockImplementation((table, colName) => {
+      const value = table.url.includes("pca-v211") ? 211 : -1;
+      return new Float32Array([colName === "X" ? value : value + 0.5]);
+    });
+    document.getElementById("updateReduction-reduction").innerHTML = `
+      <option value="pca" selected>pca</option>
+    `;
+
+    testState.handlers.reductions_ready({
+      reductionVersion: 211,
+      activeReduction: "pca",
+      transferAttemptId: 1,
+      reductions: [
+        { reductionName: "pca", reductionFile: "pca-v211", transferAttemptId: 1 },
+        { reductionName: "umap", reductionFile: "umap-v211", transferAttemptId: 1 },
+      ],
+    });
+
+    await vi.waitFor(() => {
+      expect(Array.from(testState.reglInstance.origData.reductionData.X)).toEqual([211]);
+      expect(latestInputValue("reductionProcessed")).toBe(true);
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(getPlotTransferError()).toBeNull();
+    expect(warn).toHaveBeenCalledWith(
+      "Could not prefetch inactive reduction umap",
+      expect.any(Error),
+    );
+    warn.mockRestore();
   });
 
   it("expr_ready and expr_cached honor assay/gene versioned cache keys", async () => {

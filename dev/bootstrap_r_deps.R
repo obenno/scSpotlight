@@ -5,21 +5,29 @@ source("dev/r_dep_utils.R")
 prepare_pixi_r_session(clear_toolchain = TRUE)
 
 required <- required_description_packages(include_suggests = FALSE)
-perf_pkgs <- optional_performance_packages()
+optional_profiles <- list(
+  performance = optional_performance_packages(),
+  llm = optional_llm_packages()
+)
 
-if (length(perf_pkgs)) {
+for (profile in names(optional_profiles)) {
+  packages <- optional_profiles[[profile]]
+  if (!length(packages)) {
+    next
+  }
+  task <- if (identical(profile, "performance")) {
+    "pixi run install-optional-packages"
+  } else {
+    paste0("pixi run install-optional-", profile)
+  }
   message(
-    "Optional performance packages are not installed by `pixi run setup`: ",
-    paste(perf_pkgs, collapse = ", "),
-    "."
-  )
-  message(
-    "Install them later with `pixi run install-optional-packages` when needed."
-  )
-  message(
-    "Hard dependency bootstrap will continue with: ",
-    paste(perf_pkgs, collapse = ", "),
-    " left out."
+    "Optional ",
+    profile,
+    " packages are not installed by `pixi run setup`: ",
+    paste(packages, collapse = ", "),
+    ". Install them with `",
+    task,
+    "` when needed."
   )
 }
 

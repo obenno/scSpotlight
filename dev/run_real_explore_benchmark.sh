@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-scratch_root="${SCSPOTLIGHT_TEMP_ROOT:-/media/xzx/zflow13_sd/tmp/20260810_scSpotlight}"
+scratch_root="${SCSPOTLIGHT_TEMP_ROOT:-${TMPDIR:-/tmp}/scspotlight-benchmarks}"
 real_h5ad_root="${SCSPOTLIGHT_REAL_H5AD_ROOT:-${scratch_root}/cellxgene-h5ad}"
 real_explore_root="${SCSPOTLIGHT_REAL_EXPLORE_ROOT:-${scratch_root}/cellxgene-explore}"
-run_id="${SCSPOTLIGHT_REAL_EXPLORE_RUN_ID:-20260811-real-explore}"
+source_revision="$(git rev-parse --short=12 HEAD)"
+run_id="${SCSPOTLIGHT_REAL_EXPLORE_RUN_ID:-${source_revision}-real-explore}"
 
 mkdir -p "${scratch_root}/r-tmp" "${scratch_root}/xdg-cache" \
   "${real_explore_root}/runs/${run_id}/browser"

@@ -1232,20 +1232,390 @@ archive_entry_is_unsafe <- function(entry) {
   FALSE
 }
 
-list_tar_archive_entries <- function(filePath) {
-  entries <- utils::untar(filePath, list = TRUE)
-  tar_cmd <- Sys.which("tar")
-  has_symlink <- FALSE
-
-  if (nzchar(tar_cmd)) {
-    tar_listing <- tryCatch(
-      system2(tar_cmd, c("-tvf", filePath), stdout = TRUE, stderr = TRUE),
-      error = function(error) character()
-    )
-    has_symlink <- any(startsWith(trimws(tar_listing), "l"))
+scspotlight_archive_limits <- function() {
+  read_limit <- function(option, default) {
+    value <- suppressWarnings(as.numeric(getOption(option, default))[[1]])
+    if (!is.finite(value) || value <= 0) {
+      stop("Archive safety limits must be positive finite numbers.", call. = FALSE)
+    }
+    value
   }
 
-  list(entries = entries, has_symlink = has_symlink)
+  list(
+    max_entries = read_limit("scSpotlight.archive.max_entries", 100000),
+    max_expanded_bytes = read_limit(
+      "scSpotlight.archive.max_expanded_bytes",
+      100 * 1024^3
+    ),
+    max_compression_ratio = read_limit(
+      "scSpotlight.archive.max_compression_ratio",
+      1000
+    )
+  )
+}
+
+tar_raw_string <- function(block, start, length) {
+  bytes <- block[seq.int(start, length.out = length)]
+  nul <- which(bytes == as.raw(0))
+  if (length(nul) > 0L) {
+    bytes <- bytes[seq_len(nul[[1]] - 1L)]
+  }
+  if (length(bytes) == 0L) {
+    return("")
+  }
+  rawToChar(bytes)
+}
+
+tar_octal_number <- function(block, start, length) {
+  bytes <- as.integer(block[seq.int(start, length.out = length)])
+  if (base::length(bytes) != length) {
+    stop("Compressed tar archive is incomplete.", call. = FALSE)
+  }
+  if (length(bytes) > 0L && bitwAnd(bytes[[1]], 128L) != 0L) {
+    # GNU tar uses base-256 fields for values that do not fit octal metadata.
+    # Negative values are not valid archive member sizes.
+    if (bitwAnd(bytes[[1]], 64L) != 0L) {
+      stop("Compressed tar archive contains invalid size metadata.", call. = FALSE)
+    }
+    value <- bytes[[1]] - 128L
+    if (length(bytes) > 1L) {
+      for (byte in bytes[-1L]) {
+        value <- value * 256 + byte
+      }
+    }
+    if (!is.finite(value) || value < 0) {
+      stop("Compressed tar archive contains invalid size metadata.", call. = FALSE)
+    }
+    return(value)
+  }
+
+  text <- trimws(tar_raw_string(block, start, length))
+  if (!nzchar(text)) {
+    return(0)
+  }
+  if (!grepl("^[0-7]+$", text)) {
+    stop("Compressed tar archive contains invalid size metadata.", call. = FALSE)
+  }
+  digits <- utf8ToInt(text) - utf8ToInt("0")
+  Reduce(function(total, digit) total * 8 + digit, digits, init = 0)
+}
+
+tar_field_uses_base256 <- function(block, start, length) {
+  bytes <- as.integer(block[seq.int(start, length.out = length)])
+  length(bytes) == length &&
+    length(bytes) > 0L &&
+    bitwAnd(bytes[[1]], 128L) != 0L
+}
+
+tar_header_uses_base256_numeric <- function(block) {
+  numeric_fields <- list(
+    c(101L, 8L),
+    c(109L, 8L),
+    c(117L, 8L),
+    c(125L, 12L),
+    c(137L, 12L),
+    c(149L, 8L),
+    c(330L, 8L),
+    c(338L, 8L)
+  )
+  any(vapply(
+    numeric_fields,
+    function(field) tar_field_uses_base256(block, field[[1]], field[[2]]),
+    logical(1)
+  ))
+}
+
+validated_tar_extractor <- function() {
+  tar_bin <- Sys.which("tar")
+  if (!nzchar(tar_bin) && identical(.Platform$OS.type, "windows")) {
+    tar_bin <- Sys.which("tar.exe")
+  }
+  tar_bin
+}
+
+extract_validated_tar_archive <- function(
+  file_path,
+  exdir,
+  uses_base256_numeric = FALSE
+) {
+  if (!isTRUE(uses_base256_numeric)) {
+    untar(file_path, exdir = exdir, tar = "internal")
+    return(invisible(NULL))
+  }
+
+  tar_bin <- validated_tar_extractor()
+  if (!nzchar(tar_bin)) {
+    stop(
+      "Compressed tar archive uses a numeric format unsupported by this system.",
+      call. = FALSE
+    )
+  }
+
+  # utils::untar() appends extras after the archive operand, which GNU tar
+  # interprets as additional archives. Run the compatible extractor directly.
+  status <- suppressWarnings(system2(
+    tar_bin,
+    c(
+      "--no-same-owner",
+      "--no-same-permissions",
+      "--extract",
+      paste0("--file=", shQuote(file_path)),
+      "-C",
+      shQuote(exdir)
+    )
+  ))
+  if (length(status) != 1L || !is.finite(status[[1]]) || status[[1]] != 0L) {
+    stop("Compressed tar archive could not be extracted.", call. = FALSE)
+  }
+
+  invisible(NULL)
+}
+
+read_tar_payload <- function(connection, size, capture = FALSE) {
+  padded_size <- ceiling(size / 512) * 512
+  if (padded_size == 0) {
+    return(raw())
+  }
+  if (isTRUE(capture) && size > 1024^2) {
+    stop("Compressed tar archive contains unsafe metadata.", call. = FALSE)
+  }
+
+  remaining <- padded_size
+  captured <- raw()
+  while (remaining > 0) {
+    chunk <- readBin(connection, "raw", n = min(remaining, 1024^2))
+    if (length(chunk) == 0L) {
+      stop("Compressed tar archive is incomplete.", call. = FALSE)
+    }
+    if (isTRUE(capture)) {
+      captured <- c(captured, chunk)
+    }
+    remaining <- remaining - length(chunk)
+  }
+
+  if (isTRUE(capture)) {
+    captured[seq_len(size)]
+  } else {
+    raw()
+  }
+}
+
+tar_payload_string <- function(payload) {
+  if (length(payload) == 0L) {
+    return("")
+  }
+  nul <- which(payload == as.raw(0))
+  if (length(nul) > 0L) {
+    payload <- payload[seq_len(nul[[1]] - 1L)]
+  }
+  sub("\n$", "", rawToChar(payload))
+}
+
+parse_pax_tar_metadata <- function(payload) {
+  records <- strsplit(rawToChar(payload), "\n", fixed = TRUE)[[1]]
+  records <- records[nzchar(records)]
+  metadata <- list()
+
+  for (record in records) {
+    matched <- regexec("^([0-9]+) ([^=]+)=(.*)$", record, perl = TRUE)
+    fields <- regmatches(record, matched)[[1]]
+    if (length(fields) != 4L) {
+      stop("Compressed tar archive contains unsafe metadata.", call. = FALSE)
+    }
+
+    record_size <- suppressWarnings(as.numeric(fields[[2]]))
+    if (
+      !is.finite(record_size) ||
+        record_size != nchar(record, type = "bytes") + 1L
+    ) {
+      stop("Compressed tar archive contains unsafe metadata.", call. = FALSE)
+    }
+
+    key <- fields[[3]]
+    if (startsWith(key, "GNU.sparse.")) {
+      stop("Compressed tar archive contains unsafe metadata.", call. = FALSE)
+    }
+    if (key %in% c("path", "size") && !is.null(metadata[[key]])) {
+      stop("Compressed tar archive contains unsafe metadata.", call. = FALSE)
+    }
+    if (identical(key, "size") && !grepl("^[0-9]+$", fields[[4]])) {
+      stop("Compressed tar archive contains invalid size metadata.", call. = FALSE)
+    }
+    metadata[[key]] <- fields[[4]]
+  }
+
+  metadata
+}
+
+list_tar_archive_entries <- function(filePath) {
+  limits <- scspotlight_archive_limits()
+  archive_size <- file.info(filePath)$size[[1]]
+  connection <- gzfile(filePath, open = "rb")
+  on.exit(close(connection), add = TRUE)
+
+  max_entries <- suppressWarnings(as.integer(min(
+    floor(limits$max_entries),
+    .Machine$integer.max
+  )))
+  if (is.na(max_entries) || max_entries < 1L) {
+    stop("Compressed archive contains too many entries.", call. = FALSE)
+  }
+  entry_capacity <- min(max_entries, 1024L)
+  entries <- character(entry_capacity)
+  types <- character(entry_capacity)
+  uncompressed_sizes <- numeric(entry_capacity)
+  entry_count <- 0L
+  member_count <- 0L
+  preflight_expanded_size <- 0
+  uses_base256_numeric <- FALSE
+  has_global_pax_metadata <- FALSE
+  pending_name <- NULL
+  pending_size <- NULL
+
+  add_preflight_bytes <- function(size) {
+    if (!is.finite(size) || size < 0) {
+      stop("Compressed tar archive contains invalid size metadata.", call. = FALSE)
+    }
+    preflight_expanded_size <<- preflight_expanded_size + size
+    if (preflight_expanded_size > limits$max_expanded_bytes) {
+      stop("Compressed archive exceeds the expanded-size limit.", call. = FALSE)
+    }
+    if (
+      is.finite(archive_size) &&
+        preflight_expanded_size / max(archive_size, 1) >
+          limits$max_compression_ratio
+      ) {
+      stop("Compressed archive exceeds the compression-ratio limit.", call. = FALSE)
+    }
+  }
+
+  count_tar_member <- function() {
+    member_count <<- member_count + 1L
+    if (member_count > max_entries) {
+      stop("Compressed archive contains too many entries.", call. = FALSE)
+    }
+  }
+
+  append_entry <- function(name, type, size) {
+    entry_count <<- entry_count + 1L
+    if (entry_count > max_entries) {
+      stop("Compressed archive contains too many entries.", call. = FALSE)
+    }
+    if (entry_count > length(entries)) {
+      next_capacity <- min(max_entries, max(length(entries) * 2L, 1024L))
+      length(entries) <<- next_capacity
+      length(types) <<- next_capacity
+      length(uncompressed_sizes) <<- next_capacity
+    }
+    entries[[entry_count]] <<- name
+    types[[entry_count]] <<- type
+    uncompressed_sizes[[entry_count]] <<- size
+  }
+
+  repeat {
+    block <- readBin(connection, "raw", n = 512L)
+    if (length(block) == 0L || all(block == as.raw(0))) {
+      break
+    }
+    if (length(block) < 512L) {
+      stop("Compressed tar archive is incomplete.", call. = FALSE)
+    }
+
+    # PAX/GNU control records still consume parser work, so they count against
+    # the archive member limit even though they are not extracted as files.
+    count_tar_member()
+
+    uses_base256_numeric <- uses_base256_numeric ||
+      tar_header_uses_base256_numeric(block)
+
+    name <- tar_raw_string(block, 1L, 100L)
+    if (identical(tar_raw_string(block, 258L, 5L), "ustar")) {
+      prefix <- tar_raw_string(block, 346L, 155L)
+      if (nzchar(prefix)) {
+        name <- file.path(prefix, name)
+      }
+    }
+    size <- tar_octal_number(block, 125L, 12L)
+    type_byte <- as.integer(block[[157L]])
+    type_flag <- if (type_byte == 0L) "0" else rawToChar(block[[157L]])
+
+    if (type_flag %in% c("L", "K")) {
+      add_preflight_bytes(size)
+      payload <- read_tar_payload(connection, size, capture = TRUE)
+      if (identical(type_flag, "L")) {
+        pending_name <- tar_payload_string(payload)
+      }
+      next
+    }
+    if (identical(type_flag, "x")) {
+      add_preflight_bytes(size)
+      metadata <- parse_pax_tar_metadata(
+        read_tar_payload(connection, size, capture = TRUE)
+      )
+      pending_name <- metadata$path %||% pending_name
+      pending_size <- if (!is.null(metadata$size)) {
+        suppressWarnings(as.numeric(metadata$size))
+      } else {
+        pending_size
+      }
+      next
+    }
+    if (identical(type_flag, "g")) {
+      add_preflight_bytes(size)
+      parse_pax_tar_metadata(read_tar_payload(connection, size, capture = TRUE))
+      has_global_pax_metadata <- TRUE
+      next
+    }
+
+    name <- pending_name %||% name
+    size <- pending_size %||% size
+    pending_name <- NULL
+    pending_size <- NULL
+    if (!is.finite(size) || size < 0) {
+      stop("Compressed tar archive contains invalid size metadata.", call. = FALSE)
+    }
+
+    type <- if (type_flag %in% c("0", "7")) {
+      "file"
+    } else if (identical(type_flag, "5")) {
+      "directory"
+    } else {
+      switch(
+        type_flag,
+        `1` = "hardlink",
+        `2` = "symlink",
+        `3` = "character_device",
+        `4` = "block_device",
+        `6` = "fifo",
+        "special"
+      )
+    }
+    if (!type %in% c("file", "directory") || archive_entry_is_unsafe(name)) {
+      stop("Compressed archive contains unsafe entries.", call. = FALSE)
+    }
+    # R's internal tar extractor ignores directory payload sizes. Rejecting them
+    # keeps the preflight reader aligned with the extractor's header traversal.
+    if (identical(type, "directory") && size != 0) {
+      stop("Compressed archive contains unsafe entries.", call. = FALSE)
+    }
+
+    append_entry(name, type, size)
+    add_preflight_bytes(size)
+    read_tar_payload(connection, size)
+  }
+
+  if (uses_base256_numeric && has_global_pax_metadata) {
+    stop("Compressed archive contains unsafe entries.", call. = FALSE)
+  }
+
+  list(
+    entries = entries[seq_len(entry_count)],
+    types = types[seq_len(entry_count)],
+    uncompressed_sizes = uncompressed_sizes[seq_len(entry_count)],
+    compressed_size = archive_size,
+    preflight_expanded_size = preflight_expanded_size,
+    uses_base256_numeric = uses_base256_numeric
+  )
 }
 
 list_zip_archive_entries <- function(filePath) {
@@ -1258,14 +1628,29 @@ list_zip_archive_entries <- function(filePath) {
     character()
   }
 
-  has_symlink <- FALSE
-  if ("type" %in% names(zip_entries)) {
-    has_symlink <- any(tolower(as.character(zip_entries$type)) == "symlink")
-  } else if ("permissions" %in% names(zip_entries)) {
-    has_symlink <- any(startsWith(as.character(zip_entries$permissions), "l"))
+  entry_types <- if ("type" %in% names(zip_entries)) {
+    tolower(as.character(zip_entries$type))
+  } else {
+    rep("file", length(entry_names))
+  }
+  uncompressed_sizes <- if ("uncompressed_size" %in% names(zip_entries)) {
+    as.numeric(zip_entries$uncompressed_size)
+  } else {
+    rep(NA_real_, length(entry_names))
+  }
+  compressed_sizes <- if ("compressed_size" %in% names(zip_entries)) {
+    as.numeric(zip_entries$compressed_size)
+  } else {
+    rep(NA_real_, length(entry_names))
   }
 
-  list(entries = entry_names, has_symlink = has_symlink)
+  list(
+    entries = entry_names,
+    types = entry_types,
+    uncompressed_sizes = uncompressed_sizes,
+    compressed_sizes = compressed_sizes,
+    compressed_size = file.info(filePath)$size[[1]]
+  )
 }
 
 assert_safe_archive_entries <- function(
@@ -1273,6 +1658,7 @@ assert_safe_archive_entries <- function(
   archive_type = c("tar", "zip")
 ) {
   archive_type <- match.arg(archive_type)
+  limits <- scspotlight_archive_limits()
 
   entries <- if (
     is.list(archive_entries) && !is.null(archive_entries$entries)
@@ -1283,20 +1669,106 @@ assert_safe_archive_entries <- function(
   }
 
   entries <- as.character(entries)
-  entries <- entries[nzchar(entries)]
   if (length(entries) == 0L) {
     stop("Compressed archive contains no extractable entries.", call. = FALSE)
   }
 
-  if (is.list(archive_entries) && isTRUE(archive_entries$has_symlink)) {
-    stop("Compressed archive contains unsafe entries.", call. = FALSE)
+  if (length(entries) > limits$max_entries) {
+    stop("Compressed archive contains too many entries.", call. = FALSE)
   }
 
   if (any(vapply(entries, archive_entry_is_unsafe, logical(1)))) {
     stop("Compressed archive contains unsafe entries.", call. = FALSE)
   }
 
+  types <- if (is.list(archive_entries) && !is.null(archive_entries$types)) {
+    tolower(as.character(archive_entries$types))
+  } else {
+    rep("file", length(entries))
+  }
+  if (
+    length(types) != length(entries) ||
+      any(!types %in% c("file", "regular", "directory", "dir"))
+  ) {
+    stop("Compressed archive contains unsafe entries.", call. = FALSE)
+  }
+
+  expanded_sizes <- if (
+    is.list(archive_entries) && !is.null(archive_entries$uncompressed_sizes)
+  ) {
+    suppressWarnings(as.numeric(archive_entries$uncompressed_sizes))
+  } else {
+    rep(0, length(entries))
+  }
+  if (
+    length(expanded_sizes) != length(entries) ||
+      any(!is.finite(expanded_sizes)) ||
+      any(expanded_sizes < 0)
+  ) {
+    stop("Compressed archive contains invalid size metadata.", call. = FALSE)
+  }
+  expanded_size <- sum(expanded_sizes)
+  if (expanded_size > limits$max_expanded_bytes) {
+    stop("Compressed archive exceeds the expanded-size limit.", call. = FALSE)
+  }
+
+  compressed_size <- if (
+    is.list(archive_entries) && !is.null(archive_entries$compressed_sizes)
+  ) {
+    sum(suppressWarnings(as.numeric(archive_entries$compressed_sizes)))
+  } else if (
+    is.list(archive_entries) && !is.null(archive_entries$compressed_size)
+  ) {
+    suppressWarnings(as.numeric(archive_entries$compressed_size)[[1]])
+  } else {
+    NA_real_
+  }
+  if (is.finite(compressed_size) && expanded_size > 0) {
+    ratio <- expanded_size / max(compressed_size, 1)
+    if (ratio > limits$max_compression_ratio) {
+      stop("Compressed archive exceeds the compression-ratio limit.", call. = FALSE)
+    }
+  }
+
   invisible(entries)
+}
+
+assert_safe_extracted_archive <- function(root, compressed_size) {
+  limits <- scspotlight_archive_limits()
+  paths <- list.files(
+    root,
+    recursive = TRUE,
+    full.names = TRUE,
+    all.files = TRUE,
+    include.dirs = TRUE,
+    no.. = TRUE
+  )
+  if (length(paths) > limits$max_entries) {
+    stop("Compressed archive contains too many extracted entries.", call. = FALSE)
+  }
+  if (length(paths) == 0L) {
+    return(invisible(NULL))
+  }
+  if (any(nzchar(Sys.readlink(paths)))) {
+    stop("Compressed archive extracted unsafe entries.", call. = FALSE)
+  }
+
+  info <- file.info(paths)
+  if (anyNA(info$isdir) || anyNA(info$size)) {
+    stop("Compressed archive extraction could not be validated.", call. = FALSE)
+  }
+  expanded_size <- sum(info$size[!info$isdir])
+  if (expanded_size > limits$max_expanded_bytes) {
+    stop("Compressed archive exceeds the expanded-size limit.", call. = FALSE)
+  }
+  if (is.finite(compressed_size) && expanded_size > 0) {
+    ratio <- expanded_size / max(compressed_size, 1)
+    if (ratio > limits$max_compression_ratio) {
+      stop("Compressed archive exceeds the compression-ratio limit.", call. = FALSE)
+    }
+  }
+
+  invisible(NULL)
 }
 
 decompress_matrix_input <- function(
@@ -1360,29 +1832,46 @@ decompress_matrix_input <- function(
       str_detect(fileName, "\\.tar.bz2$") ||
       str_detect(fileName, "\\.tbz2$")
   ) {
+    archive_entries <- list_tar_archive_entries(filePath)
     assert_safe_archive_entries(
-      list_tar_archive_entries(filePath),
+      archive_entries,
       archive_type = "tar"
     )
     tmpMatrixDir <- tempfile(pattern = "matrixDir", tmpdir = temp_root)
     dir.create(tmpMatrixDir)
-    untar(tarfile = filePath, exdir = tmpMatrixDir)
+    extract_validated_tar_archive(
+      filePath,
+      exdir = tmpMatrixDir,
+      uses_base256_numeric = archive_entries$uses_base256_numeric
+    )
+    assert_safe_extracted_archive(
+      tmpMatrixDir,
+      compressed_size = archive_entries$compressed_size
+    )
   } else if (str_detect(fileName, "\\.[Zz][Ii][Pp]$")) {
     if (!requireNamespace("zip", quietly = TRUE)) {
       stop("The 'zip' package is required to decompress zip archives.")
     }
-    time_phase(
+    archive_entries <- time_phase(
       "server_archive_list_and_validate",
-      assert_safe_archive_entries(
-        list_zip_archive_entries(filePath),
-        archive_type = "zip"
-      )
+      {
+        archive_entries <- list_zip_archive_entries(filePath)
+        assert_safe_archive_entries(
+          archive_entries,
+          archive_type = "zip"
+        )
+        archive_entries
+      }
     )
     tmpMatrixDir <- tempfile(pattern = "matrixDir", tmpdir = temp_root)
     dir.create(tmpMatrixDir)
     time_phase(
       "server_archive_extract",
       zip::unzip(zipfile = filePath, exdir = tmpMatrixDir)
+    )
+    assert_safe_extracted_archive(
+      tmpMatrixDir,
+      compressed_size = archive_entries$compressed_size
     )
   } else {
     stop("Compression format is not supported.")

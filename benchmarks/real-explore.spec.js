@@ -183,6 +183,9 @@ test("real CellxGene Explore archive records first View, selected gene, and RSS 
     const serverGatePassed = Number.isFinite(serverPeakHwmBytes) && serverPeakHwmBytes < rssLimitBytes;
     const chromiumGatePassed = Number.isFinite(chromiumPeakHwmBytes) &&
       chromiumPeakHwmBytes < rssLimitBytes;
+    const browserVisualizationGatePassed = Number.isFinite(
+      browserMemory.runtime_heap_used_bytes,
+    ) && browserMemory.runtime_heap_used_bytes < rssLimitBytes;
 
     result.browser = {
       method: {
@@ -221,11 +224,11 @@ test("real CellxGene Explore archive records first View, selected gene, and RSS 
     result.acceptance = {
       ...result.acceptance,
       rss_limit_bytes: rssLimitBytes,
-      browser_visualization_rss_under_limit: serverGatePassed && chromiumGatePassed,
+      browser_visualization_rss_under_limit: browserVisualizationGatePassed,
       browser_server_rss_under_limit: serverGatePassed,
       chromium_rss_under_limit: chromiumGatePassed,
       real_explore_evidence_status: result.acceptance.processing_rss_under_limit &&
-        serverGatePassed && chromiumGatePassed
+        browserVisualizationGatePassed && serverGatePassed && chromiumGatePassed
         ? "passed"
         : "failed_rss_gate",
     };
@@ -233,6 +236,7 @@ test("real CellxGene Explore archive records first View, selected gene, and RSS 
 
     expect(serverGatePassed).toBe(true);
     expect(chromiumGatePassed).toBe(true);
+    expect(browserVisualizationGatePassed).toBe(true);
   } finally {
     clearInterval(sampler);
     await browserSession.detach().catch(() => {});

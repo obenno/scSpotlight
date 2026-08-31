@@ -14,8 +14,8 @@ transfer_error_payload_types <- c(
 transfer_error_context_fields <- list(
   metadata = character(0),
   metadata_patch = "cols",
-  reduction = c("reductionName", "activeReduction"),
-  reductions = c("reductionName", "activeReduction"),
+  reduction = c("reductionName", "activeReduction", "transferAttemptId"),
+  reductions = c("reductionName", "activeReduction", "transferAttemptId"),
   pca = character(0),
   expression = c("geneName", "assay")
 )
@@ -87,6 +87,15 @@ make_transfer_error_payload <- function(
   for (field in fields) {
     value <- context[[field]]
     if (is.null(value)) {
+      next
+    }
+
+    if (identical(field, "transferAttemptId")) {
+      value <- suppressWarnings(as.numeric(value[[1]]))
+      if (!is.finite(value) || value < 1) {
+        next
+      }
+      payload[[field]] <- value
       next
     }
 
@@ -203,19 +212,27 @@ prepare_backend_reduction_transfer <- function(
   reduction_name,
   dir_path,
   reduction_version,
-  resource_prefix = NULL
+  resource_prefix = NULL,
+  transfer_attempt_id = 1L
 ) {
+  transfer_attempt_id <- suppressWarnings(as.numeric(transfer_attempt_id[[1]]))
+  if (!is.finite(transfer_attempt_id) || transfer_attempt_id < 1) {
+    stop("transfer_attempt_id must be a positive finite number.", call. = FALSE)
+  }
   file_name <- hash_md5(paste0(
     "reduction_",
     reduction_name,
     "_",
-    reduction_version
+    reduction_version,
+    "_",
+    transfer_attempt_id
   ))
   payload <- list(
     reductionFile = file_name,
     reductionName = reduction_name,
     reductionVersion = reduction_version
   )
+  payload$transferAttemptId <- transfer_attempt_id
 
   if (isTruthy(resource_prefix)) {
     payload$resourcePrefix <- basename(as.character(resource_prefix)[[1]])

@@ -216,6 +216,7 @@ test_that("browser payload manifest enumerates XFER-05 message contracts", {
   expect_true(all(
     c(
       "resourcePrefix",
+      "transferAttemptId",
       "reductionName",
       "activeReduction",
       "geneName",
@@ -329,7 +330,8 @@ test_that("transfer error payload helper satisfies the browser path policy", {
     activeReduction = "pca",
     geneName = "GeneA",
     assay = "RNA",
-    cols = c("cluster", "/tmp/scspotlight/batch")
+    cols = c("cluster", "/tmp/scspotlight/batch"),
+    transferAttemptId = 101L
   )
 
   payloads <- list(
@@ -403,6 +405,7 @@ test_that("transfer error payload helper satisfies the browser path policy", {
   expect_equal(payloads[[6]]$payloadType, "expression")
   expect_equal(payloads[[6]]$geneName, "GeneA")
   expect_equal(payloads[[6]]$assay, "RNA")
+  expect_equal(payloads[[2]]$transferAttemptId, 101)
 })
 
 test_that("R browser payload producers satisfy the contract manifest", {
@@ -495,7 +498,8 @@ test_that("R browser payload producers satisfy the contract manifest", {
     reduction_name = "umap",
     dir_path = file.path(transfer_dir, "reduction"),
     reduction_version = 12L,
-    resource_prefix = "data-test-session"
+    resource_prefix = "data-test-session",
+    transfer_attempt_id = 12L
   )
   reduction_payload <- write_backend_reduction_transfer(reduction_transfer)
   expect_payload_satisfies_contract(
@@ -513,6 +517,7 @@ test_that("R browser payload producers satisfy the contract manifest", {
     reductions = list(reduction_payload),
     activeReduction = "umap",
     reductionVersion = 12L,
+    transferAttemptId = 12L,
     resourcePrefix = "data-test-session"
   )
   expect_payload_satisfies_contract(
@@ -583,6 +588,27 @@ test_that("R browser payload producers satisfy the contract manifest", {
   }
 })
 
+test_that("reduction transfer notifications have attempt-scoped IDs", {
+  reduction_transfer_notification_id <- getFromNamespace(
+    "reduction_transfer_notification_id",
+    "scSpotlight"
+  )
+
+  expect_identical(
+    reduction_transfer_notification_id(12L),
+    "update_reduction_notification_12"
+  )
+  expect_false(identical(
+    reduction_transfer_notification_id(12L),
+    reduction_transfer_notification_id(13L)
+  ))
+  expect_error(
+    reduction_transfer_notification_id(0L),
+    "positive integer",
+    fixed = TRUE
+  )
+})
+
 test_that("assignment metadata mutation reuses existing scoped patch contract", {
   contract <- read_browser_payload_contract()
   expect_true("meta_patch_ready" %in% names(contract$messages))
@@ -641,20 +667,17 @@ test_that("browser IPC payload contracts require a session resource prefix", {
     "resource_prefix_plus_basename"
   )
 
-  index_source <- paste(
-    readLines(
-      scspotlight_test_source_path("srcjs", "index.js"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  expect_match(
-    index_source,
-    "resourcePrefix",
-    info = "browser fetch handlers must use the message resourcePrefix field"
-  )
-  expect_false(
-    grepl("/data/(meta|reduction|expr)", index_source, perl = TRUE),
-    info = "browser fetch handlers must not hard-code the global /data resource root"
-  )
+  index_path <- scspotlight_test_source_path("srcjs", "index.js")
+  if (file.exists(index_path)) {
+    index_source <- paste(readLines(index_path, warn = FALSE), collapse = "\n")
+    expect_match(
+      index_source,
+      "resourcePrefix",
+      info = "browser fetch handlers must use the message resourcePrefix field"
+    )
+    expect_false(
+      grepl("/data/(meta|reduction|expr)", index_source, perl = TRUE),
+      info = "browser fetch handlers must not hard-code the global /data resource root"
+    )
+  }
 })

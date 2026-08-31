@@ -18,6 +18,7 @@ benchmark_real_h5ad_url <- paste0(
 )
 benchmark_real_h5ad_filename <- "aa6ebee3-68cc-41b4-80b2-5ef5c3317e14.h5ad"
 benchmark_real_h5ad_expected_bytes <- 9663215939
+benchmark_real_h5ad_expected_md5 <- benchmark_representative_source_md5
 benchmark_max_rss_limit_bytes <- 6000000000
 
 benchmark_temp_root <- function() {
@@ -80,7 +81,21 @@ benchmark_assert_real_h5ad_file <- function(path) {
     )
   }
 
-  invisible(normalizePath(path, winslash = "/", mustWork = TRUE))
+  actual_md5 <- benchmark_file_md5(path)
+  if (!identical(actual_md5, benchmark_real_h5ad_expected_md5)) {
+    stop(
+      "Real CellxGene h5ad artifact MD5 mismatch: expected ",
+      benchmark_real_h5ad_expected_md5,
+      ", found ",
+      actual_md5,
+      ".",
+      call. = FALSE
+    )
+  }
+
+  normalized_path <- normalizePath(path, winslash = "/", mustWork = TRUE)
+  attr(normalized_path, "benchmark_md5") <- actual_md5
+  invisible(normalized_path)
 }
 
 benchmark_kb_to_bytes <- function(value) {

@@ -1,0 +1,87 @@
+name: PR quality
+
+on:
+  pull_request:
+    branches: [dev]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-quality-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  r:
+    name: R tests and package check
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: prefix-dev/setup-pixi@v0.9.4
+        with:
+          cache: true
+      - name: Bootstrap R dependencies
+        run: pixi run setup-r
+      - name: Run R tests
+        run: pixi run test-r
+      - name: Check built R source package
+        run: pixi run r-check
+
+  optional-llm:
+    name: Optional LLM dependency path
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: prefix-dev/setup-pixi@v0.9.4
+        with:
+          cache: true
+      - name: Bootstrap required R dependencies
+        run: pixi run setup-r
+      - name: Install locked JavaScript dependencies
+        run: pixi run setup-js
+      - name: Install optional LLM dependencies
+        run: pixi run install-optional-llm
+      - name: Verify optional LLM dependencies
+        run: pixi run check-optional-llm
+      - name: Run focused LLM tests
+        run: pixi run test-llm
+      - name: Install Chromium and system dependencies
+        run: pixi run install-e2e-browser-ci
+      - name: Verify escaped LLM output in Chromium
+        run: pixi run test-e2e-llm
+
+  javascript:
+    name: JavaScript tests and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: prefix-dev/setup-pixi@v0.9.4
+        with:
+          cache: true
+      - name: Install locked JavaScript dependencies
+        run: pixi run setup-js
+      - name: Run JavaScript tests
+        run: pixi run test-js
+      - name: Build JavaScript bundle
+        run: pixi run build-js
+      - name: Verify committed JavaScript bundle
+        run: git diff --exit-code -- inst/app/www/index.js inst/app/www/index.js.map
+
+  playwright:
+    name: Playwright end-to-end
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: prefix-dev/setup-pixi@v0.9.4
+        with:
+          cache: true
+      - name: Bootstrap locked project dependencies
+        run: pixi run setup-ci
+      - name: Install Chromium and system dependencies
+        run: pixi run install-e2e-browser-ci
+      - name: Run Playwright
+        run: pixi run test-e2e

@@ -205,12 +205,14 @@ test_that("Analysis Mode transfer adapters write Arrow IPC without mirrored Duck
     reduction_name = "umap",
     dir_path = file.path(transfer_dir, "reduction"),
     reduction_version = 2L,
-    resource_prefix = "data-test-session"
+    resource_prefix = "data-test-session",
+    transfer_attempt_id = 2L
   )
   expect_equal(reduction_transfer$backend, "data_frame")
   reduction_payload <- write_backend_reduction_transfer(reduction_transfer)
   reduction_table <- arrow::read_ipc_stream(reduction_transfer$filePath)
   expect_equal(reduction_payload$reductionName, "umap")
+  expect_equal(reduction_payload$transferAttemptId, 2)
   expect_identical(names(reduction_table), c("X", "Y"))
   expect_equal(as.numeric(reduction_table$X), c(1, 2, 3, 4))
   expect_equal(as.numeric(reduction_table$Y), c(5, 6, 7, 8))

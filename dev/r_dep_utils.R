@@ -45,6 +45,26 @@ optional_performance_packages <- function() {
   preferred[preferred %in% suggested]
 }
 
+optional_llm_packages <- function() {
+  preferred <- c("ellmer", "later", "shinychat")
+  suggested <- suggested_description_packages()
+
+  preferred[preferred %in% suggested]
+}
+
+optional_packages_for_profile <- function(profile = "performance") {
+  profile <- tolower(trimws(profile))
+  packages <- switch(
+    profile,
+    performance = optional_performance_packages(),
+    llm = optional_llm_packages(),
+    all = unique(c(optional_performance_packages(), optional_llm_packages())),
+    stop("Unknown optional package profile: ", profile, call. = FALSE)
+  )
+
+  packages
+}
+
 prepare_pixi_r_session <- function(clear_toolchain = FALSE) {
   Sys.setenv(R_LIBS_USER = "", R_LIBS_SITE = "")
 

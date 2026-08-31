@@ -1,6 +1,7 @@
-source(file.path("benchmarks", "real_explore_helpers.R"))
-
-devtools::load_all(".", quiet = TRUE, export_all = FALSE)
+source(file.path("benchmarks", "explore_1m_helpers.R"))
+source_root <- benchmark_execution_source_root()
+source(file.path(source_root, "benchmarks", "real_explore_helpers.R"))
+devtools::load_all(source_root, quiet = TRUE, export_all = FALSE)
 benchmark_timing_enabled <- getFromNamespace(
   "scspotlight_benchmark_timing_enabled",
   "scSpotlight"

@@ -4,6 +4,7 @@ const port = Number(process.env.SCSPOTLIGHT_E2E_PORT || 8899);
 
 export default defineConfig({
   testDir: "./tests/e2e",
+  testIgnore: "llm-output-safety.spec.js",
   timeout: 120_000,
   expect: {
     timeout: 30_000,

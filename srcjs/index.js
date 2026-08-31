@@ -365,8 +365,8 @@ const resolveActiveReduction = (reductions, activeReductionName) => {
   );
 
   return (
-    findByName(activeReductionName) ||
     findByName(getCurrentReductionName()) ||
+    findByName(activeReductionName) ||
     reductions[0]
   );
 };
@@ -402,13 +402,75 @@ const isCurrentMetaVersion = (version) => (
   activeMetaVersion == null || Number(version) >= Number(activeMetaVersion)
 );
 
-const startReductionRequest = (version, reductionName = null) => {
+const startReductionRequest = (
+  version,
+  reductionName = null,
+  transferAttemptId = null,
+  source = "transfer",
+) => {
+  const normalizedAttemptId = Number(transferAttemptId);
+  const requestAttemptId = Number.isFinite(normalizedAttemptId) && normalizedAttemptId >= 1
+    ? normalizedAttemptId
+    : null;
+  const requestSource = ["cache", "cache-miss"].includes(source)
+    ? source
+    : "transfer";
   if (
     activeReductionVersion != null &&
     version != null &&
     Number(version) < Number(activeReductionVersion)
   ) {
     return { stale: true, version, reductionName };
+  }
+  if (
+    activeReductionRequest &&
+    version != null &&
+    Number(version) === Number(activeReductionRequest.version)
+  ) {
+    if (
+      activeReductionRequest.source === "cache" &&
+      requestSource === "transfer"
+    ) {
+      const currentReductionName = getCurrentReductionName();
+      if (
+        reductionName === activeReductionRequest.reductionName ||
+        currentReductionName !== reductionName
+      ) {
+        return {
+          stale: true,
+          version,
+          reductionName,
+          transferAttemptId: requestAttemptId,
+          source: requestSource,
+        };
+      }
+    }
+    if (
+      activeReductionRequest.source === "cache-miss" &&
+      requestSource === "transfer" &&
+      reductionName !== activeReductionRequest.reductionName
+    ) {
+      return {
+        stale: true,
+        version,
+        reductionName,
+        transferAttemptId: requestAttemptId,
+        source: requestSource,
+      };
+    }
+    if (
+      requestAttemptId != null &&
+      activeReductionRequest.transferAttemptId != null &&
+      requestAttemptId < activeReductionRequest.transferAttemptId
+    ) {
+      return {
+        stale: true,
+        version,
+        reductionName,
+        transferAttemptId: requestAttemptId,
+        source: requestSource,
+      };
+    }
   }
 
   activeReductionRequestSeq += 1;
@@ -417,6 +479,8 @@ const startReductionRequest = (version, reductionName = null) => {
     id: activeReductionRequestSeq,
     version,
     reductionName,
+    transferAttemptId: requestAttemptId,
+    source: requestSource,
   };
   return activeReductionRequest;
 };
@@ -428,7 +492,9 @@ const isCurrentReductionRequest = (request) => (
   request.id === activeReductionRequest.id &&
   request.version === activeReductionRequest.version &&
   request.version === activeReductionVersion &&
-  request.reductionName === activeReductionRequest.reductionName
+  request.reductionName === activeReductionRequest.reductionName &&
+  request.transferAttemptId === activeReductionRequest.transferAttemptId &&
+  request.source === activeReductionRequest.source
 );
 
 const isCurrentReductionVersion = (version) => (
@@ -921,21 +987,22 @@ Shiny.addCustomMessageHandler("reduction_ready", (msg) => {
   const transferRequest = startReductionRequest(
     msg.reductionVersion,
     msg.reductionName,
+    msg.transferAttemptId ?? null,
   );
   try {
     const reductionURL =
       resolveDataResourceUrl(msg.resourcePrefix, "reduction", msg.reductionFile);
     (async () => {
-      // show spinner
-      if (mainPlotSpinner.style.display === "none") {
-        mainPlotSpinner.style.display = "flex";
-      }
-
       if (!ensureReductionCacheVersion(msg.reductionVersion)) {
         return;
       }
       if (!isCurrentReductionRequest(transferRequest)) {
         return;
+      }
+      // A stale same-version retry must not re-open the spinner after a newer
+      // reduction has already rendered.
+      if (mainPlotSpinner.style.display === "none") {
+        mainPlotSpinner.style.display = "flex";
       }
       const cacheKey = makeReductionCacheKey(
         msg.reductionVersion,
@@ -991,9 +1058,13 @@ Shiny.addCustomMessageHandler("reduction_ready", (msg) => {
 
 Shiny.addCustomMessageHandler("reductions_ready", (msg) => {
   const requestId = pendingInitialPlotRequestId;
+  const reductions = Array.isArray(msg.reductions) ? msg.reductions : [];
+  const activeReduction = resolveActiveReduction(reductions, msg.activeReduction);
+  const activeReductionName = activeReduction?.reductionName || msg.activeReduction || null;
   const transferRequest = startReductionRequest(
     msg.reductionVersion,
-    msg.activeReduction || null,
+    activeReductionName,
+    msg.transferAttemptId ?? null,
   );
   try {
     (async () => {
@@ -1008,8 +1079,6 @@ Shiny.addCustomMessageHandler("reductions_ready", (msg) => {
         mainPlotSpinner.style.display = "flex";
       }
 
-      const reductions = Array.isArray(msg.reductions) ? msg.reductions : [];
-      const activeReduction = resolveActiveReduction(reductions, msg.activeReduction);
       if (!activeReduction) {
         throw new Error("No reductions were provided for plotting");
       }
@@ -1054,22 +1123,31 @@ Shiny.addCustomMessageHandler("reductions_ready", (msg) => {
           if (!isCurrentReductionRequest(transferRequest)) {
             return;
           }
-          const reductionURL =
-            resolveDataResourceUrl(
-              reduction.resourcePrefix || msg.resourcePrefix,
-              "reduction",
-              reduction.reductionFile,
+          try {
+            const reductionURL =
+              resolveDataResourceUrl(
+                reduction.resourcePrefix || msg.resourcePrefix,
+                "reduction",
+                reduction.reductionFile,
+              );
+            const buffer = await fetchArrowIPCBuffer(reductionURL);
+            if (!isCurrentReductionRequest(transferRequest)) {
+              return;
+            }
+            setCacheEntry(
+              ipcCache.reductions,
+              makeReductionCacheKey(msg.reductionVersion, reduction.reductionName),
+              buffer,
+              REDUCTION_CACHE_LIMIT,
             );
-          const buffer = await fetchArrowIPCBuffer(reductionURL);
-          if (!isCurrentReductionRequest(transferRequest)) {
-            return;
+          } catch (error) {
+            if (isCurrentReductionRequest(transferRequest)) {
+              console.warn(
+                `Could not prefetch inactive reduction ${reduction.reductionName}`,
+                error,
+              );
+            }
           }
-          setCacheEntry(
-            ipcCache.reductions,
-            makeReductionCacheKey(msg.reductionVersion, reduction.reductionName),
-            buffer,
-            REDUCTION_CACHE_LIMIT,
-          );
         }),
       );
       if (!isCurrentReductionRequest(transferRequest)) {
@@ -1087,7 +1165,7 @@ Shiny.addCustomMessageHandler("reductions_ready", (msg) => {
           payloadType: "reductions",
           reasonCode: "fetch_failed",
           version: msg.reductionVersion,
-          activeReduction: msg.activeReduction,
+          activeReduction: activeReductionName,
         },
       );
       Shiny.setInputValue("reductionProcessed", false, { priority: "event" });
@@ -1103,19 +1181,16 @@ Shiny.addCustomMessageHandler("reductions_ready", (msg) => {
         payloadType: "reductions",
         reasonCode: "fetch_failed",
         version: msg.reductionVersion,
-        activeReduction: msg.activeReduction,
+        activeReduction: activeReductionName,
       },
     );
   }
 });
 
 Shiny.addCustomMessageHandler("reduction_cached", (msg) => {
+  let transferRequest = null;
   try {
     (async () => {
-      if (mainPlotSpinner.style.display === "none") {
-        mainPlotSpinner.style.display = "flex";
-      }
-
       if (!ensureReductionCacheVersion(msg.reductionVersion)) {
         return;
       }
@@ -1125,6 +1200,18 @@ Shiny.addCustomMessageHandler("reduction_cached", (msg) => {
       );
       const buffer = touchCacheEntry(ipcCache.reductions, cacheKey);
       if (!buffer) {
+        transferRequest = startReductionRequest(
+          msg.reductionVersion,
+          msg.reductionName,
+          null,
+          "cache-miss",
+        );
+        if (!isCurrentReductionRequest(transferRequest)) {
+          return;
+        }
+        if (mainPlotSpinner.style.display === "none") {
+          mainPlotSpinner.style.display = "flex";
+        }
         updateReductionCacheKeys();
         Shiny.setInputValue(
           "updateReduction-cacheMissReduction",
@@ -1134,8 +1221,27 @@ Shiny.addCustomMessageHandler("reduction_cached", (msg) => {
         return;
       }
 
-      plotReductionBuffer(buffer);
+      transferRequest = startReductionRequest(
+        msg.reductionVersion,
+        msg.reductionName,
+        null,
+        "cache",
+      );
+      if (!isCurrentReductionRequest(transferRequest)) {
+        return;
+      }
+      if (mainPlotSpinner.style.display === "none") {
+        mainPlotSpinner.style.display = "flex";
+      }
+      plotReductionBuffer(
+        buffer,
+        () => isCurrentReductionRequest(transferRequest),
+        { reductionName: msg.reductionName },
+      );
     })().catch((error) => {
+      if (transferRequest && !isCurrentReductionRequest(transferRequest)) {
+        return;
+      }
       handlePlotTransferError(
         error,
         pendingInitialPlotRequestId,
@@ -1144,6 +1250,9 @@ Shiny.addCustomMessageHandler("reduction_cached", (msg) => {
       Shiny.setInputValue("reductionProcessed", false, { priority: "event" });
     });
   } catch (error) {
+    if (transferRequest && !isCurrentReductionRequest(transferRequest)) {
+      return;
+    }
     handlePlotTransferError(
       error,
       pendingInitialPlotRequestId,
@@ -1259,6 +1368,27 @@ Shiny.addCustomMessageHandler("transfer_error", (msg) => {
     return;
   }
   if (payloadType === "reduction" || payloadType === "reductions") {
+    const requestedReduction = payload.reductionName || payload.activeReduction || null;
+    if (activeReductionRequest?.source === "cache") {
+      return;
+    }
+    if (
+      activeReductionRequest &&
+      Number(version) === Number(activeReductionRequest.version) &&
+      requestedReduction &&
+      activeReductionRequest.reductionName &&
+      requestedReduction !== activeReductionRequest.reductionName
+    ) {
+      return;
+    }
+    if (
+      activeReductionRequest &&
+      payload.transferAttemptId != null &&
+      activeReductionRequest.transferAttemptId != null &&
+      Number(payload.transferAttemptId) !== Number(activeReductionRequest.transferAttemptId)
+    ) {
+      return;
+    }
     activeReductionVersion = version;
     activeReductionRequest = null;
   }

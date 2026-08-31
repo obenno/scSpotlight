@@ -1,6 +1,7 @@
-source(file.path("benchmarks", "real_explore_helpers.R"))
-
-devtools::load_all(".", quiet = TRUE, export_all = FALSE)
+source(file.path("benchmarks", "explore_1m_helpers.R"))
+source_root <- benchmark_execution_source_root()
+source(file.path(source_root, "benchmarks", "real_explore_helpers.R"))
+devtools::load_all(source_root, quiet = TRUE, export_all = FALSE)
 
 convert_to_explore_bundle <- benchmark_scspotlight_function(
   "convert_to_explore_bundle"
@@ -88,7 +89,8 @@ expression_samples <- lapply(seq_len(3L), function(iteration) {
         assay = assay,
         feature = selected_gene,
         dir_path = transfer_dir,
-        expr_version = iteration
+        expr_version = iteration,
+        resource_prefix = "benchmark-session"
       )
     },
     write_transfer = write_backend_expression_transfer
@@ -107,6 +109,7 @@ processing_gate <- benchmark_rss_gate(
   final_status$hwm_kb,
   limit_bytes = rss_limit_bytes
 )
+source_md5 <- attr(source_file, "benchmark_md5")
 feature_record <- bundle$features[
   bundle$features$feature == selected_gene & bundle$features$assay == assay,
   ,
@@ -116,7 +119,7 @@ descriptor <- list(
   source_url = benchmark_real_h5ad_url,
   source_filename = basename(source_file),
   source_bytes = unname(file.info(source_file)$size),
-  source_md5 = benchmark_file_md5(source_file),
+  source_md5 = source_md5,
   archive_filename = basename(paths$archive_file),
   archive_bytes = unname(file.info(paths$archive_file)$size),
   archive_md5 = benchmark_file_md5(paths$archive_file),
@@ -143,10 +146,10 @@ jsonlite::write_json(
 )
 
 payload <- list(
-  schema_version = 1L,
+  schema_version = 2L,
   command = "pixi run benchmark-real-explore",
   provenance = c(
-    benchmark_git_provenance(),
+    benchmark_git_provenance(source_root),
     list(
       artifact_kind = "cellxgene_real_explore_bundle",
       biological_representativeness = "Full Explore archive generated from the real CellxGene H5AD comparison artifact",
@@ -167,7 +170,7 @@ payload <- list(
     selected_gene_block = descriptor$selected_gene_block,
     storage = "zstd-compressed feature-block Parquet files queried with DuckDB and streamed as Arrow IPC"
   ),
-  environment = benchmark_environment(),
+  environment = benchmark_environment(source_root),
   artifact = descriptor,
   processing = list(
     method = "Fresh Pixi-managed R process; Linux VmHWM records full H5AD-to-Explore conversion, archive extraction and validation, and production DuckDB expression transfers.",

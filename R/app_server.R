@@ -423,14 +423,10 @@ app_server <- function(input, output, session) {
   )
 
   selectedFeatures <- reactive({
-    ## has to be parsed by reactive()
-    message("input$selectedFeatures: ", input$selectedFeatures)
     input$selectedFeatures
   })
 
   llmAnalysisContext <- reactive({
-    state <- metaSidebarState()
-    meta_cols <- if (is.list(state)) state$cols else NULL
     build_llm_analysis_context(
       object = seuratObj(),
       running_mode = runningMode,
@@ -439,7 +435,6 @@ app_server <- function(input, output, session) {
       group_by = categoryInfo$group.by(),
       split_by = categoryInfo$split.by(),
       selected_features = selectedFeatures(),
-      meta_cols = meta_cols,
       deg_markers = DEG_state$markers(),
       p_adj_cutoff = DEG_state$pAdjCutoff(),
       context_version = paste(

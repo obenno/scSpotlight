@@ -1,6 +1,7 @@
-source(file.path("benchmarks", "real_h5ad_helpers.R"))
-
-devtools::load_all(".", quiet = TRUE, export_all = FALSE)
+source(file.path("benchmarks", "explore_1m_helpers.R"))
+source_root <- benchmark_execution_source_root()
+source(file.path(source_root, "benchmarks", "real_h5ad_helpers.R"))
+devtools::load_all(source_root, quiet = TRUE, export_all = FALSE)
 
 load_analysis_input_file <- benchmark_scspotlight_function("load_analysis_input_file")
 prepare_backend_metadata_transfer <- benchmark_scspotlight_function(
@@ -56,7 +57,8 @@ metadata_transfer <- benchmark_transfer_measurement(
     prepare_backend_metadata_transfer(
       object,
       dir_path = transfer_dir,
-      meta_version = 1L
+      meta_version = 1L,
+      resource_prefix = "benchmark-session"
     )
   },
   write_transfer = write_backend_metadata_transfer
@@ -67,7 +69,9 @@ reduction_transfer <- benchmark_transfer_measurement(
       object,
       reduction_name = selected_reduction,
       dir_path = transfer_dir,
-      reduction_version = 1L
+      reduction_version = 1L,
+      resource_prefix = "benchmark-session",
+      transfer_attempt_id = 1L
     )
   },
   write_transfer = write_backend_reduction_transfer
@@ -80,7 +84,8 @@ expression_transfer <- benchmark_transfer_measurement(
       feature = selected_gene,
       dir_path = transfer_dir,
       expr_version = 1L,
-      backend_root = file.path(paths$processing_root, "backend")
+      backend_root = file.path(paths$processing_root, "backend"),
+      resource_prefix = "benchmark-session"
     )
   },
   write_transfer = write_backend_expression_transfer
@@ -92,11 +97,12 @@ processing_gate <- benchmark_rss_gate(
   final_status$hwm_kb,
   limit_bytes = rss_limit_bytes
 )
+source_md5 <- attr(source_file, "benchmark_md5")
 descriptor <- list(
   source_url = benchmark_real_h5ad_url,
   source_filename = basename(source_file),
   source_bytes = unname(file.info(source_file)$size),
-  source_md5 = benchmark_file_md5(source_file),
+  source_md5 = source_md5,
   cell_count = get_backend_cell_count(object),
   feature_count = length(get_backend_features(object, assay = assay)),
   assay = assay,
@@ -114,10 +120,10 @@ jsonlite::write_json(
 )
 
 payload <- list(
-  schema_version = 1L,
+  schema_version = 2L,
   command = "pixi run benchmark-real-h5ad",
   provenance = c(
-    benchmark_git_provenance(),
+    benchmark_git_provenance(source_root),
     list(
       artifact_kind = "cellxgene_real_h5ad",
       biological_representativeness = "CellxGene source artifact requested for issue #27",
@@ -136,7 +142,7 @@ payload <- list(
     selected_gene = selected_gene,
     storage = "BPCells-backed Seurat assay layers with Arrow IPC browser transfers"
   ),
-  environment = benchmark_environment(),
+  environment = benchmark_environment(source_root),
   artifact = descriptor,
   processing = list(
     method = "Fresh Pixi-managed R process; Linux VmHWM records the full h5ad import, validation, BPCells preparation, and production transfer peak.",
