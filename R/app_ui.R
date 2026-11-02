@@ -659,6 +659,49 @@ infoBox_ui <- function() {
     )
   }
 
+  if (llm_is_enabled()) {
+    rail_buttons <- append(
+      rail_buttons,
+      list(
+        tags$button(
+          type = "button",
+          class = "plot-rail-btn",
+          `data-target` = "floatingLLMChat",
+          title = "Open AI Assistant",
+          bsicons::bs_icon("robot")
+        )
+      )
+    )
+    floating_panels <- append(
+      floating_panels,
+      list(
+        tags$div(
+          id = "floatingLLMChat",
+          class = "plot-floating-panel",
+          style = paste(
+            "display:none;",
+            "width:min(520px, calc(100vw - 1rem));",
+            "height:min(620px, calc(100vh - 1rem));"
+          ),
+          tags$div(
+            class = "plot-floating-header",
+            tags$span("AI Assistant"),
+            tags$button(
+              type = "button",
+              class = "plot-floating-close",
+              `data-close-target` = "floatingLLMChat",
+              tags$i(class = "bi bi-x-lg")
+            )
+          ),
+          tags$div(
+            class = "plot-floating-body",
+            mod_LLMChat_ui("llmChat")
+          )
+        )
+      )
+    )
+  }
+
   tags$div(
     id = "plotFloatingHost",
     class = "plot-floating-host",

@@ -12,9 +12,9 @@ in this branch.
 
 ## Current Implementation Status
 
-- Branch: `feature/llm-chatbox`
-- Status: backend/context implementation complete; app UI insertion deferred to
-  keep `R/app_ui.R` identical to `dev`
+- Branch: `feature/refactor`
+- Status: backend/context implementation and optional floating-panel UI are
+  present behind `enableLLM = TRUE`
 - Provider key handling: server-side only through environment variables or
   provider-managed credentials detected by `ellmer`
 - Default availability: disabled unless `run_app(enableLLM = TRUE, ...)` is used
@@ -70,17 +70,18 @@ Credential rules:
 
 ### UI Layer
 
-The chat UI module exists as `mod_LLMChat_ui("llmChat")`, but it is not inserted
-into `R/app_ui.R` in this pass. This keeps the current app UI identical to
-`dev`. A future UI integration should decide where to mount the module without
-reintroducing the discarded UI branch changes.
+When `enableLLM = TRUE`, `R/app_ui.R` mounts `mod_LLMChat_ui("llmChat")` in the
+existing plot-rail floating-panel host. The button and panel are available in
+both Analysis and Explore modes. When the option is disabled, neither element
+is emitted, so the default UI remains unchanged.
 
 ### Runtime Layer
 
 `mod_LLMChat_server()` creates one `ellmer` chat object per Shiny session.
-The module observes `input$chat_user_input`, builds a prompt from the current
-compact analysis context, and appends the answer to the chat UI with
-non-blocking `ellmer` APIs.
+The module observes `input$chat_user_input`, captures one request snapshot,
+builds a prompt from that snapshot's compact analysis context, and appends a
+current answer to the chat UI with non-blocking `ellmer` APIs. Registered tools
+read from the same snapshot rather than live reactive values.
 
 For the initial Ollama provider, the module uses `chat_async()` so tool calling
 can remain available despite Ollama's current streaming/tool limitations. Future
@@ -93,6 +94,10 @@ Concurrency rules:
 - Do not start concurrent streams on the same chat object.
 - Use a session-local busy flag to reject a new prompt while one is streaming.
 - Rebuild/reset the chat object when a new dataset context version is loaded.
+- Treat a request as stale if any captured context, object, grouping, DEG, or
+  cutoff dependency changes before completion.
+- Never append a stale completion. Reset the chat object and append a
+  deterministic discard notice so stale conversation state cannot be reused.
 
 ### Context Layer
 
@@ -129,6 +134,11 @@ Tool constraints:
 - Validate all LLM-provided arguments.
 - Return compact JSON-serializable outputs.
 - Apply hard caps to rows/categories/characters.
+- Emit metadata category labels only when there are at most 50 distinct values,
+  every value is at most 64 characters, and neither the column nor its values
+  look identifier-like.
+- Apply the same category boundary to Seurat summaries, Explore Parquet
+  summaries, compact DEG context, and DEG tools.
 - Never return raw per-cell payloads.
 - Never mutate app state.
 
@@ -148,7 +158,7 @@ Allowed payloads:
 
 - Counts and names
 - Small selected UI state
-- Top-N category summaries
+- Top-N category summaries whose labels pass the shared safety boundary
 - Top-N marker summaries
 - Explicit missing-result messages
 
@@ -159,9 +169,10 @@ Implemented in this branch:
 - Optional `enableLLM` app option, default `FALSE`
 - Provider factory with Ollama first
 - Server-side credential handling via `ellmer`
-- `shinychat` chat module, not yet mounted in `R/app_ui.R`
+- Conditionally mounted `shinychat` rail button and floating panel
 - Compact app context snapshots
-- Read-only summary tools
+- Request-bound read-only summary tools with stale-response rejection
+- Shared identifier, cardinality, value-length, and row limits for category data
 - Context/tool tests that do not call a real LLM
 - `DEVELOPMENT.md` architecture notes
 - Unit tests for context truncation, unloaded dataset context, group summaries,
@@ -192,15 +203,17 @@ separate data-access implementation.
 
 ## Validation Notes
 
-Validated with:
+Earlier implementation validation:
 
-- `pixi run Rscript -e "devtools::test(filter = 'llm-context')"`
-- `pixi run Rscript -e "devtools::test(filter = 'run-app-modes')"`
-- `pixi run Rscript -e "devtools::test()"`
-- `pixi run Rscript -e "devtools::load_all(); cat('loaded\\n')"`
+- `pixi run Rscript -e "devtools::test(filter = 'llm-context', stop_on_failure = TRUE)"`: 64 passed
+- `pixi run Rscript -e "devtools::test(filter = 'run-app-modes', stop_on_failure = TRUE)"`: 20 passed
+- `pixi run Rscript -e "devtools::test(stop_on_failure = TRUE)"`: 1,165 passed, 40 warnings, 0 failed, 0 skipped
 - direct parse checks for modified R files
+- `git diff --check`
 
-`devtools::check()` currently fails during `R CMD build` before package checks
-because the local Pixi checkout contains environment files with broken debug
-symlink targets under `.pixi`. The failure happens before code checks and is
-not caused by the LLM implementation.
+The September 1, 2026 validation record confirms that the optional dependency
+profile (`ellmer`, `later`, and `shinychat`) and the real Chromium chat-output
+fixture passed. Provider networking remains outside that fixture; module-level
+asynchronous behavior uses mocked clients, tool registration, promise
+resolution, and chat appends. See `DEVELOPMENT.md` for subsequent validation
+and the view-aware floating-panel implementation record.

@@ -9,7 +9,7 @@
 - Explore Mode now only accepts `.explore-parquet.zip` archives and no longer shows the Data Conversion panel.
 - Explore Mode now reports unsupported, malformed, or incomplete archive failures with actionable path-free messages while retaining detailed server diagnostics (#31).
 - Explore Mode now streams metadata, reduction, and expression transfers from Parquet through chunked Arrow IPC writers to reduce server memory usage for large datasets.
-- LLM Assistant can now be enabled with `run_app(enableLLM = TRUE)` for server-side, summary-only chat over the current scSpotlight state.
+- LLM Assistant can now be enabled with `run_app(enableLLM = TRUE)` for a visible server-side, summary-only chat panel whose tools use one request snapshot and redact identifier-like or high-cardinality metadata values.
 - Added duckerdb support in the R backend
 - Used webR to handle the featurePlot on the clientside
 - Gene expression transferred asynchronously

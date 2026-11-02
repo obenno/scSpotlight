@@ -67,6 +67,38 @@ test_that("LLM options reject invalid values", {
   )
 })
 
+test_that("LLM assistant UI is mounted only when enabled", {
+  infoBox_ui <- getFromNamespace("infoBox_ui", "scSpotlight")
+  old_options <- shiny::getShinyOption("golem_options")
+  on.exit(shiny::shinyOptions(golem_options = old_options), add = TRUE)
+
+  testthat::local_mocked_bindings(
+    mod_LLMChat_ui = function(id) {
+      shiny::div(id = paste0(id, "-mounted"), "LLM chat mounted")
+    },
+    .package = "scSpotlight"
+  )
+
+  render_info_box <- function(enabled, running_mode = "analysis") {
+    shiny::shinyOptions(golem_options = list(
+      runningMode = running_mode,
+      enableLLM = enabled
+    ))
+    paste(as.character(infoBox_ui()), collapse = "\n")
+  }
+
+  disabled_html <- render_info_box(FALSE)
+  enabled_html <- render_info_box(TRUE)
+  explore_enabled_html <- render_info_box(TRUE, running_mode = "explore")
+
+  expect_no_match(disabled_html, "floatingLLMChat", fixed = TRUE)
+  expect_no_match(disabled_html, "llmChat-mounted", fixed = TRUE)
+  expect_match(enabled_html, "floatingLLMChat", fixed = TRUE)
+  expect_match(enabled_html, "llmChat-mounted", fixed = TRUE)
+  expect_match(enabled_html, "Open AI Assistant", fixed = TRUE)
+  expect_match(explore_enabled_html, "llmChat-mounted", fixed = TRUE)
+})
+
 test_that("Explore Mode server does not register Analysis-only modules", {
   skip_if_not_installed("shiny")
 

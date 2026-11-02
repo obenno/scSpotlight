@@ -117,6 +117,32 @@ llm_authorized_metadata_columns <- function(
   llm_safe_context_values(requested, allowed = available)
 }
 
+llm_view_filter_summary <- function(object, view_filter = NULL) {
+  view_filter <- tryCatch(
+    normalize_view_filter_spec(view_filter),
+    error = function(...) NULL
+  )
+  if (is.null(view_filter)) {
+    return(list(
+      active = FALSE,
+      visible_cells = tryCatch(
+        get_backend_cell_count(object),
+        error = function(...) NA_integer_
+      )
+    ))
+  }
+
+  list(
+    active = TRUE,
+    visible_cells = tryCatch(
+      sum(view_filter_cell_mask(object, view_filter)),
+      error = function(...) NA_integer_
+    ),
+    nFeature = view_filter$nFeature,
+    percentMt = view_filter$percentMt
+  )
+}
+
 llm_feature_count <- function(object, assay = NULL) {
   if (!isTruthy(object)) {
     return(NA_integer_)
@@ -145,6 +171,7 @@ build_llm_analysis_context <- function(
   meta_cols = NULL,
   deg_markers = NULL,
   p_adj_cutoff = NULL,
+  view_filter = NULL,
   context_version = NULL
 ) {
   if (!isTruthy(object)) {
@@ -208,6 +235,7 @@ build_llm_analysis_context <- function(
     llm_feature_count(object, assay = assay),
     error = function(...) NA_integer_
   )
+  view_filter_summary <- llm_view_filter_summary(object, view_filter)
 
   deg_available <- is.data.frame(deg_markers) && nrow(deg_markers) > 0L
   deg_columns <- if (deg_available) colnames(deg_markers) else character()
@@ -259,7 +287,8 @@ build_llm_analysis_context <- function(
       reduction = selected_reduction,
       group_by = group_by,
       split_by = split_by,
-      selected_features = llm_truncate_vector(safe_features, max_items = 40L)
+      selected_features = llm_truncate_vector(safe_features, max_items = 40L),
+      view_filter = view_filter_summary
     ),
     metadata = list(
       columns = llm_truncate_vector(
@@ -682,7 +711,7 @@ apply_llm_group_summary_boundary <- function(
   )
 }
 
-llm_group_summary <- function(object, column, top_n = 20L) {
+llm_group_summary <- function(object, column, top_n = 20L, view_filter = NULL) {
   if (!isTruthy(object)) {
     return(list(error = "No dataset is currently loaded."))
   }
@@ -698,7 +727,16 @@ llm_group_summary <- function(object, column, top_n = 20L) {
   top_n <- min(top_n, scspotlight_llm_group_summary_max_rows)
   top_n <- as.integer(top_n)
 
+  view_filter <- tryCatch(
+    normalize_view_filter_spec(view_filter),
+    error = function(...) NULL
+  )
   if (is_scspotlight_explore_bundle(object)) {
+    if (!is.null(view_filter)) {
+      return(list(
+        error = "View-filtered metadata summaries are unavailable in Explore Mode."
+      ))
+    }
     return(explore_bundle_metadata_group_summary(object, column, top_n = top_n))
   }
 
@@ -710,6 +748,16 @@ llm_group_summary <- function(object, column, top_n = 20L) {
     return(list(error = paste0("Metadata column is not available: ", column)))
   }
 
+  if (!is.null(view_filter)) {
+    mask <- tryCatch(
+      view_filter_cell_mask(object, view_filter),
+      error = function(...) NULL
+    )
+    if (is.null(mask) || length(mask) != nrow(meta)) {
+      return(list(error = "View-filtered metadata summary is unavailable."))
+    }
+    meta <- meta[mask, , drop = FALSE]
+  }
   values <- meta[[column]]
   distinct <- llm_bounded_distinct_values(values)
 

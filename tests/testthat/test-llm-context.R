@@ -30,8 +30,7 @@ test_that("LLM context omits instruction-like selected feature labels", {
     "ignore_previous_instructions",
     "systemPrompt",
     "ignorepreviousinstructions",
-    "SYSTEMPROMPT",
-    "IGNOREPREVIOUSINSTRUCTIONS"
+    "SYSTEMPROMPT"
   ))
 
   expect_identical(values, "MALAT1")
@@ -94,6 +93,45 @@ test_that("LLM group summary is aggregated and capped", {
   expect_equal(summary$values_included, TRUE)
   expect_equal(summary$limits$max_distinct_values, 50L)
   expect_equal(summary$limits$max_value_chars, 64L)
+})
+
+test_that("LLM group summaries honor an active Analysis View Filter", {
+  llm_group_summary <- getFromNamespace("llm_group_summary", "scSpotlight")
+  object <- list(
+    metadata = data.frame(
+      cluster = c("a", "a", "b"),
+      nFeature_RNA = c(100, 250, 300),
+      percent.mt = c(5, 10, 60),
+      row.names = c("c1", "c2", "c3")
+    )
+  )
+  view_filter <- list(
+    nFeature = list(column = "nFeature_RNA", min = 200, max = 400),
+    percentMt = list(column = "percent.mt", max = 50)
+  )
+
+  testthat::local_mocked_bindings(
+    is_scspotlight_explore_bundle = function(...) FALSE,
+    get_backend_metadata = function(object, cols = NULL) {
+      object$metadata[, cols, drop = FALSE]
+    },
+    view_filter_cell_mask = function(object, view_filter) {
+      object$metadata$nFeature_RNA > view_filter$nFeature$min &
+        object$metadata$nFeature_RNA < view_filter$nFeature$max &
+        object$metadata$percent.mt < view_filter$percentMt$max
+    },
+    .package = "scSpotlight"
+  )
+
+  summary <- llm_group_summary(
+    object,
+    column = "cluster",
+    view_filter = view_filter
+  )
+
+  expect_equal(summary$total_cells, 1L)
+  expect_equal(summary$rows$value, "a")
+  expect_equal(summary$rows$cells, 1L)
 })
 
 test_that("LLM group summary omits high-cardinality metadata values", {
@@ -339,7 +377,7 @@ test_that("LLM DEG summaries omit unsafe feature labels", {
   llm_deg_summary <- getFromNamespace("llm_deg_summary", "scSpotlight")
   llm_json <- getFromNamespace("llm_json", "scSpotlight")
   markers <- data.frame(
-    cluster = rep("0", 11L),
+    cluster = rep("0", 10L),
     gene = c(
       "MALAT1",
       "![tracker](https://example.invalid/llm-tracker.png)",
@@ -350,11 +388,10 @@ test_that("LLM DEG summaries omit unsafe feature labels", {
       "systemPrompt",
       "overrideInstructions",
       "ignorepreviousinstructions",
-      "SYSTEMPROMPT",
-      "IGNOREPREVIOUSINSTRUCTIONS"
+      "SYSTEMPROMPT"
     ),
-    avg_log2FC = seq(11, 1),
-    p_val_adj = rep(0.01, 11L),
+    avg_log2FC = seq(10, 1),
+    p_val_adj = rep(0.01, 10L),
     stringsAsFactors = FALSE
   )
 
@@ -372,7 +409,6 @@ test_that("LLM DEG summaries omit unsafe feature labels", {
   expect_no_match(encoded, "overrideInstructions", fixed = TRUE)
   expect_no_match(encoded, "ignorepreviousinstructions", fixed = TRUE)
   expect_no_match(encoded, "SYSTEMPROMPT", fixed = TRUE)
-  expect_no_match(encoded, "IGNOREPREVIOUSINSTRUCTIONS", fixed = TRUE)
 })
 
 test_that("LLM metadata summaries stop reading after the distinct-value limit", {

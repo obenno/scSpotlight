@@ -202,12 +202,15 @@ Implementation notes:
 Decision:
 
 - The AI Assistant runtime is disabled by default and is enabled only when `run_app(enableLLM = TRUE, ...)` is used.
-- No chat panel is currently inserted into `R/app_ui.R`; the visible UI remains identical to `dev` until a later explicit UI mounting decision.
+- When enabled, the shared plot rail mounts an AI Assistant button and floating chat panel in both Analysis and Explore modes. When disabled, neither element is emitted and the existing UI remains unchanged.
 - The UI uses Posit's `shinychat` package, and model access uses `ellmer`.
 - The first supported provider is local Ollama via `ellmer::chat_ollama()`.
 - Provider credentials are never accepted through Shiny inputs or `run_app()` arguments.
 - Credentials are resolved only server-side by `ellmer`, for example through environment variables or provider-managed credentials.
 - MCP is explicitly deferred and is not implemented in this branch.
+- Each user message captures one request snapshot containing the prompt context and every value available to read-only tools. Tool calls must never switch to newer reactive state partway through a request.
+- If any snapshot dependency changes before an asynchronous response completes, the response is discarded, the session chat client is reset, and the user receives a deterministic stale-context notice.
+- Metadata category labels are released only when the column and values are not identifier-like, there are at most 50 distinct values, and every value is at most 64 characters. Group summaries return at most 50 rows; otherwise they return omission metadata without category labels.
 
 Why:
 
@@ -219,10 +222,10 @@ Implementation notes:
 
 - `run_app()` accepts non-secret options: `enableLLM`, `llmProvider`, `llmModel`, and `llmBaseUrl`.
 - `DESCRIPTION` lists `ellmer` and `shinychat` under `Suggests` so the feature remains optional.
-- `R/app_ui.R` is intentionally left matching `dev`; UI mounting for `mod_LLMChat_ui()` is deferred.
+- `R/app_ui.R` conditionally mounts `mod_LLMChat_ui("llmChat")` in the existing floating-panel host without adding an Analysis-only dependency.
 - `R/app_server.R` builds a compact reactive analysis context and passes it to `mod_LLMChat_server()`.
-- `R/mod_LLMChat.R` creates one session-local `ellmer` chat object, uses non-blocking `ellmer` calls, and registers read-only tools. Ollama uses `chat_async()` to preserve tool calling despite current Ollama streaming/tool limitations; future providers that support tool streaming can use `stream_async(..., stream = "content")` for rich `shinychat` tool displays.
-- `R/fct_llm_context.R` owns the system prompt, context builder, provider factory, context truncation, group summaries, and DEG summaries.
+- `R/mod_LLMChat.R` creates one session-local `ellmer` chat object, uses non-blocking `ellmer` calls, binds prompt and tool reads to one request snapshot, and rejects stale completions. Ollama uses `chat_async()` to preserve tool calling despite current Ollama streaming/tool limitations; future providers that support tool streaming can use `stream_async(..., stream = "content")` for rich `shinychat` tool displays.
+- `R/fct_llm_context.R` owns the system prompt, context builder, provider factory, context truncation, group summaries, DEG summaries, and the shared category-label safety boundary for Seurat and Explore data.
 - `LLM_CHATBOX_PLAN.md` records the implementation plan, credential handling rules, and reserved future MCP design.
 
 ## Runtime Contract Backbone
@@ -733,6 +736,14 @@ These rules should be preserved unless intentionally changed.
 - DEG results run only when the user clicks the DEG run button.
 - DEG marker table and DEG heatmap live in the same floating DEG window.
 - DEG marker table and DEG heatmap are rendered server-side in the floating DEG window.
+
+### AI Assistant
+
+- The AI Assistant rail button and floating panel exist only when `enableLLM = TRUE`; this rule is identical in Analysis and Explore modes.
+- A request prompt and all of its tool calls read from the same request snapshot, even if the active dataset, grouping, DEG result, or cutoff changes while the request is running.
+- A completion from an invalidated snapshot is never appended as an answer. The chat client is reset before the next request so stale model conversation state is not reused.
+- Metadata and DEG category labels are all-or-nothing under the shared safety boundary: identifier-like columns or values, more than 50 distinct values, or any value longer than 64 characters suppress every label and return an explicit omission reason.
+- Group and DEG summary payloads remain capped at 50 rows and never expose raw per-cell data.
 
 ## Performance Considerations
 
@@ -2406,3 +2417,17 @@ Affected files: `R/fct_explore_bundle.R`, `R/fct_backend_transfer_adapter.R`,
 `R/app_server.R`, `R/mod_UpdateMetaData.R`, the browser payload manifest,
 `srcjs/index.js`, Arrow/scatter modules, their R/JS tests, and the structural
 benchmark helper.
+
+### 47. View-aware optional assistant checkpoint (November 2, 2026)
+
+- Mount the assistant in the existing floating-panel host only when enabled,
+  in both runtime modes. Include the View Filter version in request context so
+  filter changes invalidate stale responses.
+- Report visible-cell count and filter thresholds in compact context. Analysis
+  group summaries use the same captured filter; filtered Explore group summaries
+  return an explicit unavailable result.
+- Keep disclosure limits, request snapshots, escaped output, and server-only
+  credentials intact. Current optional dependencies passed profile verification;
+  live provider networking is not exercised by the mocked/browser fixtures.
+- Affected files: `R/app_ui.R`, `R/app_server.R`, `R/fct_llm_context.R`,
+  `R/mod_LLMChat.R`, LLM/run-mode tests, `NEWS.md`, and `LLM_CHATBOX_PLAN.md`.

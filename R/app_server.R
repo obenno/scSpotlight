@@ -460,10 +460,12 @@ app_server <- function(input, output, session) {
       selected_features = selectedFeatures(),
       deg_markers = DEG_state$markers(),
       p_adj_cutoff = DEG_state$pAdjCutoff(),
+      view_filter = viewFilter$value(),
       context_version = paste(
         metaUpdateIndicator(),
         reductionUpdateIndicator(),
         geneUpdateIndicator(),
+        viewFilter$version(),
         sep = ":"
       )
     )

@@ -13,7 +13,7 @@ mod_LLMChat_ui <- function(id) {
 
   div(
     class = "scspotlight-llm-chat html-fill-container",
-    style = "height: min(68vh, 720px); min-height: 420px;",
+    style = "height: 100%; min-height: 0;",
     shinychat::chat_ui(
       id = ns("chat"),
       messages = llm_welcome_message(),
@@ -341,7 +341,14 @@ llm_request_tool_handlers <- function(request_snapshot) {
           llm_group_summary(
             snapshot$object,
             column = requested_column,
-            top_n = top_n
+            top_n = top_n,
+            view_filter = if (isTRUE(
+              snapshot$analysis_context$current_view$view_filter$active
+            )) {
+              snapshot$analysis_context$current_view$view_filter
+            } else {
+              NULL
+            }
           )
         },
         "Metadata summary is unavailable."
