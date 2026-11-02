@@ -9,3 +9,6 @@ playwright-report/
 test-results/
 tests/e2e/.tmp/
 benchmarks/.tmp/
+/.tmp/
+/.review-tmp/
+/README.html

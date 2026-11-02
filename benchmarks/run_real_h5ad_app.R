@@ -1,6 +1,7 @@
 source(file.path("benchmarks", "explore_1m_helpers.R"))
 source_root <- benchmark_execution_source_root()
 source(file.path(source_root, "benchmarks", "real_h5ad_helpers.R"))
+
 devtools::load_all(source_root, quiet = TRUE, export_all = FALSE)
 
 paths <- benchmark_real_h5ad_paths()

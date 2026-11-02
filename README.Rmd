@@ -83,6 +83,7 @@ scSpotlight::run_app(runningMode = "explore")
 - `BPCells >= 0.3.1` is a required runtime dependency and is installed by `pixi run setup` via the fallback R package bootstrap.
 - `rhdf5` is a required runtime dependency for full `.h5ad` import/export support and is installed by `pixi run setup`.
 - Run `pixi run install-optional-packages` when you want optional performance support via `presto`. It uses `pak`, with `presto` sourced from `immunogenomics/presto`.
+- Run `pixi run install-optional-llm` to opt into the Suggested `ellmer`, `later`, and `shinychat` packages used by the disabled-by-default LLM assistant. Verify that profile with `pixi run check-optional-llm` and exercise its focused tests with `pixi run test-llm`. Normal setup and runtime do not install or require this profile.
 - Run `pixi run doctor-env` to verify `scSpotlight` is installed, `.libPaths()` points to Pixi, and no required package is missing.
 - Run `pixi run run-app` to start the app in Analysis Mode.
 - Run `pixi run run-app-explore` to start the app in Explore Mode.
@@ -117,14 +118,41 @@ pixi run run-app-explore
 - `pixi install` - prefetch/materialize the lockfile environment without running a task
 - `pixi run setup-r` - install required R fallbacks and install the local R package
 - `pixi run setup` - run the full app bootstrap: use Pixi-native dependencies where available, fall back to `pak::pkg_install()` for missing R packages, install JavaScript dependencies, and install the local package
+- `pixi run setup-ci` - perform the locked CI bootstrap with `npm ci`
+- `pixi run setup-js` - install only locked JavaScript dependencies with `npm ci`
+- `pixi run install-optional-llm` - install the opt-in LLM Suggested packages
+- `pixi run check-optional-llm` - fail unless the opt-in LLM profile is usable
 - `pixi run dev` - start the Vite development server
 - `pixi run build-js` - build the frontend bundle
 - `pixi run test-js` - run frontend tests once
-- `pixi run r-check` - run `devtools::check()`
+- `pixi run test-r` - run the R testthat suite
+- `pixi run test-llm` - run the focused LLM contract tests
+- `pixi run r-check` - build the source tarball, unpack that exact artifact for source-contract reads, and run `R CMD check` without checkout fallbacks
 - `pixi run build-pkgdown` - build the pkgdown site
 - `pixi run run-app` - launch the source-checkout app in Analysis Mode
 - `pixi run run-app-analysis` - explicitly launch the source-checkout app in Analysis Mode
 - `pixi run run-app-explore` - launch the source-checkout app in Explore Mode
+
+### Pull request quality checks
+
+Pull requests targeting `dev` run `.github/workflows/pr-quality.yaml`. It has separate gates for R tests plus the built-source package check, the opt-in LLM dependency profile and browser output-safety regression, JavaScript tests plus the production build, and the Playwright Analysis Mode scenario. The JavaScript gate fails if rebuilding changes checked-in `inst/app/www/index.js` or `inst/app/www/index.js.map`. This workflow has read-only repository permissions and performs no deployment. The existing `pkgdown` workflow remains the only workflow that deploys the documentation site.
+
+### Representative benchmark evidence
+
+The representative benchmark input is the CellxGene artifact `aa6ebee3-68cc-41b4-80b2-5ef5c3317e14.h5ad`: 9,663,215,939 bytes with MD5 `7933979b0faf179ce2674be6e4baed81`. Place it at the default benchmark source location under `${SCSPOTLIGHT_TEMP_ROOT:-${TMPDIR:-/tmp}/scspotlight-benchmarks}` or set `SCSPOTLIGHT_REAL_H5AD_FILE` to an existing copy, then run from a clean checkout:
+
+``` bash
+pixi run benchmark-real-h5ad
+```
+
+Benchmark schema version 2 records the exact git SHA, clean-worktree state, Pixi/Node/npm/R versions, key R package versions, machine details, browser version, and MD5 hashes for `pixi.toml`, `pixi.lock`, and `package-lock.json`. Validate a retained result against the current clean checkout and active environment with:
+
+``` bash
+SCSPOTLIGHT_BENCHMARK_EVIDENCE_FILE=/path/to/results.json \
+  pixi run check-benchmark-evidence
+```
+
+The checker exits nonzero for a different SHA, a dirty checkout, changed locks, runtime versions or host environment, a nonrepresentative workload, missing browser metrics, missing named RSS gates, or a failed acceptance gate. `benchmarks/evidence/real-h5ad-2026-08-10.json` preserves the raw August 10, 2026 run as historical evidence; it is intentionally rejected as current release evidence and its performance values have not been rewritten.
 
 ## Docker
 

@@ -1,0 +1,315 @@
+{
+  "schema_version": 1,
+  "command": "pixi run benchmark-real-h5ad",
+  "provenance": {
+    "source_revision": "223136acce53e890d5d26b5ee6651ba6bccc2a4a",
+    "source_dirty": true,
+    "source_worktree_snapshot_id": "918e3b8b8e485be479c58a263221e061692627ee",
+    "source_status_porcelain": [
+      " M .Rbuildignore",
+      " M .gitignore",
+      " M CONTEXT.md",
+      " M DESCRIPTION",
+      " M DEVELOPMENT.md",
+      " M NAMESPACE",
+      " M NEWS.md",
+      " M R/app_server.R",
+      " M R/fct_analysis_transition.R",
+      " M R/fct_backend_transfer_adapter.R",
+      " M R/fct_bpcells_backend.R",
+      " M R/fct_explore_bundle.R",
+      " M R/mod_AssignCellCluster.R",
+      " M R/mod_Download.R",
+      " M R/mod_FilterCell.R",
+      " M R/mod_InputFeature.R",
+      " M R/mod_SubsetCells.R",
+      " M R/mod_UpdateMetaData.R",
+      " M R/mod_UpdateReduction.R",
+      " M R/mod_dataInput.R",
+      " M R/mod_mainClusterPlot.R",
+      " M R/utils_warnings.R",
+      " M inst/app/www/index.js",
+      " M inst/app/www/index.js.map",
+      " M man/run_app.Rd",
+      " M package-lock.json",
+      " M package.json",
+      " M pixi.toml",
+      " M srcjs/index.js",
+      " M srcjs/index.test.js",
+      " M srcjs/modules/arrowReader.js",
+      " M srcjs/modules/arrowReader.test.js",
+      " M srcjs/modules/deckScatter.js",
+      " M srcjs/modules/deckScatter.test.js",
+      " M srcjs/modules/scatter/scatterModel.js",
+      " M srcjs/modules/scatter/scatterModel.test.js",
+      " M tests/testthat/test-analysis-backend-contract.R",
+      " M tests/testthat/test-analysis-loading-processing-safety.R",
+      " M tests/testthat/test-analysis-mutation-safety.R",
+      " M tests/testthat/test-assignment-metadata-safety.R",
+      " M tests/testthat/test-bpcells-expression-transfer.R",
+      " M tests/testthat/test-browser-payload-contracts.R",
+      " M tests/testthat/test-development-contract-docs.R",
+      " M tests/testthat/test-explore-bundle.R",
+      " M tests/testthat/test-filter-cell-qc-metadata.R",
+      " M tests/testthat/test-subset-cells.R",
+      " M tests/testthat/test-warning-capture.R",
+      " M vitest.config.js",
+      "?? R/utils_temp_paths.R",
+      "?? benchmarks/evidence/explore-1m-structural-2026-08-09.json",
+      "?? benchmarks/explore-1m.spec.js",
+      "?? benchmarks/explore_1m_helpers.R",
+      "?? benchmarks/real-h5ad.spec.js",
+      "?? benchmarks/real_h5ad_helpers.R",
+      "?? benchmarks/run_explore_1m_app.R",
+      "?? benchmarks/run_explore_1m_benchmark.R",
+      "?? benchmarks/run_real_h5ad_app.R",
+      "?? benchmarks/run_real_h5ad_processing_benchmark.R",
+      "?? dev/check_package.R",
+      "?? dev/run_real_h5ad_benchmark.sh",
+      "?? playwright.benchmark.config.js",
+      "?? playwright.config.js",
+      "?? tests/e2e/create-analysis-fixture.R",
+      "?? tests/e2e/run-analysis-app.R",
+      "?? tests/e2e/subset-restore.spec.js",
+      "?? tests/testthat/helper-source-path.R",
+      "?? tests/testthat/test-benchmark-explore-1m.R",
+      "?? tests/testthat/test-runtime-temp-paths.R"
+    ],
+    "artifact_kind": "cellxgene_real_h5ad",
+    "biological_representativeness": "CellxGene source artifact requested for issue #27",
+    "source_url": "https://datasets.cellxgene.cziscience.com/aa6ebee3-68cc-41b4-80b2-5ef5c3317e14.h5ad",
+    "source_filename": "aa6ebee3-68cc-41b4-80b2-5ef5c3317e14.h5ad",
+    "source_bytes": 9663215939,
+    "source_md5": "7933979b0faf179ce2674be6e4baed81"
+  },
+  "workload": {
+    "input": "native CellxGene AnnData h5ad import in Analysis Mode",
+    "cell_count": 1102250,
+    "feature_count": 35477,
+    "assay": "RNA",
+    "selected_reduction": "umap",
+    "selected_gene": "ENSG00000243485",
+    "storage": "BPCells-backed Seurat assay layers with Arrow IPC browser transfers"
+  },
+  "environment": {
+    "timestamp_utc": "2026-08-10 10:15:21 UTC",
+    "os": "Linux 7.0.0-28-generic x86_64",
+    "r_version": "R version 4.4.3 (2025-02-28)",
+    "package_versions": {
+      "scSpotlight": "0.0.5.9000",
+      "arrow": "24.0.0",
+      "duckdb": "1.5.2"
+    },
+    "cpu_model": "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+    "memory_total_kb": 115012572,
+    "available_cores": 32
+  },
+  "artifact": {
+    "source_url": "https://datasets.cellxgene.cziscience.com/aa6ebee3-68cc-41b4-80b2-5ef5c3317e14.h5ad",
+    "source_filename": "aa6ebee3-68cc-41b4-80b2-5ef5c3317e14.h5ad",
+    "source_bytes": 9663215939,
+    "source_md5": "7933979b0faf179ce2674be6e4baed81",
+    "cell_count": 1102250,
+    "feature_count": 35477,
+    "assay": "RNA",
+    "selected_reduction": "umap",
+    "selected_gene": "ENSG00000243485",
+    "reductions": [
+      "scvi",
+      "umap"
+    ],
+    "h5ad_schema": {
+      "root_encoding_type": "anndata",
+      "root_encoding_version": "0.1.0",
+      "matrix_groups": [
+        "X",
+        "raw/X",
+        "layers/"
+      ],
+      "obsm": [
+        "X_scVI",
+        "X_umap"
+      ],
+      "obs_columns": [
+        "_index",
+        "alignment_software",
+        "assay",
+        "assay_ontology_term_id",
+        "author_cell_type",
+        "cell_number_loaded",
+        "cell_type",
+        "cell_type_ontology_term_id",
+        "development_stage",
+        "development_stage_ontology_term_id",
+        "disease",
+        "disease_ontology_term_id",
+        "donor_age",
+        "donor_cause_of_death",
+        "donor_id",
+        "donor_living_at_sample_collection",
+        "fileid",
+        "gene_annotation_version",
+        "institute",
+        "intronic_reads_counted",
+        "is_primary_data",
+        "library_id",
+        "library_id_repository",
+        "majorclass",
+        "nCount_RNA",
+        "nFeature_RNA",
+        "observation_joinid",
+        "part",
+        "percent.mt",
+        "reference_genome",
+        "reported_diseases",
+        "sample_collection_method",
+        "sample_id",
+        "sample_preservation_method",
+        "sampleid",
+        "self_reported_ethnicity",
+        "self_reported_ethnicity_ontology_term_id",
+        "sequenced_fragment",
+        "sex",
+        "sex_ontology_term_id",
+        "study",
+        "suspension_derivation_process",
+        "suspension_dissociation_reagent",
+        "suspension_dissociation_time",
+        "suspension_type",
+        "suspension_uuid",
+        "tissue",
+        "tissue_handling_interval",
+        "tissue_ontology_term_id",
+        "tissue_source",
+        "tissue_type"
+      ],
+      "var_columns": [
+        "_index",
+        "feature_biotype",
+        "feature_is_filtered",
+        "feature_length",
+        "feature_name",
+        "feature_reference",
+        "feature_type"
+      ]
+    }
+  },
+  "processing": {
+    "method": "Fresh Pixi-managed R process; Linux VmHWM records the full h5ad import, validation, BPCells preparation, and production transfer peak.",
+    "baseline_rss_kb": 517356,
+    "import_and_validation": {
+      "elapsed_ms": 373861,
+      "rss_before_kb": 517356,
+      "rss_after_kb": 2436268,
+      "hwm_after_kb": 2536564
+    },
+    "metadata_query_to_ipc": {
+      "backend": "data_frame",
+      "elapsed_ms": 965,
+      "output_bytes": 156147912,
+      "rss_before_kb": 2436268,
+      "rss_after_kb": 2840432,
+      "hwm_after_kb": 2840432
+    },
+    "reduction_query_to_ipc": {
+      "backend": "data_frame",
+      "elapsed_ms": 33,
+      "output_bytes": 8818368,
+      "rss_before_kb": 2840432,
+      "rss_after_kb": 2529076,
+      "hwm_after_kb": 2835024
+    },
+    "selected_gene_expression_query_to_ipc": {
+      "backend": "bpcells_anndata_hdf5",
+      "elapsed_ms": 59919,
+      "output_bytes": 4410864,
+      "rss_before_kb": 2529076,
+      "rss_after_kb": 2539252,
+      "hwm_after_kb": 2835024
+    },
+    "final_process_rss_kb": 2539252,
+    "final_process_hwm_kb": 2835024,
+    "rss_gate": {
+      "metric": "Linux VmHWM",
+      "peak_bytes": 2903064576,
+      "limit_bytes": 6000000000,
+      "passed": true
+    }
+  },
+  "browser": {
+    "method": {
+      "first_view": "Elapsed wall time from selecting the real h5ad input to a rendered real cell count.",
+      "selected_gene": "Elapsed wall time from selecting the recorded real-artifact gene to the received client sparkline.",
+      "server_rss": "Linux /proc sampled every 100 ms for the single-threaded Analysis Mode R Shiny process; VmHWM includes h5ad import and rendering.",
+      "chromium_rss": "Linux /proc sampled every 100 ms for Chromium browser, renderer, GPU, and utility processes discovered through CDP.",
+      "browser_memory": "Chromium renderer JS heap and DOM counters after a one-second settled period."
+    },
+    "first_view_latency_ms": 418087,
+    "selected_gene_expression_end_to_end_latency_ms": 63915,
+    "server_rss": {
+      "pid": 475946,
+      "baseline_rss_kb": 716832,
+      "peak_sampled_rss_kb": 2921792,
+      "peak_process_hwm_kb": 2921792,
+      "peak_process_hwm_bytes": 2991915008,
+      "sample_interval_ms": 100,
+      "sample_count": 5273
+    },
+    "chromium_rss": {
+      "peak_sampled_aggregate_rss_kb": 2189620,
+      "peak_aggregate_hwm_kb": 2257560,
+      "peak_aggregate_hwm_bytes": 2311741440,
+      "sample_interval_ms": 100,
+      "sample_count": 5273,
+      "final_processes": [
+        {
+          "type": "browser",
+          "pid": 476022,
+          "rssKb": 215212,
+          "hwmKb": 259324
+        },
+        {
+          "type": "renderer",
+          "pid": 476063,
+          "rssKb": 1576772,
+          "hwmKb": 1758208
+        },
+        {
+          "type": "GPU",
+          "pid": 476041,
+          "rssKb": 235768,
+          "hwmKb": 237924
+        }
+      ]
+    },
+    "browser_memory": {
+      "renderer_js_heap_used_bytes": 499633792,
+      "renderer_js_heap_total_bytes": 537849856,
+      "runtime_heap_used_bytes": 499633792,
+      "runtime_heap_total_bytes": 537849856,
+      "dom_nodes": 12817,
+      "dom_documents": 3,
+      "performance_memory": {
+        "usedJsHeapSize": 662000000,
+        "totalJsHeapSize": 703000000,
+        "jsHeapSizeLimit": 3760000000
+      }
+    },
+    "environment": {
+      "browser_version": "149.0.7827.55",
+      "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/149.0.7827.55 Safari/537.36",
+      "viewport": {
+        "width": 1280,
+        "height": 720
+      }
+    }
+  },
+  "acceptance": {
+    "rss_limit_bytes": 6000000000,
+    "processing_rss_under_limit": true,
+    "browser_visualization_rss_under_limit": true,
+    "issue_27_evidence_status": "passed",
+    "browser_server_rss_under_limit": true,
+    "chromium_rss_under_limit": true
+  }
+}

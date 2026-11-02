@@ -12,6 +12,10 @@ _Avoid_: raw dataset, live object, input file
 A versioned scientific interpretation of a Dataset Artifact, including derived measurements, reductions, annotations, and analysis choices. A temporary View Filter is Session state and is not part of an Analysis.
 _Avoid_: session state, view, object state
 
+**Active Analysis Activation**:
+A Session-level operation that establishes or replaces the active Analysis after a successful Analysis Mutation, Restore, or Dataset Artifact activation. It is not a View Filter change.
+_Avoid_: refresh event, browser message, view update
+
 **Session**:
 A temporary user workspace that references a Dataset Artifact and an Analysis while holding interaction choices such as selections, active views, a temporary View Filter and its version, and pending work.
 _Avoid_: analysis, dataset, browser state

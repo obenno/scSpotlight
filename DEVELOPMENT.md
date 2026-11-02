@@ -2431,3 +2431,33 @@ benchmark helper.
   live provider networking is not exercised by the mocked/browser fixtures.
 - Affected files: `R/app_ui.R`, `R/app_server.R`, `R/fct_llm_context.R`,
   `R/mod_LLMChat.R`, LLM/run-mode tests, `NEWS.md`, and `LLM_CHATBOX_PLAN.md`.
+
+### 48. Checkpoint provenance and workspace hygiene (November 2, 2026)
+
+- Preserve host-environment checks and runner-source-order regression coverage;
+  their removal in the accumulated worktree was not part of the schema-v2
+  benchmark change. Keep the September 1 development record alongside earlier
+  records and correct the outdated optional-LLM validation note.
+- Retain the August 10 real-H5AD JSON verbatim as historical evidence referenced
+  by the README. It cannot satisfy the current clean-revision release gate.
+- Ignore repository-root `.tmp/`, `.review-tmp/`, and generated `README.html`.
+  Existing scratch files are preserved locally. The lockfile is validated with
+  Pixi-managed `npm ci` and retains the accumulated transitive-resolution changes;
+  no additional dependency upgrade was performed during consolidation.
+- The Active Analysis Activation glossary entry describes the planned issues
+  #32–#35; this checkpoint does not implement their coordinator.
+- Current representative 1M+ release evidence still requires a clean post-commit
+  run. No historical timing or memory measurement is relabeled as current.
+
+Final checkpoint validation:
+
+- `pixi run r-check` passed with zero errors, zero warnings, and six existing
+  package-maintenance notes. Its built-package tests passed. The check used the
+  combined working tree before the commits were split by topic; subsequent
+  changes only record results and organize commits.
+- `git diff --check` passed. The historical benchmark record was explicitly
+  rejected as current evidence, including schema, revision, environment, and
+  host mismatches. Scratch paths and generated README HTML are ignored locally.
+- `npm ci` completed successfully and reported nine dependency audit findings
+  (one low, two moderate, six high). Dependency remediation was not part of this
+  checkpoint; the lockfile's current versions were retained.
