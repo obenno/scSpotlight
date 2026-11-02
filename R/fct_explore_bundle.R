@@ -3,12 +3,15 @@
 #' @noRd
 
 scspotlight_explore_bundle_type <- "scspotlight_explore_parquet_bundle"
-scspotlight_explore_schema_version <- 1L
+scspotlight_explore_schema_version <- 2L
+scspotlight_explore_expression_layout <- "feature_row_groups_v1"
 scspotlight_explore_archive_pattern <- "\\.explore-parquet\\.[Zz][Ii][Pp]$"
 scspotlight_reduction_transfer_chunk_size <- 100000L
 scspotlight_metadata_transfer_chunk_size <- 100000L
 scspotlight_expression_transfer_chunk_size <- 100000L
 scspotlight_expression_export_cell_chunk_size <- 100000L
+scspotlight_expression_export_feature_batch_size <- 4L
+scspotlight_expression_export_row_group_size <- 1000000L
 
 duckdb_parquet_sql_path <- function(path) {
   gsub(
@@ -20,6 +23,142 @@ duckdb_parquet_sql_path <- function(path) {
 
 duckdb_quote_identifier <- function(x) {
   paste0('"', gsub('"', '""', x), '"')
+}
+
+scspotlight_cell_identity <- function(cell_ids) {
+  cell_ids <- as.character(cell_ids)
+  if (
+    !length(cell_ids) ||
+      any(is.na(cell_ids) | !nzchar(cell_ids)) ||
+      anyDuplicated(cell_ids)
+  ) {
+    stop(
+      "Cell identity requires non-empty unique canonical Cell IDs.",
+      call. = FALSE
+    )
+  }
+
+  identity_file <- tempfile("scspotlight_cell_identity_")
+  on.exit(unlink(identity_file, force = TRUE), add = TRUE)
+  connection <- file(identity_file, open = "wb")
+  connection_closed <- FALSE
+  on.exit(
+    if (!connection_closed) {
+      close(connection)
+    },
+    add = TRUE
+  )
+  writeBin(as.integer(length(cell_ids)), connection, size = 4L, endian = "little")
+  encoded_ids <- enc2utf8(cell_ids)
+  writeBin(
+    as.integer(nchar(encoded_ids, type = "bytes")),
+    connection,
+    size = 4L,
+    endian = "little"
+  )
+  writeChar(encoded_ids, connection, eos = NULL, useBytes = TRUE)
+  close(connection)
+  connection_closed <- TRUE
+
+  unname(tools::md5sum(identity_file)[[1]])
+}
+
+write_scspotlight_cell_identity_chunk <- function(
+  connection,
+  cell_ids,
+  cell_offset,
+  string_offset
+) {
+  cell_ids <- as.character(cell_ids)
+  if (any(is.na(cell_ids) | !nzchar(cell_ids))) {
+    stop(
+      "Cell identity requires non-empty canonical Cell IDs.",
+      call. = FALSE
+    )
+  }
+
+  encoded_ids <- enc2utf8(cell_ids)
+  byte_lengths <- as.integer(nchar(encoded_ids, type = "bytes"))
+  seek(connection, where = 4 + 4 * cell_offset, origin = "start", rw = "write")
+  writeBin(
+    byte_lengths,
+    connection,
+    size = 4L,
+    endian = "little"
+  )
+  seek(connection, where = string_offset, origin = "start", rw = "write")
+  writeChar(encoded_ids, connection, eos = NULL, useBytes = TRUE)
+  string_offset + sum(as.double(byte_lengths))
+}
+
+scspotlight_explore_cells_identity <- function(
+  cells_path,
+  expected_cell_count = NULL,
+  chunk_size = scspotlight_metadata_transfer_chunk_size
+) {
+  chunk_size <- suppressWarnings(as.integer(chunk_size))
+  if (is.na(chunk_size) || chunk_size < 1L) {
+    chunk_size <- scspotlight_metadata_transfer_chunk_size
+  }
+
+  scanner <- arrow::open_dataset(cells_path, format = "parquet")$NewScan()
+  scanner$Project(c("cell_idx", "cell_id"))
+  scanner$BatchSize(chunk_size)
+  reader <- arrow::as_record_batch_reader(scanner$Finish())
+  on.exit(try(reader$Close(), silent = TRUE), add = TRUE)
+
+  if (is.null(expected_cell_count)) {
+    expected_cell_count <- validate_scspotlight_explore_cells_file(cells_path)
+  }
+  expected_cell_count <- as.integer(expected_cell_count)
+  identity_file <- tempfile("scspotlight_explore_cell_identity_")
+  on.exit(unlink(identity_file, force = TRUE), add = TRUE)
+  connection <- file(identity_file, open = "w+b")
+  connection_closed <- FALSE
+  on.exit(
+    if (!connection_closed) {
+      close(connection)
+    },
+    add = TRUE
+  )
+  writeBin(expected_cell_count, connection, size = 4L, endian = "little")
+
+  # Lengths occupy a fixed section before UTF-8 bytes, independent of batch size.
+  string_offset <- 4 + 4 * as.double(expected_cell_count)
+  next_cell_idx <- 0L
+  repeat {
+    batch <- reader$read_next_batch()
+    if (is.null(batch)) {
+      break
+    }
+
+    batch_rows <- nrow(batch)
+    expected_idx <- seq.int(next_cell_idx, length.out = batch_rows)
+    if (!identical(as.integer(batch[["cell_idx"]]), expected_idx)) {
+      stop(
+        "Explore bundle cells.parquet must preserve canonical Cell ID order.",
+        call. = FALSE
+      )
+    }
+    string_offset <- write_scspotlight_cell_identity_chunk(
+      connection,
+      batch[["cell_id"]],
+      cell_offset = next_cell_idx,
+      string_offset = string_offset
+    )
+    next_cell_idx <- as.integer(next_cell_idx + batch_rows)
+  }
+
+  if (next_cell_idx != expected_cell_count) {
+    stop(
+      "Explore bundle cells.parquet does not match the manifest cell count.",
+      call. = FALSE
+    )
+  }
+  close(connection)
+  connection_closed <- TRUE
+
+  unname(tools::md5sum(identity_file)[[1]])
 }
 
 explore_parquet_columns <- function(path) {
@@ -276,6 +415,57 @@ read_scspotlight_explore_manifest <- function(bundle_dir) {
   jsonlite::read_json(manifest_path, simplifyVector = TRUE)
 }
 
+validate_scspotlight_explore_manifest_contract <- function(manifest) {
+  schema_version_raw <- manifest$schema_version %||% 1L
+  if (
+    !is.atomic(schema_version_raw) ||
+      length(schema_version_raw) != 1L ||
+      is.na(schema_version_raw) ||
+      (!is.numeric(schema_version_raw) && !is.character(schema_version_raw)) ||
+      (is.character(schema_version_raw) && !grepl("^[0-9]+$", schema_version_raw))
+  ) {
+    stop("Explore bundle schema_version must be a positive integer.")
+  }
+  schema_version <- suppressWarnings(as.numeric(schema_version_raw))
+  if (
+    !is.finite(schema_version) ||
+      schema_version != floor(schema_version) ||
+      schema_version < 1L
+  ) {
+    stop("Explore bundle schema_version must be a positive integer.")
+  }
+  schema_version <- as.integer(schema_version)
+  if (schema_version > scspotlight_explore_schema_version) {
+    stop("Unsupported Explore bundle schema version: ", schema_version)
+  }
+
+  if (schema_version >= 2L) {
+    if (!identical(
+      manifest$expression_layout,
+      scspotlight_explore_expression_layout
+    )) {
+      stop(
+        "Unsupported Explore expression layout: ",
+        manifest$expression_layout %||% "<missing>"
+      )
+    }
+
+    cell_identity <- manifest$cell_identity
+    if (
+      !is.character(cell_identity) ||
+        length(cell_identity) != 1L ||
+        is.na(cell_identity) ||
+        !grepl("^[0-9a-f]{32}$", cell_identity, perl = TRUE)
+    ) {
+      stop(
+        "Explore bundle schema version 2 requires a valid cell_identity."
+      )
+    }
+  }
+
+  schema_version
+}
+
 is_scspotlight_explore_bundle_dir <- function(bundle_dir) {
   if (!dir.exists(bundle_dir)) {
     return(FALSE)
@@ -340,7 +530,14 @@ read_scspotlight_explore_bundle <- function(bundle_dir) {
     )
   }
 
-  validate_scspotlight_explore_bundle_files(bundle_root, manifest)
+  schema_version <- validate_scspotlight_explore_manifest_contract(manifest)
+  cell_identity <- validate_scspotlight_explore_bundle_files(bundle_root, manifest)
+  if (schema_version >= 2L && !identical(manifest$cell_identity, cell_identity)) {
+    stop(
+      "Explore bundle cell_identity does not match canonical Cell IDs.",
+      call. = FALSE
+    )
+  }
 
   features_path <- file.path(bundle_root, "features.parquet")
   features <- arrow::read_parquet(features_path)
@@ -348,7 +545,8 @@ read_scspotlight_explore_bundle <- function(bundle_dir) {
     list(
       root = bundle_root,
       manifest = manifest,
-      features = as.data.frame(features, stringsAsFactors = FALSE)
+      features = as.data.frame(features, stringsAsFactors = FALSE),
+      cell_identity = cell_identity
     ),
     class = "scspotlight_explore_bundle"
   )
@@ -383,6 +581,10 @@ validate_scspotlight_explore_bundle_files <- function(bundle_root, manifest) {
   cell_count <- validate_scspotlight_explore_cells_file(
     file.path(bundle_root, "cells.parquet"),
     expected_cell_count = manifest$cell_count
+  )
+  cell_identity <- scspotlight_explore_cells_identity(
+    file.path(bundle_root, "cells.parquet"),
+    expected_cell_count = cell_count
   )
   validate_scspotlight_explore_metadata_cell_index(
     file.path(bundle_root, "metadata.parquet"),
@@ -444,7 +646,7 @@ validate_scspotlight_explore_bundle_files <- function(bundle_root, manifest) {
     )
   }
 
-  invisible(TRUE)
+  invisible(cell_identity)
 }
 
 explore_bundle_path <- function(bundle, ...) {
@@ -548,11 +750,21 @@ explore_write_expression_block <- function(
   row_idx,
   path,
   compression = "zstd",
-  cell_chunk_size = scspotlight_expression_export_cell_chunk_size
+  cell_chunk_size = scspotlight_expression_export_cell_chunk_size,
+  feature_batch_size = scspotlight_expression_export_feature_batch_size,
+  row_group_size = scspotlight_expression_export_row_group_size
 ) {
   cell_chunk_size <- suppressWarnings(as.integer(cell_chunk_size))
   if (is.na(cell_chunk_size) || cell_chunk_size < 1L) {
     stop("cell_chunk_size must be a positive integer")
+  }
+  feature_batch_size <- suppressWarnings(as.integer(feature_batch_size))
+  if (is.na(feature_batch_size) || feature_batch_size < 1L) {
+    stop("feature_batch_size must be a positive integer")
+  }
+  row_group_size <- suppressWarnings(as.integer(row_group_size))
+  if (is.na(row_group_size) || row_group_size < 1L) {
+    stop("row_group_size must be a positive integer")
   }
 
   dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
@@ -585,38 +797,99 @@ explore_write_expression_block <- function(
   )
 
   cell_count <- ncol(mat)
-  if (cell_count > 0L) {
-    for (cell_start in seq.int(1L, cell_count, by = cell_chunk_size)) {
-      cell_end <- min(cell_count, cell_start + cell_chunk_size - 1L)
-      chunk_mat <- mat[
-        row_idx,
-        seq.int(cell_start, cell_end),
-        drop = FALSE
-      ]
-      sparse_summary <- explore_sparse_summary(chunk_mat)
+  if (cell_count > 0L && length(row_idx) > 0L) {
+    for (
+      feature_start in seq.int(1L, length(row_idx), by = feature_batch_size)
+    ) {
+      feature_end <- min(
+        length(row_idx),
+        feature_start + feature_batch_size - 1L
+      )
+      feature_positions <- seq.int(feature_start, feature_end)
+      feature_batches <- vector("list", length(feature_positions))
+      feature_row_counts <- numeric(length(feature_positions))
+      flush_feature_row_group <- function(local_feature_idx) {
+        batches <- feature_batches[[local_feature_idx]]
+        row_count <- feature_row_counts[[local_feature_idx]]
+        if (!length(batches) || row_count < 1L) {
+          return(invisible(NULL))
+        }
 
-      if (nrow(sparse_summary)) {
-        expression_table <- arrow::arrow_table(
-          feature_idx = arrow::Array$create(
-            as.integer(row_idx[sparse_summary$i] - 1L),
-            type = arrow::int32()
-          ),
-          cell_idx = arrow::Array$create(
-            as.integer(cell_start + sparse_summary$j - 2L),
-            type = arrow::int32()
-          ),
-          value = arrow::Array$create(
-            sparse_summary$x,
-            type = arrow::float64()
+        table <- do.call(arrow::Table$create, batches)
+        writer$WriteTable(table, chunk_size = as.integer(row_count))
+        feature_batches[[local_feature_idx]] <<- list()
+        feature_row_counts[[local_feature_idx]] <<- 0
+        rm(table)
+        invisible(NULL)
+      }
+      for (cell_start in seq.int(1L, cell_count, by = cell_chunk_size)) {
+        cell_end <- min(cell_count, cell_start + cell_chunk_size - 1L)
+        feature_chunk <- mat[
+          row_idx[feature_positions],
+          seq.int(cell_start, cell_end),
+          drop = FALSE
+        ]
+        sparse_summary <- explore_sparse_summary(feature_chunk)
+
+        if (nrow(sparse_summary)) {
+          rows_by_feature <- split(
+            seq_len(nrow(sparse_summary)),
+            sparse_summary$i
           )
-        )
-        writer$WriteTable(expression_table, chunk_size = nrow(sparse_summary))
-        rm(expression_table)
+          for (local_feature_idx in seq_along(feature_positions)) {
+            feature_rows <- rows_by_feature[[as.character(local_feature_idx)]]
+            if (is.null(feature_rows)) {
+              next
+            }
+            expression_batch <- arrow::RecordBatch$create(
+              feature_idx = arrow::Array$create(
+                rep.int(
+                  as.integer(
+                    row_idx[[feature_positions[[local_feature_idx]]]] - 1L
+                  ),
+                  length(feature_rows)
+                ),
+                type = arrow::int32()
+              ),
+              cell_idx = arrow::Array$create(
+                as.integer(
+                  cell_start + sparse_summary$j[feature_rows] - 2L
+                ),
+                type = arrow::int32()
+              ),
+              value = arrow::Array$create(
+                sparse_summary$x[feature_rows],
+                type = arrow::float64()
+              ),
+              schema = explore_expression_parquet_schema()
+            )
+            feature_batches[[local_feature_idx]] <- c(
+              feature_batches[[local_feature_idx]],
+              list(expression_batch)
+            )
+            feature_row_counts[[local_feature_idx]] <-
+              feature_row_counts[[local_feature_idx]] + length(feature_rows)
+            if (feature_row_counts[[local_feature_idx]] >= row_group_size) {
+              flush_feature_row_group(local_feature_idx)
+            }
+          }
+          rm(rows_by_feature)
+        }
+
+        rm(sparse_summary, feature_chunk)
       }
 
-      rm(sparse_summary, chunk_mat)
-      gc()
+      for (local_feature_idx in seq_along(feature_positions)) {
+        flush_feature_row_group(local_feature_idx)
+      }
+      rm(feature_batches, feature_row_counts)
+
+      feature_batch_index <- (feature_start - 1L) %/% feature_batch_size + 1L
+      if (feature_batch_index %% 8L == 0L) {
+        gc()
+      }
     }
+    gc()
   }
 
   writer$Close()
@@ -675,19 +948,22 @@ write_scspotlight_explore_bundle <- function(
 
   dir.create(bundle_dir, recursive = TRUE, showWarnings = FALSE)
   cell_count <- ncol(object)
+  cell_ids <- colnames(object)
+  cells_path <- file.path(bundle_dir, "cells.parquet")
 
   progress(message = "Writing cell index")
   cells <- data.frame(
     cell_idx = seq_len(cell_count) - 1L,
-    cell_id = colnames(object),
+    cell_id = cell_ids,
     stringsAsFactors = FALSE
   )
   explore_write_parquet(
     cells,
-    file.path(bundle_dir, "cells.parquet"),
+    cells_path,
     compression
   )
-  rm(cells)
+  cell_identity <- scspotlight_explore_cells_identity(cells_path)
+  rm(cells, cell_ids)
   gc()
 
   progress(message = "Writing metadata")
@@ -792,6 +1068,8 @@ write_scspotlight_explore_bundle <- function(
     cell_count = cell_count,
     feature_count = length(feature_names),
     block_size = block_size,
+    expression_layout = scspotlight_explore_expression_layout,
+    cell_identity = cell_identity,
     expression_compression = compression,
     reductions = reduction_names
   )
@@ -1119,7 +1397,8 @@ try_extract_canonical_explore_metadata_to_ipc <- function(
   output_file,
   selected_cols,
   chunk_size,
-  expected_cell_count
+  expected_cell_count,
+  include_cells = TRUE
 ) {
   metadata_idx_name <- ".scspotlight_cell_idx"
   metadata_scanner <- arrow::open_dataset(
@@ -1131,11 +1410,14 @@ try_extract_canonical_explore_metadata_to_ipc <- function(
   metadata_reader <- arrow::as_record_batch_reader(metadata_scanner$Finish())
   on.exit(try(metadata_reader$Close(), silent = TRUE), add = TRUE)
 
-  cells_scanner <- arrow::open_dataset(cells_path, format = "parquet")$NewScan()
-  cells_scanner$Project(c("cell_idx", "cell_id"))
-  cells_scanner$BatchSize(chunk_size)
-  cells_reader <- arrow::as_record_batch_reader(cells_scanner$Finish())
-  on.exit(try(cells_reader$Close(), silent = TRUE), add = TRUE)
+  cells_reader <- NULL
+  if (include_cells) {
+    cells_scanner <- arrow::open_dataset(cells_path, format = "parquet")$NewScan()
+    cells_scanner$Project(c("cell_idx", "cell_id"))
+    cells_scanner$BatchSize(chunk_size)
+    cells_reader <- arrow::as_record_batch_reader(cells_scanner$Finish())
+    on.exit(try(cells_reader$Close(), silent = TRUE), add = TRUE)
+  }
 
   dir.create(dirname(output_file), recursive = TRUE, showWarnings = FALSE)
   if (file.exists(output_file)) {
@@ -1165,14 +1447,16 @@ try_extract_canonical_explore_metadata_to_ipc <- function(
   next_cell_idx <- 0L
   repeat {
     metadata_batch <- metadata_reader$read_next_batch()
-    cells_batch <- cells_reader$read_next_batch()
-    if (is.null(metadata_batch) && is.null(cells_batch)) {
+    cells_batch <- if (include_cells) cells_reader$read_next_batch() else NULL
+    if (is.null(metadata_batch) && (!include_cells || is.null(cells_batch))) {
       break
     }
     if (
       is.null(metadata_batch) ||
-        is.null(cells_batch) ||
-        nrow(metadata_batch) != nrow(cells_batch)
+        (include_cells && (
+          is.null(cells_batch) ||
+            nrow(metadata_batch) != nrow(cells_batch)
+        ))
     ) {
       return(FALSE)
     }
@@ -1180,10 +1464,12 @@ try_extract_canonical_explore_metadata_to_ipc <- function(
     batch_rows <- nrow(metadata_batch)
     expected_values <- seq.int(next_cell_idx, length.out = batch_rows)
     metadata_values <- as.integer(metadata_batch[[metadata_idx_name]])
-    cell_values <- as.integer(cells_batch[["cell_idx"]])
     if (
       !identical(metadata_values, expected_values) ||
-        !identical(cell_values, expected_values)
+        (include_cells && !identical(
+          as.integer(cells_batch[["cell_idx"]]),
+          expected_values
+        ))
     ) {
       return(FALSE)
     }
@@ -1193,7 +1479,9 @@ try_extract_canonical_explore_metadata_to_ipc <- function(
       function(column) metadata_transfer_arrow_array(metadata_batch[[column]])
     )
     names(arrays) <- selected_cols
-    arrays$cells <- cells_batch[["cell_id"]]
+    if (include_cells) {
+      arrays$cells <- cells_batch[["cell_id"]]
+    }
     output_schema <- do.call(
       arrow::schema,
       lapply(arrays, function(values) values$type)
@@ -1234,7 +1522,8 @@ explore_bundle_metadata_query_plan <- function(bundle, cols = NULL) {
       mustWork = TRUE
     ),
     cols = cols,
-    cell_count = explore_bundle_cell_count(bundle)
+    cell_count = explore_bundle_cell_count(bundle),
+    cell_identity = bundle$cell_identity
   )
 }
 
@@ -1243,7 +1532,8 @@ extract_explore_metadata_to_ipc <- function(
   output_file,
   cols = NULL,
   chunk_size = scspotlight_metadata_transfer_chunk_size,
-  expected_cell_count = NULL
+  expected_cell_count = NULL,
+  include_cells = TRUE
 ) {
   if (!file.exists(metadata_path)) {
     stop("Metadata Parquet file not found: ", metadata_path)
@@ -1271,6 +1561,12 @@ extract_explore_metadata_to_ipc <- function(
     selected_cols,
     c("cells", ".scspotlight_cell_idx", ".scspotlight_cell_id")
   )
+  if (!length(selected_cols)) {
+    stop(
+      "Metadata transfer requires at least one transferable metadata column.",
+      call. = FALSE
+    )
+  }
 
   cells_path <- file.path(dirname(metadata_path), "cells.parquet")
   if (is.null(expected_cell_count)) {
@@ -1282,7 +1578,11 @@ extract_explore_metadata_to_ipc <- function(
     )
   } else {
     cell_count <- suppressWarnings(as.integer(expected_cell_count[[1]]))
-    if (is.na(cell_count) || cell_count < 1L || !file.exists(cells_path)) {
+    if (
+      is.na(cell_count) ||
+        cell_count < 1L ||
+        (include_cells && !file.exists(cells_path))
+    ) {
       stop(
         "Explore metadata transfer requires validated canonical Cell IDs.",
         call. = FALSE
@@ -1297,7 +1597,8 @@ extract_explore_metadata_to_ipc <- function(
       output_file = output_file,
       selected_cols = selected_cols,
       chunk_size = chunk_size,
-      expected_cell_count = cell_count
+      expected_cell_count = cell_count,
+      include_cells = include_cells
     )
   ) {
     return(invisible(output_file))
@@ -1312,7 +1613,9 @@ extract_explore_metadata_to_ipc <- function(
     sprintf("SELECT * FROM read_parquet('%s') LIMIT 0", sql_path)
   )
   empty_chunk <- schema[selected_cols]
-  empty_chunk$cells <- character()
+  if (include_cells) {
+    empty_chunk$cells <- character()
+  }
   metadata_alias <- "meta_src"
   cell_alias <- "cell_index"
   order_expr <- sprintf(
@@ -1334,26 +1637,32 @@ extract_explore_metadata_to_ipc <- function(
     )
   )
 
-  from_expr <- sprintf(
-    paste(
-      "read_parquet('%s') AS %s",
-      "INNER JOIN read_parquet('%s') AS %s",
-      "ON %s = %s.%s"
-    ),
-    sql_path,
-    metadata_alias,
-    duckdb_parquet_sql_path(cells_path),
-    cell_alias,
-    order_expr,
-    cell_alias,
-    duckdb_quote_identifier("cell_idx")
-  )
-  cell_id_expr <- sprintf(
-    "CAST(%s.%s AS VARCHAR)",
-    cell_alias,
-    duckdb_quote_identifier("cell_id")
-  )
-  select_expr <- c(select_expr, sprintf("%s AS cells", cell_id_expr))
+  from_expr <- if (include_cells) {
+    sprintf(
+      paste(
+        "read_parquet('%s') AS %s",
+        "INNER JOIN read_parquet('%s') AS %s",
+        "ON %s = %s.%s"
+      ),
+      sql_path,
+      metadata_alias,
+      duckdb_parquet_sql_path(cells_path),
+      cell_alias,
+      order_expr,
+      cell_alias,
+      duckdb_quote_identifier("cell_idx")
+    )
+  } else {
+    sprintf("read_parquet('%s') AS %s", sql_path, metadata_alias)
+  }
+  if (include_cells) {
+    cell_id_expr <- sprintf(
+      "CAST(%s.%s AS VARCHAR)",
+      cell_alias,
+      duckdb_quote_identifier("cell_id")
+    )
+    select_expr <- c(select_expr, sprintf("%s AS cells", cell_id_expr))
+  }
   sql <- sprintf(
     "SELECT %s FROM %s ORDER BY %s",
     paste(select_expr, collapse = ", "),
@@ -1748,11 +2057,18 @@ extract_explore_query_expr_to_ipc <- function(
   if (is.na(chunk_size) || chunk_size < 1L) {
     chunk_size <- scspotlight_expression_transfer_chunk_size
   }
-  validate_scspotlight_explore_expression_feature_rows(
-    block_path,
-    feature_idx,
-    cell_count
-  )
+  feature_idx <- suppressWarnings(as.integer(feature_idx[[1]]))
+  if (is.na(feature_idx)) {
+    stop("feature_idx must be an integer")
+  }
+  required_cols <- c("feature_idx", "cell_idx", "value")
+  missing_cols <- setdiff(required_cols, explore_parquet_columns(block_path))
+  if (length(missing_cols)) {
+    stop(
+      "Explore expression block is missing required column(s): ",
+      paste(missing_cols, collapse = ", ")
+    )
+  }
 
   dir.create(dirname(output_file), recursive = TRUE, showWarnings = FALSE)
   if (file.exists(output_file)) {
@@ -1779,6 +2095,7 @@ extract_explore_query_expr_to_ipc <- function(
   )
   writer_closed <- FALSE
   sink_closed <- FALSE
+  completed <- FALSE
   on.exit(
     {
       if (!writer_closed) {
@@ -1787,11 +2104,49 @@ extract_explore_query_expr_to_ipc <- function(
       if (!sink_closed) {
         try(sink$close(), silent = TRUE)
       }
+      if (!completed) {
+        unlink(output_file, force = TRUE)
+      }
     },
     add = TRUE
   )
 
-  sparse_chunk <- DBI::dbFetch(sparse_result, n = chunk_size)
+  last_cell_idx <- -1L
+  fetch_sparse_chunk <- function() {
+    chunk <- DBI::dbFetch(sparse_result, n = chunk_size)
+    if (!nrow(chunk)) {
+      return(chunk)
+    }
+
+    cell_values <- suppressWarnings(as.numeric(chunk$cell_idx))
+    expression_values <- suppressWarnings(as.numeric(chunk$value))
+    invalid <-
+      !is.finite(cell_values) |
+        cell_values != floor(cell_values) |
+        cell_values < 0 |
+        cell_values >= cell_count |
+        !is.finite(expression_values)
+    integer_cells <- suppressWarnings(as.integer(cell_values))
+    if (
+      any(invalid) ||
+        any(diff(c(last_cell_idx, integer_cells)) <= 0L)
+    ) {
+      stop(
+        paste(
+          "Explore expression block contains duplicate, invalid, or non-finite",
+          "values for the requested feature."
+        ),
+        call. = FALSE
+      )
+    }
+
+    last_cell_idx <<- integer_cells[[length(integer_cells)]]
+    chunk$cell_idx <- integer_cells
+    chunk$value <- expression_values
+    chunk
+  }
+
+  sparse_chunk <- fetch_sparse_chunk()
   sparse_offset <- 1L
   chunk_start <- 0L
 
@@ -1805,7 +2160,7 @@ extract_explore_query_expr_to_ipc <- function(
         sparse_offset > nrow(sparse_chunk) &&
           !DBI::dbHasCompleted(sparse_result)
       ) {
-        sparse_chunk <- DBI::dbFetch(sparse_result, n = chunk_size)
+        sparse_chunk <- fetch_sparse_chunk()
         sparse_offset <- 1L
       }
       if (sparse_offset > nrow(sparse_chunk)) {
@@ -1832,10 +2187,18 @@ extract_explore_query_expr_to_ipc <- function(
     chunk_start <- chunk_start + chunk_len
   }
 
+  while (!DBI::dbHasCompleted(sparse_result)) {
+    sparse_chunk <- fetch_sparse_chunk()
+    if (!nrow(sparse_chunk)) {
+      break
+    }
+  }
+
   writer$close()
   writer_closed <- TRUE
   sink$close()
   sink_closed <- TRUE
+  completed <- TRUE
 
   invisible(output_file)
 }

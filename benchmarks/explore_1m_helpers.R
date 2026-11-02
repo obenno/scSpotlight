@@ -34,6 +34,41 @@ benchmark_cell_count <- function() {
   cell_count
 }
 
+benchmark_cell_identity <- function(cell_ids) {
+  cell_ids <- as.character(cell_ids)
+  if (
+    !length(cell_ids) ||
+      any(is.na(cell_ids) | !nzchar(cell_ids)) ||
+      anyDuplicated(cell_ids)
+  ) {
+    stop("Benchmark Cell IDs must be non-empty and unique.", call. = FALSE)
+  }
+
+  identity_file <- tempfile("scspotlight_benchmark_cell_identity_")
+  on.exit(unlink(identity_file, force = TRUE), add = TRUE)
+  connection <- file(identity_file, open = "wb")
+  connection_closed <- FALSE
+  on.exit(
+    if (!connection_closed) {
+      close(connection)
+    },
+    add = TRUE
+  )
+  writeBin(as.integer(length(cell_ids)), connection, size = 4L, endian = "little")
+  encoded_ids <- enc2utf8(cell_ids)
+  writeBin(
+    as.integer(nchar(encoded_ids, type = "bytes")),
+    connection,
+    size = 4L,
+    endian = "little"
+  )
+  writeChar(encoded_ids, connection, eos = NULL, useBytes = TRUE)
+  close(connection)
+  connection_closed <- TRUE
+
+  unname(tools::md5sum(identity_file)[[1]])
+}
+
 benchmark_execution_source_root <- function() {
   execution_root <- normalizePath(getwd(), winslash = "/", mustWork = TRUE)
   if (
@@ -55,7 +90,10 @@ benchmark_execution_source_root <- function() {
     )
     if (!identical(configured_root, execution_root)) {
       stop(
-        "SCSPOTLIGHT_BENCHMARK_SOURCE_ROOT must match the current working directory so benchmark evidence names the code being measured.",
+        paste(
+          "SCSPOTLIGHT_BENCHMARK_SOURCE_ROOT must match the current working",
+          "directory so benchmark evidence names the code being measured."
+        ),
         call. = FALSE
       )
     }
@@ -752,7 +790,7 @@ benchmark_write_structural_explore_bundle <- function(
   jsonlite::write_json(
     list(
       bundle_type = "scspotlight_explore_parquet_bundle",
-      schema_version = 1L,
+      schema_version = 2L,
       created_at = format(Sys.time(), tz = "UTC", usetz = TRUE),
       scspotlight_version = as.character(utils::packageVersion("scSpotlight")),
       assay = "RNA",
@@ -762,6 +800,8 @@ benchmark_write_structural_explore_bundle <- function(
       cell_count = cell_count,
       feature_count = 2L,
       block_size = 1024L,
+      expression_layout = "feature_row_groups_v1",
+      cell_identity = benchmark_cell_identity(cell_id),
       expression_compression = "zstd",
       reductions = "umap",
       benchmark_fixture = list(

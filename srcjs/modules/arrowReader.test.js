@@ -8,6 +8,7 @@ import {
   Float32,
   Type,
   makeBuilder,
+  vectorFromArray,
 } from "apache-arrow";
 import {
   fetchArrowIPCBuffer,
@@ -45,6 +46,30 @@ describe("getFloat32Column", () => {
     expect(v[2]).toBeCloseTo(3.5);
   });
 
+  it("maps nullable numeric values to Float32 NaN", () => {
+    const table = tableFromArrays({
+      X: vectorFromArray([1, null, 3], new Float32()),
+    });
+    const x = getFloat32Column(table, "X");
+
+    expect(x).toBeInstanceOf(Float32Array);
+    expect(x[0]).toBe(1);
+    expect(Number.isNaN(x[1])).toBe(true);
+    expect(x[2]).toBe(3);
+  });
+
+  it("maps nullable sliced numeric values without applying the logical offset twice", () => {
+    const table = tableFromArrays({
+      X: vectorFromArray([9, null, 3, 4, null, 8], new Float32()),
+    }).slice(1, 5);
+    const x = getFloat32Column(table, "X");
+
+    expect(x).toBeInstanceOf(Float32Array);
+    expect(Number.isNaN(x[0])).toBe(true);
+    expect(Array.from(x.slice(1, 3))).toEqual([3, 4]);
+    expect(Number.isNaN(x[3])).toBe(true);
+  });
+
   it("throws on missing column", () => {
     const table = tableFromArrays({ X: Float32Array.from([1]) });
     expect(() => getFloat32Column(table, "Z")).toThrow('Column "Z" not found');
@@ -66,6 +91,24 @@ describe("parseMetaFromArrow", () => {
     expect(meta.nFeature.type).toBe("number");
     expect(meta.nFeature.value).toBeInstanceOf(Int32Array);
     expect(Array.from(meta.nFeature.value)).toEqual([50, 60, 70]);
+  });
+
+  it("preserves nullable numeric metadata as Float32 NaN values", () => {
+    const table = tableFromArrays({
+      nFeature: [100, null, 300],
+      percentMt: vectorFromArray([5.5, null, 10.5], new Float32()),
+    });
+    const meta = parseMetaFromArrow(table);
+
+    expect(meta.nFeature.value).toBeInstanceOf(Float32Array);
+    expect(meta.nFeature.value[0]).toBe(100);
+    expect(Number.isNaN(meta.nFeature.value[1])).toBe(true);
+    expect(meta.nFeature.value[2]).toBe(300);
+
+    expect(meta.percentMt.value).toBeInstanceOf(Float32Array);
+    expect(meta.percentMt.value[0]).toBeCloseTo(5.5);
+    expect(Number.isNaN(meta.percentMt.value[1])).toBe(true);
+    expect(meta.percentMt.value[2]).toBeCloseTo(10.5);
   });
 
   it("normalizes non-Int32 integer arrays to Int32Array", () => {

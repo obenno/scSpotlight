@@ -187,6 +187,18 @@ validate_assignment_intent <- function(
   )
 }
 
+#' Clear a completed metadata patch request only if it still owns the slot
+#'
+#' @noRd
+clear_meta_patch_request_if_current <- function(meta_patch_request, request) {
+  if (!identical(isolate(meta_patch_request()), request)) {
+    return(invisible(FALSE))
+  }
+
+  meta_patch_request(NULL)
+  invisible(TRUE)
+}
+
 #' The application server-side
 #'
 #' @param input,output,session Internal parameters for {shiny}.
@@ -344,6 +356,17 @@ app_server <- function(input, output, session) {
     metaProcessed,
     nextMetadataVersion
   )
+
+  observeEvent(input[["updateMetaData-requestFullRefresh"]], {
+    requested_version <- suppressWarnings(as.integer(
+      input[["updateMetaData-requestFullRefresh"]]$version
+    ))
+    if (is.na(requested_version) || requested_version < 0L) {
+      return()
+    }
+
+    metaUpdateIndicator(metaUpdateIndicator() + 1L)
+  }, ignoreNULL = TRUE)
 
   observeEvent(input$reductionProcessed, {
     reductionProcessed(input$reductionProcessed)

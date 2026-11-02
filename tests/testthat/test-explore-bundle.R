@@ -1,3 +1,28 @@
+test_that("Explore Cell identity is independent of Arrow batch boundaries", {
+  skip_if_not_installed("arrow")
+  cell_ids <- c("c1", "cell-two", "三", "last", "é")
+  cells_path <- tempfile(fileext = ".parquet")
+  on.exit(unlink(cells_path), add = TRUE)
+  arrow::write_parquet(
+    data.frame(cell_idx = seq_along(cell_ids) - 1L, cell_id = cell_ids),
+    cells_path,
+    chunk_size = 2L
+  )
+
+  expected <- scspotlight_cell_identity(cell_ids)
+  for (chunk_size in c(1L, 2L, 3L, 5L)) {
+    expect_identical(
+      scspotlight_explore_cells_identity(
+        cells_path,
+        expected_cell_count = length(cell_ids),
+        chunk_size = chunk_size
+      ),
+      expected
+    )
+  }
+  expect_false(identical(expected, scspotlight_cell_identity(rev(cell_ids))))
+})
+
 test_that("Explore bundles round-trip backend queries", {
   skip_if_not_installed("Seurat")
   skip_if_not_installed("arrow")
@@ -72,6 +97,12 @@ test_that("Explore bundles round-trip backend queries", {
   bundle <- read_scspotlight_explore_bundle(bundle_dir)
 
   expect_s3_class(bundle, "scspotlight_explore_bundle")
+  expect_equal(bundle$manifest$schema_version, 2L)
+  expect_identical(
+    bundle$manifest$expression_layout,
+    "feature_row_groups_v1"
+  )
+  expect_match(bundle$cell_identity, "^[0-9a-f]{32}$")
   expect_equal(get_backend_assays(bundle), "RNA")
   expect_equal(get_backend_default_assay(bundle), "RNA")
   expect_equal(get_backend_features(bundle), c("g1", "g2", "g3"))
@@ -82,6 +113,59 @@ test_that("Explore bundles round-trip backend queries", {
   expect_equal(get_backend_reduction_names(bundle), "umap")
   expect_equal(get_backend_reduction(bundle, "umap")$X, c(1, 2, 3))
   expect_equal(get_backend_expr(bundle, features = "g3")$g3, c(3, 0, 4))
+
+  invalid_manifest <- bundle$manifest
+  invalid_manifest$expression_layout <- "unsupported_layout"
+  jsonlite::write_json(
+    invalid_manifest,
+    file.path(bundle_dir, "manifest.json"),
+    auto_unbox = TRUE,
+    pretty = TRUE
+  )
+  expect_error(
+    read_scspotlight_explore_bundle(bundle_dir),
+    "Unsupported Explore expression layout"
+  )
+
+  future_manifest <- bundle$manifest
+  future_manifest$schema_version <- 3L
+  jsonlite::write_json(
+    future_manifest,
+    file.path(bundle_dir, "manifest.json"),
+    auto_unbox = TRUE,
+    pretty = TRUE
+  )
+  expect_error(
+    read_scspotlight_explore_bundle(bundle_dir),
+    "Unsupported Explore bundle schema version"
+  )
+
+  incomplete_manifest <- bundle$manifest
+  incomplete_manifest$cell_identity <- NULL
+  jsonlite::write_json(
+    incomplete_manifest,
+    file.path(bundle_dir, "manifest.json"),
+    auto_unbox = TRUE,
+    pretty = TRUE,
+    null = "null"
+  )
+  expect_error(
+    read_scspotlight_explore_bundle(bundle_dir),
+    "valid cell_identity"
+  )
+
+  tampered_manifest <- bundle$manifest
+  tampered_manifest$cell_identity <- "00000000000000000000000000000000"
+  jsonlite::write_json(
+    tampered_manifest,
+    file.path(bundle_dir, "manifest.json"),
+    auto_unbox = TRUE,
+    pretty = TRUE
+  )
+  expect_error(
+    read_scspotlight_explore_bundle(bundle_dir),
+    "does not match canonical Cell IDs"
+  )
 })
 
 test_that("Explore bundle writer streams bounded expression chunks", {
@@ -146,17 +230,22 @@ test_that("Explore bundle writer streams bounded expression chunks", {
   ]
   expect_match(
     paste(writer_helper_source, collapse = "\n"),
+    "row_group_size = scspotlight_expression_export_row_group_size",
+    fixed = TRUE
+  )
+  expect_match(
+    paste(writer_helper_source, collapse = "\n"),
     "for (cell_start in seq.int(1L, cell_count, by = cell_chunk_size))",
     fixed = TRUE
   )
   expect_match(
     paste(writer_helper_source, collapse = "\n"),
-    "arrow::ParquetFileWriter$create",
+    "arrow::Table$create",
     fixed = TRUE
   )
   expect_match(
     paste(writer_helper_source, collapse = "\n"),
-    "rm(sparse_summary, chunk_mat)",
+    "rm(sparse_summary, feature_chunk)",
     fixed = TRUE
   )
 
@@ -177,7 +266,7 @@ test_that("Explore bundle writer streams bounded expression chunks", {
   )))
 })
 
-test_that("Explore expression chunk writer preserves global cell indexes", {
+test_that("Explore expression row groups are feature-oriented", {
   skip_if_not_installed("arrow")
 
   explore_write_expression_block <- getFromNamespace(
@@ -217,11 +306,24 @@ test_that("Explore expression chunk writer preserves global cell indexes", {
 
   actual <- as.data.frame(arrow::read_parquet(path))
   expected <- data.frame(
-    feature_idx = c(0L, 2L, 0L, 2L, 0L, 2L),
-    cell_idx = c(0L, 0L, 2L, 2L, 4L, 4L),
-    value = c(1, 3, 5, 4, 7, 8)
+    feature_idx = c(0L, 0L, 0L, 2L, 2L, 2L),
+    cell_idx = c(0L, 2L, 4L, 0L, 2L, 4L),
+    value = c(1, 5, 7, 3, 4, 8)
   )
   expect_equal(actual, expected)
+
+  reader <- arrow::ParquetFileReader$create(path)
+  row_group_features <- vapply(
+    seq.int(0L, reader$num_row_groups - 1L),
+    function(row_group) {
+      values <- as.integer(reader$ReadRowGroup(row_group)$feature_idx)
+      expect_length(unique(values), 1L)
+      values[[1]]
+    },
+    integer(1)
+  )
+  expect_equal(row_group_features, c(0L, 2L))
+  expect_lte(reader$num_row_groups, length(c(1L, 3L)))
 })
 
 test_that("Explore bundle root discovery finds archives after extraction", {
@@ -500,16 +602,22 @@ test_that("backend transfer adapter writes Explore bundle IPC payloads", {
     bundle,
     file.path(transfer_dir, "meta"),
     meta_version = 1L,
-    cols = "cluster"
+    cols = "cluster",
+    resource_prefix = "data-test-session"
   )
   expect_equal(meta_transfer$backend, "explore_bundle")
   expect_null(meta_transfer$data)
   expect_true(file.exists(meta_transfer$metadata_path))
+  cells_path <- file.path(bundle_dir, "cells.parquet")
+  cells_backup <- paste0(cells_path, ".backup")
+  expect_true(file.rename(cells_path, cells_backup))
   meta_payload <- write_backend_metadata_transfer(meta_transfer)
+  expect_true(file.rename(cells_backup, cells_path))
   meta_table <- arrow::read_ipc_stream(meta_transfer$filePath)
-  expect_equal(meta_payload$cols, "cluster")
+  expect_identical(meta_payload$cols, list("cluster"))
+  expect_match(meta_payload$cellIdentity, "^[0-9a-f]{32}$")
   expect_equal(as.vector(meta_table$cluster), c("a", "b", "a"))
-  expect_equal(as.character(meta_table$cells), c("c1", "c2", "c3"))
+  expect_false("cells" %in% names(meta_table))
 
   chunked_meta_file <- file.path(transfer_dir, "meta", "chunked_meta")
   extract_explore_metadata_to_ipc(
@@ -525,7 +633,8 @@ test_that("backend transfer adapter writes Explore bundle IPC payloads", {
   pca_payload <- write_backend_pca_stdev_transfer(
     bundle,
     file.path(transfer_dir, "reduction"),
-    reduction_version = 1L
+    reduction_version = 1L,
+    resource_prefix = "data-test-session"
   )
   pca_table <- arrow::read_ipc_stream(
     file.path(transfer_dir, "reduction", pca_payload$stdevFile)
@@ -536,7 +645,9 @@ test_that("backend transfer adapter writes Explore bundle IPC payloads", {
     bundle,
     reduction_name = "pca",
     dir_path = file.path(transfer_dir, "reduction"),
-    reduction_version = 1L
+    reduction_version = 1L,
+    resource_prefix = "data-test-session",
+    transfer_attempt_id = 1L
   )
   expect_equal(reduction_transfer$backend, "explore_bundle")
   expect_null(reduction_transfer$data)
@@ -554,7 +665,8 @@ test_that("backend transfer adapter writes Explore bundle IPC payloads", {
     assay = "RNA",
     feature = "g2",
     dir_path = file.path(transfer_dir, "expr"),
-    expr_version = 1L
+    expr_version = 1L,
+    resource_prefix = "data-test-session"
   )
   expect_equal(expression_transfer$backend, "explore_bundle")
   expect_setequal(
@@ -589,7 +701,7 @@ test_that("backend transfer adapter writes Explore bundle IPC payloads", {
   expect_equal(expression_transfer$cell_count, 3L)
   expect_identical(
     names(expression_transfer$payload),
-    c("geneName", "assay", "exprVersion", "exprFile")
+    c("geneName", "assay", "exprVersion", "exprFile", "resourcePrefix")
   )
   expect_equal(
     expression_transfer$payload$exprFile,
@@ -604,7 +716,7 @@ test_that("backend transfer adapter writes Explore bundle IPC payloads", {
   expression_table <- arrow::read_ipc_stream(expression_transfer$output_file)
   expect_identical(
     names(expression_payload),
-    c("geneName", "assay", "exprVersion", "exprFile")
+    c("geneName", "assay", "exprVersion", "exprFile", "resourcePrefix")
   )
   expect_equal(expression_payload$geneName, "g2")
   expect_identical(names(expression_table), "expr")
@@ -729,6 +841,71 @@ test_that("Explore expression transfer streams dense chunks from sparse rows", {
   expect_equal(as.numeric(expression_table$expr), c(2, 0, 0, 4, 0, 0, 6))
 })
 
+test_that("Explore expression transfer validates and extracts in one selected scan", {
+  skip_if_not_installed("arrow")
+  skip_if_not_installed("duckdb")
+
+  extract_explore_query_expr_to_ipc <- getFromNamespace(
+    "extract_explore_query_expr_to_ipc",
+    "scSpotlight"
+  )
+
+  work_dir <- tempfile("explore_expr_single_scan_")
+  dir.create(work_dir)
+  on.exit(unlink(work_dir, recursive = TRUE, force = TRUE), add = TRUE)
+
+  block_path <- file.path(work_dir, "block_00000.parquet")
+  arrow::write_parquet(
+    data.frame(
+      feature_idx = c(0L, 1L, 1L),
+      cell_idx = c(1L, 0L, 3L),
+      value = c(9, 2, 4)
+    ),
+    block_path
+  )
+
+  selected_scan_count <- 0L
+  inside_get_query <- FALSE
+  original_get_query <- DBI::dbGetQuery
+  original_send_query <- DBI::dbSendQuery
+  is_selected_expression_query <- function(statement) {
+    grepl("read_parquet", statement, fixed = TRUE) &&
+      grepl("WHERE", statement, fixed = TRUE) &&
+      grepl("feature_idx", statement, fixed = TRUE)
+  }
+  testthat::local_mocked_bindings(
+    dbGetQuery = function(conn, statement, ...) {
+      if (is_selected_expression_query(statement)) {
+        selected_scan_count <<- selected_scan_count + 1L
+      }
+      previous_inside <- inside_get_query
+      inside_get_query <<- TRUE
+      on.exit(inside_get_query <<- previous_inside, add = TRUE)
+      original_get_query(conn, statement, ...)
+    },
+    dbSendQuery = function(conn, statement, ...) {
+      if (!inside_get_query && is_selected_expression_query(statement)) {
+        selected_scan_count <<- selected_scan_count + 1L
+      }
+      original_send_query(conn, statement, ...)
+    },
+    .package = "DBI"
+  )
+
+  output_file <- file.path(work_dir, "expr.arrow")
+  extract_explore_query_expr_to_ipc(
+    block_path = block_path,
+    feature_idx = 1L,
+    cell_count = 4L,
+    output_file = output_file,
+    chunk_size = 2L
+  )
+
+  expect_equal(selected_scan_count, 1L)
+  expression_table <- arrow::read_ipc_stream(output_file)
+  expect_equal(as.numeric(expression_table$expr), c(2, 0, 0, 4))
+})
+
 test_that("Explore transfers reject malformed reduction and expression cell indexes", {
   skip_if_not_installed("arrow")
   skip_if_not_installed("duckdb")
@@ -776,16 +953,18 @@ test_that("Explore transfers reject malformed reduction and expression cell inde
     ),
     expression_path
   )
+  expression_output <- file.path(work_dir, "expr.arrow")
   expect_error(
     extract_explore_query_expr_to_ipc(
       block_path = expression_path,
       feature_idx = 1L,
       cell_count = 3L,
-      output_file = file.path(work_dir, "expr.arrow")
+      output_file = expression_output
     ),
     "duplicate, invalid, or non-finite",
     fixed = TRUE
   )
+  expect_false(file.exists(expression_output))
 })
 
 test_that("Explore metadata transfer keeps categorical schemas stable across chunks", {

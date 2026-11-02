@@ -121,20 +121,30 @@ expect_browser_payload_hides_local_paths <- function(contract, payload) {
   expect_false(any(payload_leaf_names(payload) %in% forbidden_fields))
 
   if (length(flattened_payload)) {
+    flattened_names <- names(flattened_payload)
+    leaf_names <- sub("^.*\\.", "", flattened_names)
+    allowed_embedded_slash_fields <-
+      policy$allowed_embedded_slash_fields %||% list()
     path_like <- vapply(
-      flattened_payload,
-      function(value) {
+      seq_along(flattened_payload),
+      function(index) {
+        value <- flattened_payload[[index]]
         if (!is.character(value) || !length(value) || is.na(value)) {
           return(FALSE)
         }
+
+        slash_pattern <- allowed_embedded_slash_fields[[leaf_names[[index]]]]
+        allows_embedded_slash <-
+          is.character(slash_pattern) &&
+          length(slash_pattern) == 1L &&
+          grepl(slash_pattern, value, perl = TRUE)
         grepl("^(~|/|[A-Za-z]:[\\\\/])", value) ||
-          grepl("[\\\\/]", value)
+          (grepl("[\\\\/]", value) && !allows_embedded_slash)
       },
       logical(1)
     )
     expect_false(any(path_like))
 
-    flattened_names <- names(flattened_payload)
     for (file_field in file_fields) {
       matching <- flattened_payload[
         sub("^.*\\.", "", flattened_names) == file_field
@@ -171,6 +181,7 @@ expect_payload_satisfies_contract <- function(contract, message_name, payload) {
 test_that("browser payload manifest enumerates XFER-05 message contracts", {
   contract <- read_browser_payload_contract()
 
+  expect_identical(contract$schema_version, 2L)
   expect_true(all(
     c(
       "messages",
@@ -195,6 +206,17 @@ test_that("browser payload manifest enumerates XFER-05 message contracts", {
     "{exprVersion}::{assay}::{geneName}"
   )
   expect_false(contract$browser_path_policy$allow_absolute_paths)
+  expect_identical(
+    contract$browser_path_policy$allowed_embedded_slash_fields$geneName,
+    "^[A-Za-z0-9][A-Za-z0-9_.+-]*(?:/[A-Za-z0-9][A-Za-z0-9_.+-]*)*$"
+  )
+  expect_identical(
+    unlist(
+      contract$ipc_columns$meta_patch_ready$forbidden,
+      use.names = FALSE
+    ),
+    "cells"
+  )
   expect_true(all(
     c(
       "filePath",
@@ -215,9 +237,9 @@ test_that("browser payload manifest enumerates XFER-05 message contracts", {
   )
   expect_true(all(
     c(
-      "resourcePrefix",
-      "transferAttemptId",
-      "reductionName",
+        "resourcePrefix",
+        "transferAttemptId",
+        "reductionName",
       "activeReduction",
       "geneName",
       "assay",
@@ -326,11 +348,11 @@ test_that("transfer error payload helper satisfies the browser path policy", {
     stack = "stack mentions secret-frame",
     message = "raw condition message with /tmp/scspotlight/meta.arrow",
     conditionMessage = "raw condition text should not be exposed",
-    reductionName = "/tmp/scspotlight/umap",
+    reductionName = "umap",
     activeReduction = "pca",
-    geneName = "GeneA",
+    geneName = "TRAV14/DV4",
     assay = "RNA",
-    cols = c("cluster", "/tmp/scspotlight/batch"),
+    cols = c("cluster", "batch"),
     transferAttemptId = 101L
   )
 
@@ -403,9 +425,15 @@ test_that("transfer error payload helper satisfies the browser path policy", {
   expect_equal(payloads[[2]]$reductionName, "umap")
   expect_equal(payloads[[5]]$cols, c("cluster", "batch"))
   expect_equal(payloads[[6]]$payloadType, "expression")
-  expect_equal(payloads[[6]]$geneName, "GeneA")
+  expect_equal(payloads[[6]]$geneName, "TRAV14/DV4")
   expect_equal(payloads[[6]]$assay, "RNA")
   expect_equal(payloads[[2]]$transferAttemptId, 101)
+  expect_null(make_transfer_error_payload(
+    "expression",
+    "write_failed",
+    106L,
+    list(geneName = "../secret")
+  )$geneName)
 })
 
 test_that("R browser payload producers satisfy the contract manifest", {
@@ -487,11 +515,17 @@ test_that("R browser payload producers satisfy the contract manifest", {
   )
   patch_payload <- write_backend_metadata_transfer(patch_transfer)
   expect_payload_satisfies_contract(contract, "meta_patch_ready", patch_payload)
-  expect_equal(patch_payload$cols, "cluster")
+  expect_identical(patch_payload$cols, list("cluster"))
+  expect_identical(
+    as.character(shiny:::toJSON(patch_payload$cols)),
+    "[\"cluster\"]"
+  )
+  expect_identical(patch_payload$cellIdentity, metadata_payload$cellIdentity)
+  expect_match(patch_payload$cellIdentity, "^[0-9a-f]{32}$")
   patch_table <- arrow::read_ipc_stream(patch_transfer$filePath)
-  expect_true(all(c("cells", "cluster") %in% names(patch_table)))
+  expect_identical(names(patch_table), "cluster")
+  expect_false("cells" %in% names(patch_table))
   expect_false("quality" %in% names(patch_table))
-  expect_equal(as.character(patch_table$cells), colnames(object))
 
   reduction_transfer <- prepare_backend_reduction_transfer(
     object,
@@ -513,6 +547,23 @@ test_that("R browser payload producers satisfy the contract manifest", {
   ))
   expect_identical(names(reduction_table), c("X", "Y"))
 
+  newer_reduction_transfer <- prepare_backend_reduction_transfer(
+    object,
+    reduction_name = "umap",
+    dir_path = file.path(transfer_dir, "reduction"),
+    reduction_version = 12L,
+    resource_prefix = "data-test-session",
+    transfer_attempt_id = 13L
+  )
+  expect_false(identical(
+    reduction_transfer$filePath,
+    newer_reduction_transfer$filePath
+  ))
+  expect_false(identical(
+    reduction_payload$reductionFile,
+    newer_reduction_transfer$payload$reductionFile
+  ))
+
   reductions_ready_payload <- list(
     reductions = list(reduction_payload),
     activeReduction = "umap",
@@ -524,6 +575,33 @@ test_that("R browser payload producers satisfy the contract manifest", {
     contract,
     "reductions_ready",
     reductions_ready_payload
+  )
+
+  expect_error(
+    prepare_backend_metadata_transfer(
+      object,
+      dir_path = file.path(transfer_dir, "meta"),
+      meta_version = 14L
+    ),
+    "session resource prefix"
+  )
+  expect_error(
+    prepare_backend_metadata_transfer(
+      object,
+      dir_path = file.path(transfer_dir, "meta"),
+      meta_version = 14L,
+      resource_prefix = "."
+    ),
+    "session resource prefix"
+  )
+  expect_error(
+    prepare_backend_metadata_transfer(
+      object,
+      dir_path = file.path(transfer_dir, "meta"),
+      meta_version = 14L,
+      resource_prefix = "data"
+    ),
+    "session resource prefix"
   )
 
   pca_payload <- write_backend_pca_stdev_transfer(

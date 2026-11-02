@@ -556,7 +556,7 @@ The final Phase 03 gap-closure repairs are now part of the Analysis Mode process
 
 - **Safe archive extraction:** compressed Analysis archives must validate unsafe entries before extraction. Tar and zip inputs are listed before unpacking, and absolute paths, Windows drive roots, parent-directory traversal, and symlink entries are rejected with generic path-free errors.
 - **Session-scoped IPC resource prefixes:** IPC payload URLs use a session-scoped resourcePrefix plus basename instead of global /data paths. R registers an opaque per-session Shiny resource prefix, sends `resourcePrefix` with metadata, reduction, PCA, expression, metadata patch, and transfer-error payloads, and removes that prefix when the session ends.
-- **Monotonic metadata versioning:** metadata refreshes and metadata patches share one server-owned monotonic version sequence. Full `meta_ready` transfers and column-scoped `meta_patch_ready` transfers must allocate comparable metadata versions from the same server-owned counter so valid patches cannot be rejected as stale after a full refresh.
+- **Monotonic metadata versioning:** metadata refreshes and metadata patches share one server-owned monotonic version sequence. Full `meta_ready` transfers and column-scoped `meta_patch_ready` transfers must allocate comparable metadata versions from the same server-owned counter. Browser full-refresh ordering remains independent from per-column patch ordering: a newer patch or patch error cannot cancel an older in-flight full refresh, a patch matching that registered full identity waits for the full metadata to commit, and already-applied newer same-identity columns are replayed if the older full snapshot finishes later. Browser selection and assignment contexts expose only the latest gap-free metadata version actually applied; failed or out-of-order gaps remain stale until later patches cover the same changed columns or a successful full refresh establishes a complete snapshot.
 - **Server-trusted assignment validation:** assignment validation must not trust browser-submitted current metadata versions. Versioned assignment intents are accepted only when the server can compare them with the server-trusted current metadata version for the active group/split context.
 - **Single assignment activation:** normal assignment activation emits a single renameCluster-assignmentIntent. Browser handlers must avoid pointerdown/click double submission so one user action produces one bounded assignment intent and one scoped metadata mutation.
 - **Cell-ID and category subset flow:** browser `renameCluster-selectedCellsPayload` carries canonical manual/lasso Cell IDs plus metadata, Analysis Version, and lineage tokens captured from the rendered plot. Browser `renameCluster-categorySelectionContext` carries only bounded group/split levels and the same identity tokens; category-derived Cell IDs stay server-side. The Analysis Transition rejects manual selections unless every Cell ID exists in `colnames(seuratObj())`, and resolves category selections from canonical metadata before re-ordering the complete selection once by the current Seurat object. A stale manual payload blocks category fallback. Successful metadata patches clear the visible lasso and its transport so a stale metadata epoch cannot remain selectable. Empty, duplicate, mixed-validity, category-context-invalid, metadata-stale, version-stale, and lineage-stale requests publish no Analysis Version.
@@ -569,8 +569,8 @@ The machine-readable payload contract is `inst/protocol/browser-payload-contract
 
 The manifest currently defines these browser message contracts:
 
-- `meta_ready`: full metadata Arrow IPC notification with `metaFile`, `metaVersion`, and an ordered canonical `cells` Cell-ID column.
-- `meta_patch_ready`: column-scoped metadata patch notification with `metaFile`, `metaVersion`, `cols`, and the same ordered canonical `cells` Cell-ID column.
+- `meta_ready`: full metadata Arrow IPC notification with `metaFile`, `metaVersion`, `cellIdentity`, and an ordered canonical `cells` Cell-ID column.
+- `meta_patch_ready`: column-scoped metadata patch notification with `metaFile`, `metaVersion`, `cols`, and `cellIdentity`. Patch IPC contains only the requested columns and must not contain `cells`.
 - `reduction_ready`: single-reduction Arrow IPC notification with `reductionFile`, `reductionName`, and `reductionVersion`.
 - `reductions_ready`: batched reduction prefetch notification with active reduction selection and versioned entries.
 - `pca_ready`: PCA standard deviation Arrow IPC notification with `stdevFile` and `reductionVersion`.
@@ -743,14 +743,15 @@ These changes were implemented with the repo's large-dataset constraints in mind
 - Keep main-panel expression handling single-gene to match current rendering assumptions.
 - Decode Arrow dictionary-encoded metadata from index buffers directly in `srcjs/modules/arrowReader.js` instead of calling `col.get(j)` for every row. This preserves the Arrow IPC migration's performance benefit for 1M+ cells by avoiding slow per-element Arrow accessor calls on categorical metadata columns.
 - Keep plot refresh signaling separate from transfer completion state. `R/app_server.R` now increments a dedicated `plotRefreshIndicator` when full metadata/reduction transfers finish, while view-driven redraws continue to use `scatterUpdateIndicator`. This prevents `mod_mainClusterPlot_server()` from directly depending on `metaProcessed()` and `reductionProcessed()` as redraw triggers.
-- Prefer partial metadata transfers for column-scoped changes. `R/mod_UpdateMetaData.R` supports Arrow IPC patches via `meta_patch_ready`, and `srcjs/index.js` merges them into the existing client metadata object instead of replacing the entire metadata payload. `Cell Cycling` uses this path for `S.Score`, `G2M.Score`, and `Phase`.
+- Prefer partial metadata transfers for column-scoped changes. `R/mod_UpdateMetaData.R` supports Arrow IPC patches via `meta_patch_ready`, and `srcjs/index.js` merges them into the existing client metadata object instead of replacing the entire metadata payload. Full metadata establishes canonical `cells` and `cellIdentity`; patches transfer only changed columns plus that compact identity, avoiding repeated million-row Cell-ID payloads and the Explore `cells.parquet` join. `Cell Cycling` uses this path for `S.Score`, `G2M.Score`, and `Phase`.
 - Version all Arrow IPC payload filenames by data epoch so the client can safely distinguish stale files from current files. Reduction, expression, metadata, metadata patches, and PCA standard deviations now include versioned hash inputs on the R side.
 - Keep a cold client-side IPC cache only for reduction and expression payloads. `srcjs/index.js` stores fetched Arrow IPC `ArrayBuffer`s keyed by `{version, reduction}` and `{version, assay, gene}` and rehydrates typed arrays on demand. This avoids repeated server fetches for reduction switching and cleared/reloaded expression panels while conserving memory by not keeping extra decoded hot copies.
 - Cache expanded categorical metadata and unique sorted levels per column object on the client. `srcjs/modules/deckScatter.js` now memoizes both expanded arrays and level lists so plot-mode derivation, legends, category selection, and rename-cluster filtering do not rebuild the same metadata repeatedly.
 - Keep rename-cluster category filtering on the client. `srcjs/index.js` now computes rename selections directly from cached metadata and only sends the final selected cells to R on assign.
-- Keep View Filter work browser-local after server predicate validation. `srcjs/modules/scatter/scatterModel.js` creates a `Uint8Array` visibility mask and only allocates filtered panel buffers when a filter hides cells; original metadata, reductions, and expression vectors remain the browser-resident source buffers. `Int32Array` source indexes preserve canonical metadata and expression lookup for filtered hover text.
+- Keep View Filter work browser-local after server predicate validation. `srcjs/modules/scatter/scatterModel.js` creates a `Uint8Array` visibility mask and, when cells are hidden, allocates visible-only XY, category, expression, Cell-ID, and source-index panel buffers directly instead of first constructing full replacement panels. Original metadata, reductions, and expression vectors remain the browser-resident source buffers. `Int32Array` source indexes preserve canonical metadata and expression lookup for filtered hover text.
 - Use adaptive split-panel grids for very high-cardinality `split.by` layouts. `srcjs/modules/scatter/scatterLayout.js` now balances columns/rows and shrinks minimum panel sizes as panel counts rise so the deck surface does not become excessively large.
 - Keep main scatter rendering deck.gl-only with typed binary attributes. `srcjs/modules/deckScatter.js` builds `ScatterplotLayer` inputs from `Float32Array` positions and `Uint8Array` colors, applies the AGENTS.md point-size/opacity/pickability thresholds, and keeps base hover picking disabled at 2M+ points while lasso selection remains available through client-side geometry.
+- Keep LLM category checks bounded. Seurat-backed summaries scan one metadata column in chunks and stop collecting distinct labels after the 51st value, avoiding a full character copy for high-cardinality 1M+ cell columns. Explore summaries scan one projected Arrow column in bounded record batches and stop at the same limit instead of globally aggregating the column.
 
 ## Validation Performed
 
@@ -758,6 +759,8 @@ Recent validation included:
 
 - `pixi run Rscript -e "devtools::test(filter = 'llm-context')"`
 - `pixi run Rscript -e "devtools::test(filter = 'run-app-modes')"`
+- Focused post-fix results: 64 passing LLM-context assertions and 20 passing run-mode assertions, with no failures, warnings, or skips.
+- `git diff --check` completed without patch-format errors.
 - `pixi run Rscript -e "devtools::test()"`
 - `pixi run Rscript -e "devtools::load_all(); cat('loaded\\n')"`
 - parse validation for `R/fct_llm_context.R`, `R/mod_LLMChat.R`, `R/app_server.R`, and `R/app_ui.R`
@@ -766,8 +769,10 @@ Recent validation included:
 - `pixi run build-js`
 - parse validation for `R/app_ui.R`
 
-At the time of writing, the R test suite passed with 173 tests. The JS test
-suite previously passed with 69 tests. `devtools::check()` failed during local
+At the time of writing, the full R test suite completed with 1,165 passing
+assertions, 40 warnings from existing small Seurat/test fixtures, and no
+failures or skips. The JS test suite previously passed with 69 tests.
+`devtools::check()` failed during local
 `R CMD build` before package checks because the checkout's `.pixi` environment
 contains debug symlink targets that cannot be copied into the temporary build
 directory; this is a local build-copy issue rather than an LLM implementation
@@ -1019,10 +1024,10 @@ The Explore Parquet bundle is the read-optimized Explore Mode distribution forma
 
 ### `manifest.json`
 
-Required fields for schema version 1:
+Required fields for schema version 2:
 
 - `bundle_type`: must be `scspotlight_explore_parquet_bundle`.
-- `schema_version`: currently `1`.
+- `schema_version`: currently `2`.
 - `created_at`: creation timestamp.
 - `scspotlight_version`: package version that wrote the bundle.
 - `assay`: exported assay name.
@@ -1032,10 +1037,17 @@ Required fields for schema version 1:
 - `cell_count`: total number of cells.
 - `feature_count`: total number of exported features.
 - `block_size`: number of features per expression block.
+- `expression_layout`: currently `feature_row_groups_v1`.
+- `cell_identity`: compact hash of the ordered canonical Cell IDs.
 - `expression_compression`: Parquet compression codec.
 - `reductions`: dimensional reductions available under `reductions/`.
 
-If any field changes incompatibly, bump `schema_version` and add a loader migration or a clear unsupported-version error.
+Schema-version-1 bundles remain readable. Their browser identity is derived from
+the ordered canonical Cell IDs, and their legacy expression row-group layout
+remains queryable. Schema-version-2 bundles must declare the supported expression layout;
+unknown schema-v2 layouts fail with a clear unsupported-layout error. If any
+field changes incompatibly, bump `schema_version` and add a loader migration or
+a clear unsupported-version error.
 
 ### `cells.parquet`
 
@@ -1060,14 +1072,16 @@ Schema:
 
 The loader and direct metadata transfer path validate that metadata contains one
 valid, unique `.scspotlight_cell_idx` for every row in `cells.parquet`; they do
-not trust Parquet row position. Metadata is joined to `cells.parquet` and
+not trust Parquet row position. Full metadata is joined to `cells.parquet` and
 transferred to the browser as Arrow IPC with the client-facing ordered `cells`
-Cell-ID column. Do not add `cells` to canonical `metadata.parquet` unless the
-schema is intentionally changed. Factors and logical columns are stored as
-character-like values; numeric columns must replace `NaN` and infinite values
-with missing values before writing. Explore Mode metadata transfers must stream
-the DuckDB join through Arrow IPC chunks instead of materializing the full
-metadata frame in R.
+Cell-ID column. A validated compact patch reads only `metadata.parquet`, emits
+only requested columns, and carries the bundle `cell_identity` in its message;
+it does not join or transfer `cells`. Do not add `cells` to canonical
+`metadata.parquet` unless the schema is intentionally changed. Factors and
+logical columns are stored as character-like values; numeric columns must
+replace `NaN` and infinite values with missing values before writing. Explore
+Mode metadata transfers must stream DuckDB results through Arrow IPC chunks
+instead of materializing the full metadata frame in R.
 
 ### `features.parquet`
 
@@ -1106,7 +1120,14 @@ Schema:
 - `cell_idx`: zero-based integer cell id.
 - `value`: non-zero normalized expression value.
 
-Each block file contains sparse long-format expression rows for the features assigned to that block. Rows should be sorted by `feature_idx, cell_idx` when written. Missing `(feature_idx, cell_idx)` pairs represent zero expression.
+Each block file contains sparse long-format expression rows for the features
+assigned to that block. Schema version 2 scans bounded feature-by-cell chunks,
+accumulates only one bounded sparse feature row group at a time, and writes
+feature-pure Parquet row groups. Row-group growth is therefore bounded by
+features and configured sparse-row-group size rather than by features times
+cell chunks. Every individual row group contains one `feature_idx`, allowing
+DuckDB to prune unrelated groups. Missing `(feature_idx, cell_idx)` pairs
+represent zero expression.
 
 Expression queries must use DuckDB. The app selects the correct block from `features.parquet`, runs `read_parquet(<block>) WHERE feature_idx = <id> ORDER BY cell_idx`, and writes a dense Arrow IPC `expr` vector only for the requested feature. Explore Mode expression transfers should fetch sparse rows and write dense Float32 IPC chunks incrementally so R never holds both the full sparse query result and dense vector at once. Do not reintroduce a full-block Arrow fallback for expression queries; it is substantially slower and higher-memory for common genes.
 
@@ -1124,7 +1145,12 @@ Expression queries must use DuckDB. The app selects the correct block from `feat
 - `R/fct_explore_bundle.R` owns bundle loading and Parquet/DuckDB queries.
 - `R/fct_bpcells_backend.R` exposes backend-agnostic helpers so app modules can work with either Seurat/BPCells objects or Explore bundles.
 - Explore Mode transfer futures should receive paths/query plans only, not live bundle objects or eager data frames. Metadata, reductions, and expression all stream DuckDB fetch batches into Arrow IPC writers to keep server-side peak memory bounded by chunk size.
-- Before an Explore metadata transfer, validate the dense unique `cells.parquet` index and Cell IDs plus the complete unique metadata index join. The IPC writer then joins on `.scspotlight_cell_idx` and emits canonical Cell IDs in `cells`.
+- Before an Explore full metadata transfer, validate the dense unique
+  `cells.parquet` index and Cell IDs plus the complete unique metadata index
+  join. The full IPC writer joins on `.scspotlight_cell_idx` and emits canonical
+  Cell IDs in `cells`. Validated compact patches use `cell_identity`, read only
+  `metadata.parquet`, and omit both the `cells.parquet` join and the `cells` IPC
+  column.
 - A bundle-load validation pass owns one bounded DuckDB schema inspection per
   metadata or reduction Parquet file. `validate_scspotlight_explore_bundle_files()`
   passes those known column names into the corresponding integrity validators,
@@ -1482,11 +1508,11 @@ Implementation and tracking:
 
 Decision:
 
-- Arrow metadata `cells` is an ordered canonical Cell-ID vector in both
+- Full Arrow metadata `cells` is an ordered canonical Cell-ID vector in both
   Analysis and Explore Mode, not a zero-based numeric row index and not a
   categorical metadata column.
-- A metadata patch is position-safe only when its Cell-ID vector exactly
-  matches the active vector.
+- A compact metadata patch is position-safe only when its `cellIdentity`
+  matches the identity established by full metadata for the active Analysis.
 - Analysis object replacement invalidates the preceding expression epoch even
   if no prior expression payload has reached the browser cache.
 - `cells.parquet` is the authoritative Cell-ID table for Explore bundles;
@@ -1505,15 +1531,18 @@ Why:
 
 Implementation notes:
 
-- `R/mod_UpdateMetaData.R` fails closed when metadata lacks explicit canonical
-  row names, and `R/fct_explore_bundle.R` joins validated Explore metadata to
-  `cells.parquet` before emitting IPC.
+- `R/mod_UpdateMetaData.R` fails closed when Analysis metadata lacks explicit
+  canonical row names. `R/fct_explore_bundle.R` joins validated Explore metadata
+  to `cells.parquet` for full IPC and skips that join for compact patches.
 - `srcjs/modules/arrowReader.js` decodes `cells` as `cell_id`; text metadata
   remains category encoded. `expandMeta()` returns the ordered Cell-ID vector
   directly, including the cluster-only scatter path.
-- `srcjs/index.js` rejects a mismatched or reordered Cell-ID sequence in
-  `meta_patch_ready`. A full `meta_ready` only clears expression state when the
-  Cell-ID population/order changes.
+- `srcjs/index.js` validates compact patch identity before positional merge. A
+  patch matching a registered in-flight full transfer waits without fetching,
+  an in-flight full refresh is not cancelled by a newer patch or patch error,
+  and newer same-identity patch columns are replayed if an older full snapshot
+  lands afterward. Other identity mismatches fail closed. A full `meta_ready`
+  only clears expression state when the Cell-ID population/order changes.
 - `R/mod_SubsetCells.R` and `R/mod_dataInput.R` send the previous numeric
   `geneUpdateIndicator` through `clear_expr`. `srcjs/index.js` blocks
   expression payloads at or below that invalidated expression epoch and checks
@@ -1974,7 +2003,301 @@ Validation performed on August 13, 2026:
   existing optional-package/import-count, hidden-file, installed-size,
   timestamp, top-level-file, and generated Rd line-width notes.
 
-### 42. Archive, assistant, transfer, and evidence hardening
+### 42. Explore transfer pruning and metadata patch ordering
+
+Decision:
+
+- New Explore bundles use schema version 2 with
+  `expression_layout = "feature_row_groups_v1"` and an ordered-Cell-ID
+  `cell_identity`; schema-version-1 bundles remain readable.
+- Compact metadata patches carry `cellIdentity` and changed columns only. Full
+  metadata remains the sole browser transfer that carries canonical `cells`.
+- Selected Explore expression transfer validates ordered sparse rows during the
+  same DuckDB scan that writes dense Float32 Arrow IPC and removes partial output
+  after malformed indexes, duplicate cells, or non-finite values.
+- Filtered Views allocate panel buffers for visible cells only while preserving
+  full-reduction XY scaling, per-split expression scaling, categorical encoding,
+  source indexes, and Cell IDs.
+- Browser full metadata and per-column patch ordering are independent. A patch
+  matching a registered in-flight full identity waits for that full transfer;
+  disjoint patches remain independently current, same-column patches supersede
+  older requests, and newer applied same-identity columns survive a later older
+  full snapshot. Request versions govern transfer supersession, while the
+  browser-published `metaVersion` advances only through a gap-free sequence of
+  applied metadata states or directly to a successful full snapshot. A full
+  object replacement resets the applied snapshot to the replacement identity and
+  version, but higher work from the old identity remains an unapplied gap until a
+  later successful full refresh covers it.
+
+Why:
+
+- Repeating one million Cell IDs in every metadata patch dominated payload size
+  and forced an unnecessary Explore `cells.parquet` read.
+- Feature-pure Parquet row groups let DuckDB skip unrelated features without a
+  full-block physical sort or block-wide sparse materialization.
+- Building complete scatter panels before filtering retained roughly the full
+  dataset allocation even when the user kept only a small View.
+- Full metadata and compact patch IPC jobs run as independent futures. A shared
+  global browser request token allowed patch `N+1` to cancel full refresh `N`,
+  preventing the full metadata identity from committing.
+
+Implementation notes:
+
+- `R/fct_explore_bundle.R` writes bounded feature-pure row groups, validates the
+  schema-v2 layout, supplies the schema-v1 identity fallback, skips
+  `cells.parquet` for validated compact patches, and performs one-pass expression
+  validation plus IPC generation.
+- `R/fct_backend_transfer_adapter.R` computes Analysis identities from ordered
+  Seurat Cell IDs and controls whether full or patch IPC includes `cells`.
+- `inst/protocol/browser-payload-contracts.json` schema version 2 requires
+  `cellIdentity` and explicitly forbids `cells` in `meta_patch_ready` IPC.
+- `srcjs/index.js` tracks full refreshes separately from per-column patches,
+  defers matching patch fetches until full identity commit, scopes transfer
+  errors without cancelling unrelated work, and retains references to the newest
+  applied value per column for same-identity replay. Malformed or mismatched full
+  and patch identities fail before request/version registration, so they cannot
+  supersede valid in-flight metadata work or poison later selection context. A
+  malformed full notification also cannot hide the active spinner or settle
+  initial-plot readiness while a valid full transfer is still running. Failed
+  full transfers require a later full refresh; failed patch versions can be
+  covered by later successful patches for the same columns. The compact version
+  history records Cell identity, is capped at 256 entries, and fails closed to a
+  full-refresh requirement if that bound is exceeded.
+- `srcjs/modules/scatter/scatterModel.js` builds filtered panel TypedArrays
+  directly from canonical source indexes.
+
+Validation performed on August 13, 2026:
+
+- `pixi run test-js` passed 15 JavaScript files and 170 tests.
+- Focused Explore, browser-payload, Analysis-backend, and development-contract R
+  tests passed.
+- The Explore 1M structural benchmark contract test passed.
+- A temporary production Vite build to
+  `/tmp/opencode/scspotlight-vite-build` passed without modifying checked-in
+  bundles.
+- A synthetic 1M-cell metadata patch measured `4,002,064` bytes versus
+  `29,003,136` bytes with repeated Cell IDs, an 86.2% reduction.
+- Focused export coverage verifies that two selected features across three
+  cell chunks produce two feature-pure row groups rather than six groups.
+- A synthetic 1M-cell View retaining 100,000 cells used about 3 MB of retained
+  ArrayBuffers in the direct path versus 30 MB in the reconstructed legacy path.
+- The one-pass expression transfer is structurally verified; the synthetic
+  schema-version-1 timing did not show a wall-clock speedup, so none is claimed.
+- The full R suite reached all test files but retained three failures in
+  concurrent Analysis archive extraction work in `R/mod_dataInput.R`: one tar
+  listing source assertion and two partial-extraction cleanup expectations. That
+  unrelated file was not modified for this transfer change.
+
+### 43. Release-gate follow-up for schema v2 and LLM output safety
+
+Decision:
+
+- Schema-version-2 Explore manifests fail closed when they omit a valid
+  `cell_identity`, declare an unsupported `expression_layout`, or advertise a
+  future schema version.
+- The bounded feature-oriented expression writer buffers cell chunks only until
+  it can write a feature-pure sparse row group. It no longer creates a Parquet
+  row group for every feature-by-cell-chunk slice.
+- Representative benchmark evidence must match the active R, R platform, Pixi,
+  Node, npm, and core package versions, and must include passing processing,
+  browser visualization, browser server, and Chromium RSS gates.
+- The PR workflow checks that a frontend rebuild leaves the committed production
+  bundle unchanged. The optional LLM job runs a separate Chromium fixture that
+  verifies escaped assistant text cannot activate `shinychat-raw-html`.
+
+Why:
+
+- A future or incomplete schema-v2 manifest is not an input format the current
+  browser identity and expression-query contracts can safely interpret.
+- One row group per feature-by-cell chunk made a large dense block create tens
+  of thousands of tiny metadata regions despite bounded matrix reads.
+- A benchmark result tied to a different runtime or missing one RSS domain is
+  not reproducible release evidence.
+- Unit-level HTML escaping does not prove the chat renderer preserves the
+  escaping boundary in a browser.
+
+Implementation notes:
+
+- `R/fct_explore_bundle.R` validates the schema contract before opening bundle
+  files and uses Arrow `Table$create()` plus one `WriteTable()` call per bounded
+  feature row group.
+- `benchmarks/explore_1m_helpers.R` compares recorded runtime/package versions
+  to the active Pixi environment and requires all four named RSS gates.
+- `playwright.llm.config.js` starts
+  `tests/e2e/run-llm-output-safety-app.R`, which sends an escaped raw-HTML
+  marker through the real `shinychat` append path. Its Playwright test confirms
+  the marker remains text, no raw element/image appears, and the payload cannot
+  execute JavaScript.
+
+Validation performed on August 14, 2026:
+
+- `pixi run Rscript -e "devtools::test(filter = 'explore-bundle|benchmark-explore-1m', stop_on_failure = TRUE)"` passed 186 assertions.
+- `pixi run setup-js` completed successfully after the Pixi-managed lockfile
+  regeneration.
+- `pixi run npm test -- --run srcjs/index.test.js srcjs/modules/arrowReader.test.js srcjs/modules/scatter/scatterModel.test.js` passed 106 tests.
+
+### 44. Follow-up hardening for untrusted output and release evidence
+
+Decision:
+
+- Assistant responses are rendered as escaped literal text, not Markdown or raw
+  HTML. Markdown image syntax, HTML tags, and tool output must remain visible as
+  text without issuing browser requests or creating active DOM nodes.
+- Server-generated LLM summaries and tool failures must not disclose local paths
+  or backend error details. DEG feature and group labels are filtered to the
+  same safe text boundary before they enter model context. The group-label
+  boundary normalizes separators, camel case, and compact instruction compounds
+  before rejecting instruction-like terms, so variants such as
+  `ignorepreviousinstructions` are not allowed through.
+- A same-version reduction transfer is ordered by its monotonic
+  `transferAttemptId`. The browser must reject a late older attempt, and the
+  server must give each attempt a distinct IPC resource name so one writer cannot
+  overwrite another attempt's payload.
+- A batched reduction prefetch renders the live dropdown selection when that
+  selection is present in the incoming reductions, before falling back to the
+  server's original active reduction or the first available reduction. A failed
+  inactive prefetch is cache warming only: it logs a warning and must not hide a
+  valid active scatter, publish `reductionProcessed = FALSE`, or show a transfer
+  error after the active reduction has rendered.
+- Every asynchronous reduction transfer owns an attempt-scoped Shiny
+  notification ID. Completion of one transfer can remove only its own loading
+  notification, never the notification for an overlapping transfer.
+- An evicted browser cache entry retains its distinct `cache-miss` request
+  source until its fresh selected-reduction transfer completes. A delayed
+  same-version transfer for another reduction cannot replace that selection.
+- When an LLM request becomes stale because its dataset or view dependencies
+  change, its tool snapshot is cleared immediately. The eventual provider
+  completion remains stale and is discarded, but it cannot keep a replaced
+  Seurat object or Explore bundle reachable until network completion.
+- TAR preflight must recognize GNU base-256 numeric fields, count GNU/PAX
+  metadata payloads against expanded-byte and compression-ratio limits, and
+  collect archive entries without repeated vector copying. It must reject a
+  directory entry that claims payload bytes because R's internal extractor does
+  not consume such bytes while reading later headers.
+- GNU TAR base-256 numeric headers are extracted only with a compatible external
+  `tar` executable after preflight validation. Ordinary archives retain R's
+  internal extractor; if no compatible external extractor is available, the
+  base-256 archive fails closed before extraction. Duplicate security-relevant
+  PAX fields and all `GNU.sparse.*` metadata also fail closed, rather than
+  allowing external `tar` to apply semantics that the preflight cannot bound.
+- Benchmark evidence acceptance is derived again from raw measurements and the
+  documented limits. Stored acceptance booleans are evidence to verify, not a
+  source of truth; every measured memory value must be non-negative and below
+  the bounded RSS limit.
+- The isolated package check validates the built tarball. Source-inspection tests
+  use its unpacked source artifact when supplied by the wrapper, identify only a
+  complete package source root, and skip cleanly when invoked from an installed
+  package with no source checkout. Staging and Vitest test discovery both ignore
+  checkout-local scratch trees so generated package-check copies cannot recurse
+  into themselves or run stale duplicate tests.
+
+Why:
+
+- The LLM response boundary is untrusted data even when the provider is trusted;
+  rendering it as Markdown would permit a model response to trigger browser-side
+  HTML or remote-media behavior.
+- Version alone cannot distinguish two concurrent retries of the same reduction.
+  A later retry must win without reusing the first retry's file name. Selecting
+  an already cached reduction is also a browser request boundary, so it prevents
+  an earlier same-version IPC fetch from overwriting the selected coordinates.
+- Archive headers and metadata payloads are attacker-controlled inputs, so every
+  representation must consume the preflight budget before extraction begins and
+  the reader must remain aligned with the extractor's payload semantics.
+- Recomputing release gates prevents a forged evidence file from passing merely
+  by declaring a successful acceptance flag.
+- `R CMD check` installs a package before testing, while several contract tests
+  intentionally inspect source files. An installed library is not a complete
+  source checkout.
+
+Implementation notes:
+
+- `R/fct_llm_context.R` and `R/mod_LLMChat.R` provide the literal assistant
+  response container, separator-aware safe DEG label filtering, generic
+  user-facing LLM failures, and server-side diagnostic logging. The DEG filter
+  also rejects a requested group unless it is one of the safe disclosed labels.
+  Selected feature context is limited to the backend feature catalog and uses
+  elementwise feature-label checks rather than metadata identifier heuristics;
+  this preserves valid Ensembl identifiers and slash-bearing feature symbols.
+  Generic catalog-label filtering also applies identifier checks elementwise, so
+  suppressing an unsafe requested label cannot suppress a separate safe label.
+  Explore metadata summaries stream a single Arrow column in
+  bounded batches and stop as soon as they observe more than 50 distinct values,
+  rather than allowing DuckDB to aggregate every distinct value in a large
+  column.
+  `tests/e2e/run-llm-output-safety-app.R` and
+  `tests/e2e/llm-output-safety.spec.js` exercise the real `shinychat` append
+  path in Chromium.
+- `R/fct_backend_transfer_adapter.R` incorporates the transfer attempt into the
+  reduction IPC identity. `srcjs/index.js` records the attempt on the active
+  request and rejects a lower same-version attempt before it can supersede newer
+  data. A cached reduction selection also owns the active request until a fresh
+  transfer for the currently selected cache miss replaces it. Batched transfers
+  resolve the active reduction from the live select control when it names a
+  supplied reduction, and catch inactive-prefetch failures locally. This keeps
+  cache warming from changing active scatter completion semantics.
+- `srcjs/index.js` preserves `cache-miss` as an active request source so a
+  browser-evicted selected reduction cannot be superseded by a delayed transfer
+  for another same-version reduction.
+- `R/mod_UpdateReduction.R` derives notification IDs from the monotonic transfer
+  attempt. Its single- and multi-reduction futures remove their own IDs in
+  `finally()`; `tests/testthat/test-update-reduction.R` completes overlapping
+  futures out of order to verify that lifecycle contract.
+- `R/mod_dataInput.R` parses GNU base-256 TAR numbers safely, charges all tar
+  metadata payloads to the extraction budget, rejects nonzero directory
+  payloads, duplicate PAX `path`/`size` fields, and `GNU.sparse.*` metadata, and
+  grows entry storage in bounded chunks. Base-256 headers select a checked
+  external extractor because R's internal extractor parses numeric fields as
+  octal only; global PAX headers remain within the same fail-closed model.
+- `R/mod_LLMChat.R` clears the live tool snapshot as soon as its reactive
+  generation changes and removes local snapshot references before installing
+  promise callbacks, preventing stale asynchronous requests from retaining a
+  replaced large dataset. The reusable provider client is keyed by that complete
+  reactive generation, so a changed view, DEG result, or adjusted-p cutoff
+  starts a fresh conversation instead of carrying earlier turns into new context.
+- `benchmarks/explore_1m_helpers.R` re-evaluates processing, browser heap,
+  Shiny RSS, and Chromium RSS gates from measurements, requiring non-negative
+  byte values. Browser benchmark scripts report browser heap separately from
+  server and Chromium RSS.
+- `dev/check_package.R` builds, unpacks, and checks the tarball; its explicit
+  source-root environment points to that unpacked artifact and excludes
+  checkout-local staging trees. `vitest.config.js` excludes `.tmp/` and
+  `.review-tmp/` trees from JavaScript test discovery.
+  `tests/testthat/helper-source-path.R` requires `DESCRIPTION`, `R/`, and
+  `tests/testthat/` before treating a directory as source.
+
+Validation performed on August 31, 2026:
+
+- Focused R tests passed 159 assertions across `bundle-archive` and
+  `llm-context`, including duplicate-PAX and GNU-sparse rejection before
+  extraction, instruction-like feature-label rejection, bounded high-cardinality
+  Explore reads, stale snapshot release, and full-context chat-client resets.
+- Follow-up review regressions cover cache-miss recovery against delayed
+  same-version reduction transfers, extraction of a GNU base-256 TAR size field,
+  immediate release of an invalidated LLM request snapshot, duplicate PAX
+  fields, sparse GNU PAX metadata, and conversation resets after a context-only
+  view change.
+- `pixi run build-js` regenerated `inst/app/www/index.js` and
+  `inst/app/www/index.js.map` successfully.
+- `pixi run test-r` passed 1,338 assertions. The suite emitted 40 existing
+  small-fixture and dependency warnings but no failures.
+- `pixi run test-js` passed 15 files and 177 tests.
+- `pixi run test-e2e-llm` passed the Chromium literal-output regression test.
+- `pixi run r-check` passed twice: once with the default external scratch root,
+  and once with `SCSPOTLIGHT_TEMP_ROOT=.tmp/scspotlight-check-scratch-final`.
+  Both built-package checks completed with zero errors and zero warnings. They
+  retain six existing CRAN notes about optional dependencies, package structure,
+  installed size, timestamp lookup, top-level files, and Rd line width.
+- `git diff --check` passed.
+- No fresh schema-v2 real-H5AD 1M benchmark was generated during this hardening
+  pass. Historical evidence is intentionally rejected when it comes from a
+  dirty checkout or an older schema; capture a clean post-commit benchmark before
+  treating current 1M+ performance evidence as release acceptance.
+
+### 45. Archive, assistant, transfer, and evidence hardening (September 1 record)
+
+This record preserves the validation and decisions committed on September 1,
+2026. The August records above describe earlier work, not a replacement for this
+later validation.
 
 Decision:
 
@@ -2028,9 +2351,9 @@ Implementation notes:
 - Benchmark runners load the same checkout that their provenance names and reject
   an `SCSPOTLIGHT_BENCHMARK_SOURCE_ROOT` pointing elsewhere. The evidence gate
   also compares OS, CPU model, memory, and core count with the active host.
-- `dev/check_benchmark_evidence.R` rejects the retained, untracked
-  `benchmarks/evidence/real-h5ad-2026-08-10.json` record when it is supplied
-  explicitly, rather than treating it as current performance evidence.
+- `dev/check_benchmark_evidence.R` rejected the then-untracked
+  `benchmarks/evidence/real-h5ad-2026-08-10.json` record when supplied explicitly,
+  rather than treating it as current performance evidence.
 
 Validation performed on September 1, 2026:
 
@@ -2048,3 +2371,38 @@ Validation performed on September 1, 2026:
   revision, and incomplete environment provenance.
 - Isolated `r-check` completed with 0 errors and 0 warnings, plus the existing
   six package-maintenance NOTES.
+
+### 46. Transfer and filtered-view checkpoint (November 2, 2026)
+
+Scope and decisions:
+
+- Commit schema-v2 Explore transfers, compact Cell-identity metadata patches,
+  independent full/per-column request ordering, bounded full-refresh recovery,
+  and request-owned server cleanup as one cross-language contract change.
+- Keep the R producers, protocol manifest, JavaScript consumers, tests, and
+  rebuilt `inst/app/www/index.js` plus source map together. Filtered panel
+  buffers and nullable Arrow decoding are included in this frontend checkpoint.
+- Cell identity hashes the cell count, all UTF-8 byte lengths, then all UTF-8
+  bytes in canonical order. The streaming writer seeks within a temporary file
+  to preserve that layout across Arrow batches and Parquet row groups without
+  retaining all Cell IDs in memory. The benchmark writer uses the same layout.
+- An older metadata patch completion may clear only its own request slot.
+  Bounded browser recovery requests a fresh server full snapshot when patch
+  version history cannot establish a complete applied state.
+
+Validation:
+
+- A four-cell reproduction initially produced different hashes for batches of
+  one, two, and four cells. All now match the vector identity. Regression
+  coverage also includes multibyte UTF-8 labels and multiple Parquet row groups.
+- Locked `pixi run setup-js`, production build, and all 181 JavaScript tests
+  passed. The rebuilt source map matches all 22 frontend source files.
+- Full R suite after the identity fix: 1,382 passing assertions, zero failures
+  or skips, and 40 existing small-fixture/dependency warnings.
+- The Analysis Mode browser scenario and the Chromium literal-chat-output
+  regression both passed. Optional LLM dependency-profile verification passed.
+
+Affected files: `R/fct_explore_bundle.R`, `R/fct_backend_transfer_adapter.R`,
+`R/app_server.R`, `R/mod_UpdateMetaData.R`, the browser payload manifest,
+`srcjs/index.js`, Arrow/scatter modules, their R/JS tests, and the structural
+benchmark helper.

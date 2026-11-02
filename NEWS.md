@@ -1,5 +1,8 @@
 # scSpotlight (development version)
 
+- Metadata updates now send compact, identity-checked patches and preserve newer column updates when asynchronous transfers finish out of order.
+- Explore schema-v2 bundles use feature-oriented expression row groups; legacy schema-v1 bundles remain readable.
+- Filtered scatter plots allocate panel buffers only for visible cells, and nullable numeric metadata remains missing rather than becoming zero.
 - Filter Cells now applies a temporary View Filter that preserves the active Analysis; use Subset to create a new Analysis from selected visible cells (#27).
 - Category-selected subsets now resolve their membership server-side from active metadata rather than sending derived Cell IDs through the browser (#25).
 - Lasso-selected Cell ID subsets now create guarded Analysis Versions and reject stale or invalid selections without altering the active Analysis (#23).

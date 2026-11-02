@@ -111,7 +111,20 @@ let pendingInitialPlotRequestId = 0;
 let renderedInitialPlotRequestId = 0;
 let activeMetaRequestSeq = 0;
 let activeMetaRequest = null;
+// Request order and complete browser-applied metadata versions are tracked separately.
+// Full metadata is global; patches remain independently current per column.
+const activeMetaPatchRequests = new Map();
+const deferredMetaPatchRequests = [];
+const appliedMetaPatches = new Map();
+const metadataVersionRecords = new Map();
+const MAX_DEFERRED_META_PATCH_REQUESTS = 64;
+const MAX_METADATA_VERSION_RECORDS = 256;
 let activeMetaVersion = null;
+let activeFullMetaVersion = null;
+let latestMetaRequestVersion = null;
+let metadataVersionRequiresFullRefresh = false;
+let requestedMetadataRecoveryVersion = null;
+let activeMetaIdentity = null;
 let activeReductionRequestSeq = 0;
 let activeReductionRequest = null;
 let activeReductionVersion = null;
@@ -119,6 +132,7 @@ let activePcaRequestSeq = 0;
 let activePcaRequest = null;
 let activePcaVersion = null;
 let pcaTransferFailed = false;
+let activePlotTransferError = null;
 const startupTimingEnabled = () => globalThis.SCSPOTLIGHT_BENCHMARK_STARTUP_TIMING === true;
 
 const recordStartupTiming = (phase, state = "mark", details = {}) => {
@@ -371,22 +385,300 @@ const resolveActiveReduction = (reductions, activeReductionName) => {
   );
 };
 
-const startMetaRequest = (version) => {
+const normalizeMetadataVersion = (version) => {
+  if (version == null) return null;
+  const normalized = Number(version);
+  return Number.isFinite(normalized) ? normalized : null;
+};
+
+const registerMetadataVersion = ({
+  version,
+  kind,
+  cols = [],
+  requestId = null,
+  cellIdentity = null,
+}) => {
+  const normalizedVersion = normalizeMetadataVersion(version);
+  if (normalizedVersion == null) return null;
+
+  if (
+    latestMetaRequestVersion == null ||
+    normalizedVersion > latestMetaRequestVersion
+  ) {
+    latestMetaRequestVersion = normalizedVersion;
+  }
+  const record = {
+    version: normalizedVersion,
+    kind,
+    cols: new Set(normalizeChangedMetaCols(cols)),
+    appliedCols: new Set(),
+    status: "pending",
+    requestId,
+    cellIdentity,
+  };
+  metadataVersionRecords.set(normalizedVersion, record);
+  if (metadataVersionRecords.size > MAX_METADATA_VERSION_RECORDS) {
+    requestMetadataRecovery(normalizedVersion);
+  }
+  return record;
+};
+
+const requestMetadataRecovery = (version) => {
+  const normalizedVersion = normalizeMetadataVersion(version);
+  if (normalizedVersion == null) return;
+  if (
+    requestedMetadataRecoveryVersion != null &&
+    normalizedVersion <= requestedMetadataRecoveryVersion
+  ) {
+    return;
+  }
+
+  metadataVersionRequiresFullRefresh = true;
+  requestedMetadataRecoveryVersion = normalizedVersion;
+  metadataVersionRecords.clear();
+  appliedMetaPatches.clear();
+  deferredMetaPatchRequests.splice(0).forEach(({ transferRequest }) => {
+    releaseMetaPatchRequest(transferRequest);
+  });
+  activeMetaPatchRequests.clear();
+  Shiny.setInputValue(
+    "updateMetaData-requestFullRefresh",
+    { version: normalizedVersion, timestamp: Date.now() },
+    { priority: "event" },
+  );
+};
+
+const isMetadataVersionCovered = (version, record) => {
+  const identityMatches = (
+    record.cellIdentity == null ||
+    activeMetaIdentity == null ||
+    record.cellIdentity === activeMetaIdentity
+  );
+  if (record.kind === "full") {
+    return record.status === "applied" && identityMatches;
+  }
+  if (record.kind !== "patch" || record.cols.size === 0) return false;
+
+  const coveredCols = new Set(record.appliedCols);
+  for (const [candidateVersion, candidate] of metadataVersionRecords) {
+    if (
+      candidateVersion < version ||
+      candidate.kind !== "patch" ||
+      candidate.status !== "applied" ||
+      candidate.appliedCols.size === 0 ||
+      (
+        activeMetaIdentity != null &&
+        candidate.cellIdentity != null &&
+        candidate.cellIdentity !== activeMetaIdentity
+      ) ||
+      (
+        record.cellIdentity != null &&
+        candidate.cellIdentity != null &&
+        candidate.cellIdentity !== record.cellIdentity
+      )
+    ) {
+      continue;
+    }
+    candidate.appliedCols.forEach((col) => coveredCols.add(col));
+  }
+  return [...record.cols].every((col) => coveredCols.has(col));
+};
+
+const advanceAppliedMetadataVersion = () => {
+  if (activeMetaVersion == null || metadataVersionRequiresFullRefresh) return;
+
+  let nextVersion = Number(activeMetaVersion) + 1;
+  while (
+    latestMetaRequestVersion != null &&
+    nextVersion <= latestMetaRequestVersion
+  ) {
+    const record = metadataVersionRecords.get(nextVersion);
+    if (!record || !isMetadataVersionCovered(nextVersion, record)) {
+      break;
+    }
+    activeMetaVersion = nextVersion;
+    metadataVersionRecords.delete(nextVersion);
+    nextVersion += 1;
+  }
+};
+
+const markMetadataVersionFailed = ({
+  version,
+  kind,
+  cols = [],
+  requestId = null,
+  cellIdentity = null,
+}) => {
+  const normalizedVersion = normalizeMetadataVersion(version);
+  if (normalizedVersion == null) return;
   if (
     activeMetaVersion != null &&
+    normalizedVersion <= Number(activeMetaVersion)
+  ) {
+    return;
+  }
+  if (metadataVersionRequiresFullRefresh) return;
+
+  let record = metadataVersionRecords.get(normalizedVersion);
+  if (!record) {
+    record = registerMetadataVersion({
+      version: normalizedVersion,
+      kind,
+      cols,
+      requestId,
+      cellIdentity,
+    });
+  } else if (
+    requestId != null &&
+    record.requestId != null &&
+    record.requestId !== requestId
+  ) {
+    return;
+  } else {
+    normalizeChangedMetaCols(cols).forEach((col) => record.cols.add(col));
+  }
+  if (record) {
+    record.status = "failed";
+    advanceAppliedMetadataVersion();
+  }
+};
+
+const markMetadataPatchApplied = (request, appliedCols) => {
+  const normalizedVersion = normalizeMetadataVersion(request?.version);
+  const record = normalizedVersion == null
+    ? null
+    : metadataVersionRecords.get(normalizedVersion);
+  if (!record || record.requestId !== request.id) return;
+
+  normalizeChangedMetaCols(appliedCols).forEach((col) => record.appliedCols.add(col));
+  record.status = "applied";
+  advanceAppliedMetadataVersion();
+};
+
+const markFullMetadataApplied = (request) => {
+  const normalizedVersion = normalizeMetadataVersion(request?.version);
+  if (normalizedVersion == null) return;
+
+  const identityChanged = (
+    activeMetaIdentity != null &&
+    request.cellIdentity !== activeMetaIdentity
+  );
+  activeMetaVersion = activeMetaVersion == null || identityChanged
+    ? normalizedVersion
+    : Math.max(Number(activeMetaVersion), normalizedVersion);
+  activeMetaIdentity = request.cellIdentity;
+  const satisfiesRecovery = (
+    requestedMetadataRecoveryVersion == null ||
+    normalizedVersion > requestedMetadataRecoveryVersion
+  );
+  if (satisfiesRecovery) {
+    metadataVersionRequiresFullRefresh = false;
+    requestedMetadataRecoveryVersion = null;
+  }
+  metadataVersionRecords.forEach((_record, version) => {
+    if (version <= normalizedVersion) {
+      metadataVersionRecords.delete(version);
+    }
+  });
+  advanceAppliedMetadataVersion();
+};
+
+const startMetaRequest = (version, cellIdentity = null) => {
+  if (
+    activeFullMetaVersion != null &&
     version != null &&
-    Number(version) < Number(activeMetaVersion)
+    Number(version) < Number(activeFullMetaVersion)
   ) {
     return { stale: true, version };
   }
 
   activeMetaRequestSeq += 1;
-  activeMetaVersion = version;
+  activeFullMetaVersion = version;
+  activeMetaPatchRequests.forEach((request, col) => {
+    if (Number(request.version) <= Number(version)) {
+      activeMetaPatchRequests.delete(col);
+    }
+  });
+  for (let index = deferredMetaPatchRequests.length - 1; index >= 0; index -= 1) {
+    const deferred = deferredMetaPatchRequests[index];
+    const request = deferred.transferRequest;
+    if (
+      deferred.cellIdentity !== cellIdentity ||
+      Number(request.version) <= Number(version) ||
+      !hasCurrentMetaPatchRequest(request)
+    ) {
+      deferredMetaPatchRequests.splice(index, 1);
+      releaseMetaPatchRequest(request);
+    }
+  }
   activeMetaRequest = {
     id: activeMetaRequestSeq,
     version,
+    cellIdentity,
   };
+  registerMetadataVersion({
+    version,
+    kind: "full",
+    requestId: activeMetaRequest.id,
+    cellIdentity,
+  });
+  deferredMetaPatchRequests.forEach((deferred) => {
+    if (deferred.cellIdentity === cellIdentity) {
+      deferred.fullRequestId = activeMetaRequest.id;
+    }
+  });
   return activeMetaRequest;
+};
+
+const startMetaPatchRequest = (version, cols, cellIdentity = null) => {
+  if (metadataVersionRequiresFullRefresh) {
+    return { stale: true, version, cols };
+  }
+
+  if (
+    activeFullMetaVersion != null &&
+    version != null &&
+    Number(version) <= Number(activeFullMetaVersion)
+  ) {
+    markMetadataVersionFailed({
+      version,
+      kind: "patch",
+      cols,
+      cellIdentity,
+    });
+    return { stale: true, version, cols };
+  }
+
+  const uniqueCols = [...new Set(cols)];
+  const activeCols = uniqueCols.filter((col) => {
+    const activeRequest = activeMetaPatchRequests.get(col);
+    return !activeRequest || Number(version) >= Number(activeRequest.version);
+  });
+  if (activeCols.length === 0) {
+    markMetadataVersionFailed({
+      version,
+      kind: "patch",
+      cols: uniqueCols,
+      cellIdentity,
+    });
+    return { stale: true, version, cols: uniqueCols };
+  }
+
+  activeMetaRequestSeq += 1;
+  const request = {
+    id: activeMetaRequestSeq,
+    version,
+    cols: uniqueCols,
+  };
+  activeCols.forEach((col) => activeMetaPatchRequests.set(col, request));
+  registerMetadataVersion({
+    version,
+    kind: "patch",
+    cols: request.cols,
+    requestId: request.id,
+    cellIdentity,
+  });
+  return request;
 };
 
 const isCurrentMetaRequest = (request) => (
@@ -395,12 +687,146 @@ const isCurrentMetaRequest = (request) => (
   activeMetaRequest &&
   request.id === activeMetaRequest.id &&
   request.version === activeMetaRequest.version &&
-  request.version === activeMetaVersion
+  request.version === activeFullMetaVersion
+);
+
+const isCurrentMetaPatchRequest = (request) => (
+  request &&
+  !request.stale &&
+  request.cols.length > 0 &&
+  request.cols.every((col) => {
+    const activeRequest = activeMetaPatchRequests.get(col);
+    return activeRequest &&
+      request.id === activeRequest.id &&
+      request.version === activeRequest.version;
+  })
+);
+
+const getCurrentMetaPatchCols = (request) => {
+  if (!request || request.stale || !Array.isArray(request.cols)) {
+    return [];
+  }
+
+  return request.cols.filter((col) => {
+    const activeRequest = activeMetaPatchRequests.get(col);
+    return activeRequest &&
+      request.id === activeRequest.id &&
+      request.version === activeRequest.version;
+  });
+};
+
+const hasCurrentMetaPatchRequest = (request) => (
+  getCurrentMetaPatchCols(request).length > 0
 );
 
 const isCurrentMetaVersion = (version) => (
-  activeMetaVersion == null || Number(version) >= Number(activeMetaVersion)
+  latestMetaRequestVersion == null || Number(version) >= Number(latestMetaRequestVersion)
 );
+
+const isCurrentFullMetaVersion = (version) => (
+  activeFullMetaVersion == null || Number(version) >= Number(activeFullMetaVersion)
+);
+
+const shouldDeferMetaPatchRequest = (request, cellIdentity) => {
+  return Boolean(
+    request &&
+    !request.stale &&
+    activeMetaRequest &&
+    isCurrentMetaRequest(activeMetaRequest) &&
+    activeMetaRequest.cellIdentity === cellIdentity &&
+    Number(request.version) > Number(activeMetaRequest.version),
+  );
+};
+
+const clearMetaRequest = (request) => {
+  if (request && activeMetaRequest?.id === request.id) {
+    activeMetaRequest = null;
+  }
+};
+
+const releaseMetaPatchRequest = (request) => {
+  request?.cols?.forEach((col) => {
+    if (activeMetaPatchRequests.get(col)?.id === request.id) {
+      activeMetaPatchRequests.delete(col);
+    }
+  });
+};
+
+const takeDeferredMetaPatchRequests = (fullRequest) => {
+  const ready = [];
+  for (let index = deferredMetaPatchRequests.length - 1; index >= 0; index -= 1) {
+    const deferred = deferredMetaPatchRequests[index];
+    if (deferred.fullRequestId === fullRequest?.id) {
+      deferredMetaPatchRequests.splice(index, 1);
+      if (hasCurrentMetaPatchRequest(deferred.transferRequest)) {
+        ready.unshift(deferred);
+      }
+    }
+  }
+  return ready;
+};
+
+const discardDeferredMetaPatchRequests = (fullRequest) => {
+  takeDeferredMetaPatchRequests(fullRequest).forEach(({ transferRequest }) => {
+    releaseMetaPatchRequest(transferRequest);
+  });
+};
+
+const removeDeferredMetaPatchRequest = (request) => {
+  for (let index = deferredMetaPatchRequests.length - 1; index >= 0; index -= 1) {
+    if (deferredMetaPatchRequests[index].transferRequest.id === request?.id) {
+      deferredMetaPatchRequests.splice(index, 1);
+    }
+  }
+};
+
+const deferMetaPatchRequest = (deferred) => {
+  deferredMetaPatchRequests.push(deferred);
+  while (deferredMetaPatchRequests.length > MAX_DEFERRED_META_PATCH_REQUESTS) {
+    const expired = deferredMetaPatchRequests.shift();
+    requestMetadataRecovery(expired.transferRequest.version);
+  }
+};
+
+const recordAppliedMetaPatch = (request, cellIdentity, patch) => {
+  Object.entries(patch).forEach(([col, value]) => {
+    const current = appliedMetaPatches.get(col);
+    if (
+      !current ||
+      Number(request.version) > Number(current.version) ||
+      (
+        Number(request.version) === Number(current.version) &&
+        Number(request.id) > Number(current.id)
+      )
+    ) {
+      appliedMetaPatches.set(col, {
+        id: request.id,
+        version: request.version,
+        cellIdentity,
+        value,
+      });
+    }
+  });
+};
+
+const replayAppliedMetaPatches = (fullVersion, cellIdentity) => {
+  const replay = {};
+  appliedMetaPatches.forEach((entry, col) => {
+    if (entry.cellIdentity !== cellIdentity) {
+      appliedMetaPatches.delete(col);
+      return;
+    }
+    if (Number(entry.version) > Number(fullVersion)) {
+      replay[col] = entry.value;
+      return;
+    }
+    appliedMetaPatches.delete(col);
+  });
+
+  if (Object.keys(replay).length > 0) {
+    reglElementData.updateCellMetaDataPatch(replay);
+  }
+};
 
 const startReductionRequest = (
   version,
@@ -409,9 +835,8 @@ const startReductionRequest = (
   source = "transfer",
 ) => {
   const normalizedAttemptId = Number(transferAttemptId);
-  const requestAttemptId = Number.isFinite(normalizedAttemptId) && normalizedAttemptId >= 1
-    ? normalizedAttemptId
-    : null;
+  const hasAttemptId = Number.isFinite(normalizedAttemptId) && normalizedAttemptId >= 1;
+  const requestAttemptId = hasAttemptId ? normalizedAttemptId : null;
   const requestSource = ["cache", "cache-miss"].includes(source)
     ? source
     : "transfer";
@@ -491,10 +916,10 @@ const isCurrentReductionRequest = (request) => (
   activeReductionRequest &&
   request.id === activeReductionRequest.id &&
   request.version === activeReductionRequest.version &&
-  request.version === activeReductionVersion &&
-  request.reductionName === activeReductionRequest.reductionName &&
-  request.transferAttemptId === activeReductionRequest.transferAttemptId &&
-  request.source === activeReductionRequest.source
+    request.version === activeReductionVersion &&
+    request.reductionName === activeReductionRequest.reductionName &&
+    request.transferAttemptId === activeReductionRequest.transferAttemptId &&
+    request.source === activeReductionRequest.source
 );
 
 const isCurrentReductionVersion = (version) => (
@@ -589,6 +1014,9 @@ const showPlotTransferError = (payloadOrMessage) => {
   const formatted = typeof payloadOrMessage === "string"
     ? { heading: payloadOrMessage, body: "" }
     : formatPlotTransferError(payloadOrMessage);
+  activePlotTransferError = typeof payloadOrMessage === "string"
+    ? null
+    : payloadOrMessage;
 
   let errorEl = parentDiv.querySelector("#plot-transfer-error");
   if (!errorEl) {
@@ -614,7 +1042,45 @@ const showPlotTransferError = (payloadOrMessage) => {
 };
 
 const clearPlotTransferError = () => {
+  activePlotTransferError = null;
   document.getElementById("plot-transfer-error")?.remove();
+};
+
+const clearPlotTransferErrorFor = (payload) => {
+  const error = activePlotTransferError;
+  if (!error || error.payloadType !== payload.payloadType) {
+    return;
+  }
+
+  const errorVersion = Number(error.version);
+  const payloadVersion = Number(payload.version);
+  if (
+    Number.isFinite(errorVersion) &&
+    Number.isFinite(payloadVersion) &&
+    payloadVersion < errorVersion
+  ) {
+    return;
+  }
+
+  if (payload.payloadType === "metadata_patch") {
+    const errorCols = normalizeChangedMetaCols(error.cols).sort();
+    const payloadCols = normalizeChangedMetaCols(payload.cols).sort();
+    if (
+      errorCols.length !== payloadCols.length ||
+      errorCols.some((col, index) => col !== payloadCols[index])
+    ) {
+      return;
+    }
+  }
+
+  if (
+    payload.payloadType === "expression" &&
+    (error.geneName !== payload.geneName || error.assay !== payload.assay)
+  ) {
+    return;
+  }
+
+  clearPlotTransferError();
 };
 
 const showPcaTransferError = () => {
@@ -661,8 +1127,11 @@ const resolveDataResourceUrl = (resourcePrefix, kind, fileName) => {
     throw new Error("IPC resource file names must be basenames");
   }
 
-  const normalizedPrefix = resourcePrefix.replace(/^\/+|\/+$/g, "");
-  if (!normalizedPrefix || normalizedPrefix === "data" || normalizedPrefix.includes("/")) {
+  const normalizedPrefix = resourcePrefix;
+  if (
+    !/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(normalizedPrefix) ||
+    normalizedPrefix === "data"
+  ) {
     throw new Error("Invalid session resource prefix for IPC fetch");
   }
 
@@ -685,7 +1154,11 @@ const plotReductionBuffer = (
   measureStartupTiming(
     "browser_active_reduction_apply",
     () => {
-      clearPlotTransferError();
+      clearPlotTransferErrorFor({
+        payloadType: "reduction",
+        version: activeReductionVersion,
+        reductionName: getCurrentReductionName(),
+      });
       reglElementData.updateReductionData(reductionData);
       Shiny.setInputValue("reductionProcessed", true, { priority: "event" });
     },
@@ -1194,6 +1667,7 @@ Shiny.addCustomMessageHandler("reduction_cached", (msg) => {
       if (!ensureReductionCacheVersion(msg.reductionVersion)) {
         return;
       }
+
       const cacheKey = makeReductionCacheKey(
         msg.reductionVersion,
         msg.reductionName,
@@ -1350,15 +1824,77 @@ Shiny.addCustomMessageHandler("transfer_error", (msg) => {
     }
   }
 
-  if (
-    (payloadType === "metadata" || payloadType === "metadata_patch") &&
-    !isCurrentMetaVersion(version)
-  ) {
+  if (payloadType === "metadata" && !isCurrentFullMetaVersion(version)) {
     return;
   }
-  if (payloadType === "metadata" || payloadType === "metadata_patch") {
-    activeMetaVersion = version;
-    activeMetaRequest = null;
+  if (payloadType === "metadata") {
+    const failedRequest = (
+      activeMetaRequest &&
+      Number(version) === Number(activeMetaRequest.version)
+    )
+      ? activeMetaRequest
+      : null;
+    if (
+      !failedRequest &&
+      activeMetaVersion != null &&
+      version != null &&
+      Number(version) <= Number(activeMetaVersion)
+    ) {
+      return;
+    }
+    markMetadataVersionFailed({
+      version,
+      kind: "full",
+      requestId: failedRequest?.id ?? null,
+    });
+    if (
+      failedRequest
+    ) {
+      discardDeferredMetaPatchRequests(failedRequest);
+      clearMetaRequest(failedRequest);
+    }
+    activeFullMetaVersion = version;
+    activeMetaPatchRequests.forEach((request, col) => {
+      if (Number(request.version) <= Number(version)) {
+        activeMetaPatchRequests.delete(col);
+      }
+    });
+  }
+
+  if (payloadType === "metadata_patch") {
+    const changedCols = normalizeChangedMetaCols(payload.cols);
+    if (
+      activeMetaVersion != null &&
+      version != null &&
+      Number(version) <= Number(activeMetaVersion)
+    ) {
+      return;
+    }
+    markMetadataVersionFailed({
+      version,
+      kind: "patch",
+      cols: changedCols,
+    });
+    const supersededByFullMetadata =
+      activeFullMetaVersion != null &&
+      version != null &&
+      Number(version) <= Number(activeFullMetaVersion);
+    const currentErrorCols = changedCols.filter((col) => {
+      const request = activeMetaPatchRequests.get(col);
+      return !request || Number(version) >= Number(request.version);
+    });
+    if (
+      supersededByFullMetadata ||
+      (changedCols.length > 0 && currentErrorCols.length === 0) ||
+      (changedCols.length === 0 && !isCurrentMetaVersion(version))
+    ) {
+      return;
+    }
+    const currentErrorRequests = new Set(
+      currentErrorCols.map((col) => activeMetaPatchRequests.get(col)).filter(Boolean),
+    );
+    currentErrorRequests.forEach((request) => removeDeferredMetaPatchRequest(request));
+    currentErrorCols.forEach((col) => activeMetaPatchRequests.delete(col));
   }
 
   if (
@@ -1408,8 +1944,8 @@ Shiny.addCustomMessageHandler("transfer_error", (msg) => {
 });
 
 const normalizeChangedMetaCols = (cols = []) => {
-  if (!Array.isArray(cols)) return [];
-  return cols.filter((col) => typeof col === "string" && col.length > 0 && col !== "None");
+  const normalized = Array.isArray(cols) ? cols : [cols];
+  return normalized.filter((col) => typeof col === "string" && col.length > 0 && col !== "None");
 };
 
 const metaColsAffectMainPlot = (changedCols = []) => {
@@ -1603,16 +2139,18 @@ const cellIdOrderChanged = (previousCellIds, nextCellIds) => (
   previousCellIds.some((cell, index) => cell !== nextCellIds[index])
 );
 
-const validateMetadataPatchCellIds = (patchMeta) => {
-  const currentCellIds = getCurrentCellIds();
-  const patchCellIds = expandMeta(patchMeta?.cells) || [];
-  const normalizedPatchCellIds = Array.from(
-    patchCellIds,
-    (cell) => (cell == null ? null : String(cell)),
-  );
+const isValidMetadataIdentity = (cellIdentity) => (
+  typeof cellIdentity === "string" && cellIdentity.length > 0
+);
 
-  if (currentCellIds.length === 0 || cellIdOrderChanged(currentCellIds, normalizedPatchCellIds)) {
-    throw new Error("Metadata patch Cell IDs do not match the active Analysis");
+const validateMetadataPatchIdentity = (cellIdentity) => {
+  const activeCellIdentity = reglElementData.plotMetaData.cellIdentity;
+  if (
+    !isValidMetadataIdentity(cellIdentity) ||
+    activeCellIdentity === null ||
+    cellIdentity !== activeCellIdentity
+  ) {
+    throw new Error("Metadata patch identity does not match the active Analysis");
   }
 };
 
@@ -2011,8 +2549,15 @@ const syncMetaUiAfterUpdate = ({
 
 Shiny.addCustomMessageHandler("meta_ready", (msg) => {
   const requestId = pendingInitialPlotRequestId;
-  const transferRequest = startMetaRequest(msg.metaVersion);
+  let transferRequest = null;
   try {
+    if (!isValidMetadataIdentity(msg.cellIdentity)) {
+      throw new Error("Full metadata identity is missing or invalid");
+    }
+    transferRequest = startMetaRequest(msg.metaVersion, msg.cellIdentity);
+    if (!isCurrentMetaRequest(transferRequest)) {
+      return;
+    }
     const metaURL = resolveDataResourceUrl(msg.resourcePrefix, "meta", msg.metaFile);
     (async () => {
       // show main plot spinner
@@ -2038,14 +2583,27 @@ Shiny.addCustomMessageHandler("meta_ready", (msg) => {
         if (cellIdOrderChanged(previousCellIds, getCurrentCellIds())) {
           handleFullObjectReplacementState();
         }
+        reglElementData.plotMetaData.cellIdentity = msg.cellIdentity;
+        replayAppliedMetaPatches(msg.metaVersion, msg.cellIdentity);
+        markFullMetadataApplied(transferRequest);
         syncMetaUiAfterUpdate({ fullTransfer: true });
       });
+      const deferredPatches = takeDeferredMetaPatchRequests(transferRequest);
+      clearMetaRequest(transferRequest);
+      deferredPatches.forEach(({ run }) => run());
 
       // do not hide the spinner, since it will trigger the reglScatter_plot immediately
     })().catch((error) => {
       if (!isCurrentMetaRequest(transferRequest)) {
         return;
       }
+      markMetadataVersionFailed({
+        version: transferRequest.version,
+        kind: "full",
+        requestId: transferRequest.id,
+      });
+      discardDeferredMetaPatchRequests(transferRequest);
+      clearMetaRequest(transferRequest);
       handlePlotTransferError(
         error,
         requestId,
@@ -2057,8 +2615,26 @@ Shiny.addCustomMessageHandler("meta_ready", (msg) => {
       );
     });
   } catch (error) {
-    if (!isCurrentMetaRequest(transferRequest)) {
+    if (transferRequest && !isCurrentMetaRequest(transferRequest)) {
       return;
+    }
+    if (!transferRequest && activeMetaRequest && isCurrentMetaRequest(activeMetaRequest)) {
+      console.error("There was a problem:", error);
+      showPlotTransferError({
+        payloadType: "metadata",
+        reasonCode: "fetch_failed",
+        version: msg.metaVersion,
+      });
+      return;
+    }
+    if (transferRequest) {
+      markMetadataVersionFailed({
+        version: transferRequest.version,
+        kind: "full",
+        requestId: transferRequest.id,
+      });
+      discardDeferredMetaPatchRequests(transferRequest);
+      clearMetaRequest(transferRequest);
     }
     handlePlotTransferError(
       error,
@@ -2072,35 +2648,44 @@ Shiny.addCustomMessageHandler("meta_ready", (msg) => {
   }
 });
 
-Shiny.addCustomMessageHandler("meta_patch_ready", (msg) => {
-  const patchVersion = msg.metaVersion || msg.version;
-  const transferRequest = patchVersion == null ? null : startMetaRequest(patchVersion);
-  const isCurrentPatchRequest = () =>
-    patchVersion == null || isCurrentMetaRequest(transferRequest);
+const executeMetaPatchRequest = ({
+  msg,
+  patchVersion,
+  changedCols,
+  transferRequest,
+  requestStarted,
+}) => {
+  const currentPatchCols = () => (
+    patchVersion == null || !requestStarted
+      ? changedCols
+      : getCurrentMetaPatchCols(transferRequest)
+  );
+  const hasCurrentPatchRequest = () => currentPatchCols().length > 0;
   try {
-    if (!isCurrentPatchRequest()) {
+    if (!hasCurrentPatchRequest()) {
       return;
-    }
-    const changedCols = normalizeChangedMetaCols(msg.cols);
-    if (changedCols.length === 0) {
-      throw new Error("Metadata patch did not include column scope");
     }
     const metaURL = resolveDataResourceUrl(msg.resourcePrefix, "meta", msg.metaFile);
     (async () => {
-      const refreshMainPlot = metaColsAffectMainPlot(changedCols);
+      const initialCols = currentPatchCols();
+      if (!initialCols.length) {
+        return;
+      }
+      const refreshMainPlot = metaColsAffectMainPlot(initialCols);
 
       if (refreshMainPlot && mainPlotSpinner.style.display === "none") {
         mainPlotSpinner.style.display = "flex";
       }
 
       const table = await readArrowIPC(metaURL);
-      if (!isCurrentPatchRequest()) {
+      const applicableCols = currentPatchCols();
+      if (!applicableCols.length) {
         return;
       }
+      validateMetadataPatchIdentity(msg.cellIdentity);
       const out = parseMetaFromArrow(table);
-      validateMetadataPatchCellIds(out);
       const patch = {};
-      changedCols.forEach((col) => {
+      applicableCols.forEach((col) => {
         if (!out[col]) {
           throw new Error(`Metadata patch payload is missing column ${col}`);
         }
@@ -2108,41 +2693,160 @@ Shiny.addCustomMessageHandler("meta_patch_ready", (msg) => {
       });
       console.log("metaPatch", out);
       reglElementData.updateCellMetaDataPatch(patch);
+      if (requestStarted) {
+        recordAppliedMetaPatch(transferRequest, msg.cellIdentity, patch);
+        markMetadataPatchApplied(transferRequest, applicableCols);
+      }
+      clearPlotTransferErrorFor({
+        payloadType: "metadata_patch",
+        version: patchVersion,
+        cols: applicableCols,
+      });
       clearSelectedCellsAfterSelectionInvalidation();
       const syncResult = syncMetaUiAfterUpdate({
         fullTransfer: false,
-        changedCols,
+        changedCols: applicableCols,
       });
 
       if (!syncResult.refreshMainPlot) {
         mainPlotSpinner.style.display = "none";
       }
     })().catch((error) => {
-      if (!isCurrentPatchRequest()) {
+      const applicableCols = currentPatchCols();
+      if (!applicableCols.length) {
         return;
       }
+      if (requestStarted) {
+        markMetadataVersionFailed({
+          version: transferRequest.version,
+          kind: "patch",
+          cols: applicableCols,
+          requestId: transferRequest.id,
+        });
+      }
+      removeDeferredMetaPatchRequest(transferRequest);
+      releaseMetaPatchRequest(transferRequest);
       console.error("There was a problem:", error);
       mainPlotSpinner.style.display = "none";
       showPlotTransferError({
         payloadType: "metadata_patch",
         reasonCode: "fetch_failed",
         version: patchVersion,
-        cols: changedCols,
+        cols: applicableCols,
       });
     });
   } catch (error) {
     console.error("There was a problem:", error);
     mainPlotSpinner.style.display = "none";
-    if (isCurrentPatchRequest()) {
+    const applicableCols = currentPatchCols();
+    const currentRequest = applicableCols.length > 0;
+    if (currentRequest) {
+      if (requestStarted) {
+        markMetadataVersionFailed({
+          version: transferRequest.version,
+          kind: "patch",
+          cols: applicableCols,
+          requestId: transferRequest.id,
+        });
+      }
+      removeDeferredMetaPatchRequest(transferRequest);
+      releaseMetaPatchRequest(transferRequest);
       showPlotTransferError({
         payloadType: "metadata_patch",
         reasonCode: "fetch_failed",
         version: patchVersion,
-        cols: normalizeChangedMetaCols(msg.cols),
+        cols: applicableCols,
       });
     }
   }
-});
+};
+
+const handleMetaPatchReady = (msg) => {
+  const patchVersion = msg.metaVersion || msg.version;
+  const changedCols = normalizeChangedMetaCols(msg.cols);
+  let transferRequest = null;
+  let requestStarted = false;
+  try {
+    if (changedCols.length === 0) {
+      throw new Error("Metadata patch did not include column scope");
+    }
+    if (!isValidMetadataIdentity(msg.cellIdentity)) {
+      throw new Error("Metadata patch identity is missing or invalid");
+    }
+    const currentFullRequest = activeMetaRequest && isCurrentMetaRequest(activeMetaRequest)
+      ? activeMetaRequest
+      : null;
+    const matchesActiveIdentity = (
+      msg.cellIdentity === reglElementData.plotMetaData.cellIdentity
+    );
+    const matchesPendingFullIdentity = (
+      currentFullRequest?.cellIdentity === msg.cellIdentity
+    );
+    if (!matchesActiveIdentity && !matchesPendingFullIdentity) {
+      throw new Error("Metadata patch identity does not match the active Analysis");
+    }
+    if (
+      currentFullRequest &&
+      matchesActiveIdentity &&
+      !matchesPendingFullIdentity
+    ) {
+      return;
+    }
+    if (patchVersion != null) {
+      transferRequest = startMetaPatchRequest(
+        patchVersion,
+        changedCols,
+        msg.cellIdentity,
+      );
+      requestStarted = true;
+    }
+    if (requestStarted && !hasCurrentMetaPatchRequest(transferRequest)) {
+      return;
+    }
+    const deferUntilFull = shouldDeferMetaPatchRequest(
+      transferRequest,
+      msg.cellIdentity,
+    );
+
+    const execute = () => executeMetaPatchRequest({
+      msg,
+      patchVersion,
+      changedCols,
+      transferRequest,
+      requestStarted,
+    });
+    if (deferUntilFull) {
+      deferMetaPatchRequest({
+        fullRequestId: activeMetaRequest?.cellIdentity === msg.cellIdentity
+          ? activeMetaRequest.id
+          : null,
+        cellIdentity: msg.cellIdentity,
+        transferRequest,
+        run: execute,
+      });
+      return;
+    }
+    execute();
+  } catch (error) {
+    console.error("There was a problem:", error);
+    mainPlotSpinner.style.display = "none";
+    const currentRequest = !requestStarted || hasCurrentMetaPatchRequest(transferRequest);
+    if (currentRequest) {
+      if (requestStarted) {
+        removeDeferredMetaPatchRequest(transferRequest);
+        releaseMetaPatchRequest(transferRequest);
+      }
+      showPlotTransferError({
+        payloadType: "metadata_patch",
+        reasonCode: "fetch_failed",
+        version: patchVersion,
+        cols: changedCols,
+      });
+    }
+  }
+};
+
+Shiny.addCustomMessageHandler("meta_patch_ready", handleMetaPatchReady);
 
 Shiny.addCustomMessageHandler("expr_ready", (msg) => {
   const generation = ipcCache.exprGeneration;
@@ -2176,6 +2880,12 @@ Shiny.addCustomMessageHandler("expr_ready", (msg) => {
         return;
       }
       reglElementData.updateExpressionData(expr);
+      clearPlotTransferErrorFor({
+        payloadType: "expression",
+        version: msg.exprVersion,
+        geneName: msg.geneName,
+        assay: msg.assay,
+      });
       console.log("exprData", reglElementData.origData.expressionData);
       const feature = Object.keys(expr)[0];
       const sparkLineArray = getFeatureSparkLineElements();
@@ -2251,6 +2961,12 @@ Shiny.addCustomMessageHandler("expr_cached", (msg) => {
         return;
       }
       reglElementData.updateExpressionData(expr);
+      clearPlotTransferErrorFor({
+        payloadType: "expression",
+        version: msg.exprVersion,
+        geneName: msg.geneName,
+        assay: msg.assay,
+      });
       console.log("exprData", reglElementData.origData.expressionData);
       const feature = Object.keys(expr)[0];
       const sparkLineArray = getFeatureSparkLineElements();

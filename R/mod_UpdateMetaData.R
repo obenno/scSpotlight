@@ -232,7 +232,6 @@ mod_UpdateMetaData_server <- function(
               type = "meta_patch_ready",
               message = result$value
             )
-            metaPatchRequest(NULL)
             result$value
           }) %...!%
           (function(error) {
@@ -260,7 +259,7 @@ mod_UpdateMetaData_server <- function(
         promises::finally(
           meta_patch_promise,
           function() {
-            metaPatchRequest(NULL)
+            clear_meta_patch_request_if_current(metaPatchRequest, request)
             removeNotification(
               id = "update_meta_patch_notification",
               session = session

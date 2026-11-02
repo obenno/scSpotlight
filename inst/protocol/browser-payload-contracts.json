@@ -1,15 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "description": "Browser payload contracts for scSpotlight Arrow IPC transfer messages.",
   "messages": {
     "meta_ready": {
-      "required_fields": ["metaFile", "metaVersion", "resourcePrefix"],
+      "required_fields": ["metaFile", "metaVersion", "cellIdentity", "resourcePrefix"],
       "file_fields": ["metaFile"],
       "version_field": "metaVersion",
       "ipc_contract": "meta_ready"
     },
     "meta_patch_ready": {
-      "required_fields": ["metaFile", "metaVersion", "cols", "resourcePrefix"],
+      "required_fields": ["metaFile", "metaVersion", "cols", "cellIdentity", "resourcePrefix"],
       "file_fields": ["metaFile"],
       "version_field": "metaVersion",
       "ipc_contract": "meta_patch_ready"
@@ -80,11 +80,12 @@
   "ipc_columns": {
     "meta_ready": {
       "required": ["cells"],
-      "notes": "Full metadata payload includes ordered canonical Cell IDs plus metadata columns."
+      "notes": "Full metadata payload includes ordered canonical Cell IDs plus metadata columns; cellIdentity identifies that ordered cell sequence for later patches."
     },
     "meta_patch_ready": {
-      "required": ["cells"],
-      "notes": "Patch payload includes ordered canonical Cell IDs plus only the requested cols; the browser rejects a mismatched or reordered Cell-ID sequence."
+      "required": [],
+      "forbidden": ["cells"],
+      "notes": "Patch payload includes only the requested cols. The browser compares cellIdentity with the active full metadata identity before applying by position."
     },
     "reduction_ready": {
       "required": ["X", "Y"]
@@ -129,6 +130,9 @@
       "conditionMessage"
     ],
     "resource_prefix_field": "resourcePrefix",
-    "allowed_path_shape": "resource_prefix_plus_basename"
+    "allowed_path_shape": "resource_prefix_plus_basename",
+    "allowed_embedded_slash_fields": {
+      "geneName": "^[A-Za-z0-9][A-Za-z0-9_.+-]*(?:/[A-Za-z0-9][A-Za-z0-9_.+-]*)*$"
+    }
   }
 }

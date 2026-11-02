@@ -163,7 +163,8 @@ test_that("AnnData-backed BPCells expression transfer keeps the original h5ad pa
     feature = "g2",
     dir_path = file.path(fixture_root, "transfers"),
     expr_version = 1L,
-    backend_root = file.path(fixture_root, "should_not_materialize")
+    backend_root = file.path(fixture_root, "should_not_materialize"),
+    resource_prefix = "data-test-session"
   )
   expect_identical(transfer$backend, "bpcells_anndata_hdf5")
   write_backend_expression_transfer(transfer)

@@ -165,7 +165,7 @@ test_that("recorded structural evidence keeps its nonrepresentative provenance",
   expect_true(any(grepl("current git SHA", status$reasons, fixed = TRUE)))
 })
 
-test_that("benchmark provenance must use the checkout that executes the runner", {
+test_that("benchmark provenance uses the checkout that executes each runner", {
   helper_path <- scspotlight_test_source_path(
     "benchmarks",
     "explore_1m_helpers.R"

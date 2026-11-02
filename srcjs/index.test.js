@@ -13,6 +13,7 @@ const testState = vi.hoisted(() => ({
 }));
 
 const TEST_RESOURCE_PREFIX = "data-test-session";
+const TEST_CELL_IDENTITY = "0123456789abcdef0123456789abcdef";
 
 vi.mock("shiny", () => ({}), { virtual: true });
 
@@ -58,6 +59,7 @@ vi.mock("./modules/deckScatter.js", () => {
     if (!meta) return [];
     if (Array.isArray(meta)) return meta;
     if (Array.isArray(meta.value)) return meta.value;
+    if (ArrayBuffer.isView(meta.value)) return meta.value;
     if (meta.type === "cell_id" && meta.value) return meta.value;
     if (meta.type === "category" && meta.value && typeof meta.value === "object") {
       const entries = Object.entries(meta.value);
@@ -91,6 +93,7 @@ vi.mock("./modules/deckScatter.js", () => {
         selectedFeatures: [],
         viewFilter: null,
         viewFilterVersion: 0,
+        cellIdentity: TEST_CELL_IDENTITY,
       };
       this.plotData = {
         selectedCells: [],
@@ -291,7 +294,13 @@ const installShiny = () => {
   globalThis.Shiny = {
     addCustomMessageHandler: (name, handler) => {
       testState.handlers[name] = resourceBackedMessages.has(name)
-        ? (msg) => handler({ resourcePrefix: TEST_RESOURCE_PREFIX, ...msg })
+        ? (msg) => handler({
+          resourcePrefix: TEST_RESOURCE_PREFIX,
+          ...((name === "meta_ready" || name === "meta_patch_ready")
+            ? { cellIdentity: TEST_CELL_IDENTITY }
+            : {}),
+          ...msg,
+        })
         : handler;
     },
     setInputValue: (...args) => {
@@ -315,6 +324,7 @@ const resetReglInstance = () => {
     selectedFeatures: [],
     viewFilter: null,
     viewFilterVersion: 0,
+    cellIdentity: TEST_CELL_IDENTITY,
   };
   testState.reglInstance.plotData = {
     selectedCells: [],
@@ -804,6 +814,18 @@ describe("browser message handlers", () => {
     const arrowReader = await resetArrowReaderMocks();
     setCategoryMeta("clusterA", { A: [0, 1], B: [2] });
     setCategoryMeta("batchA", { batch1: [0, 2], batch2: [1] });
+    arrowReader.readArrowIPC.mockResolvedValue({ table: "baseline-meta" });
+    arrowReader.parseMetaFromArrow.mockReturnValue(
+      testState.reglInstance.origData.cellMetaData,
+    );
+    testState.handlers.meta_ready({
+      metaFile: "baseline-meta-ipc",
+      metaVersion: 0,
+    });
+    await vi.waitFor(() => {
+      expect(latestInputValue("metaProcessed")).toBe(true);
+    });
+
     testState.handlers.reglScatter_plot({
       group_by: "clusterA",
       split_by: "batchA",
@@ -1480,6 +1502,60 @@ describe("browser message handlers", () => {
     });
   });
 
+  it("keeps valid full metadata current after a malformed newer notification", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    const validRead = createDeferred();
+    const parsedMeta = {
+      cells: { type: "cell_id", value: ["Cell1", "Cell2", "Cell3"] },
+      batch: { type: "category", value: { A: [0], B: [1, 2] } },
+    };
+    arrowReader.readArrowIPC.mockImplementation((url) => {
+      if (url.includes("valid-meta-ipc")) return validRead.promise;
+      throw new Error(`Unexpected metadata URL ${url}`);
+    });
+    arrowReader.parseMetaFromArrow.mockReturnValue(parsedMeta);
+
+    testState.handlers.await_initial_plot_ready({});
+    testState.handlers.meta_ready({
+      metaFile: "valid-meta-ipc",
+      metaVersion: 100,
+    });
+    testState.handlers.meta_ready({
+      metaFile: "malformed-meta-ipc",
+      metaVersion: 9999,
+      cellIdentity: null,
+    });
+
+    expect(arrowReader.readArrowIPC).toHaveBeenCalledTimes(1);
+    expect(getPlotTransferError().textContent).toContain("Metadata could not load");
+    expect(testState.spinners["mainClusterPlot-clusterPlot"].style.display).toBe("flex");
+    expect(
+      testState.inputs.filter(([name]) => name === "initialPlotReady"),
+    ).toHaveLength(0);
+
+    validRead.resolve({ table: "valid-meta" });
+    await vi.waitFor(() => {
+      expect(testState.reglInstance.origData.cellMetaData).toBe(parsedMeta);
+      expect(latestInputValue("metaProcessed")).toBe(true);
+    });
+    expect(
+      testState.inputs.filter(([name]) => name === "initialPlotReady"),
+    ).toHaveLength(0);
+
+    testState.handlers.reglScatter_plot({
+      group_by: "batch",
+      split_by: "None",
+      moduleScore: null,
+    });
+    selectValues("renameCluster-chosenGroup", ["A"]);
+    expect(latestInputValue("renameCluster-categorySelectionContext")).toMatchObject({
+      metaVersion: 100,
+    });
+    expect(
+      testState.inputs.filter(([name]) => name === "initialPlotReady"),
+    ).toHaveLength(1);
+  });
+
   it("meta_patch_ready fetches patch metadata and reports changed cols", async () => {
     const arrowReader = await resetArrowReaderMocks();
     testState.reglInstance.origData.cellMetaData = {
@@ -1489,7 +1565,6 @@ describe("browser message handlers", () => {
     };
     testState.reglInstance.plotMetaData.group_by = "cluster";
     const parsedPatch = {
-      cells: { type: "cell_id", value: ["Cell1", "Cell2", "Cell3"] },
       cluster: { type: "category", value: { alpha: [0, 2], beta: [1] } },
     };
     arrowReader.readArrowIPC.mockResolvedValue({ table: "patch" });
@@ -1530,6 +1605,19 @@ describe("browser message handlers", () => {
     };
     testState.reglInstance.plotMetaData.group_by = "cluster";
     testState.reglInstance.plotMetaData.selectedMeta = "meta:score";
+    arrowReader.readArrowIPC.mockResolvedValue({ table: "baseline-meta" });
+    arrowReader.parseMetaFromArrow.mockReturnValue(
+      testState.reglInstance.origData.cellMetaData,
+    );
+    testState.handlers.meta_ready({
+      metaFile: "baseline-meta-ipc",
+      metaVersion: 409,
+    });
+    await vi.waitFor(() => {
+      expect(latestInputValue("metaProcessed")).toBe(true);
+    });
+    testState.inputs = [];
+
     const parsedPatch = {
       cells: { type: "cell_id", value: ["Cell1", "Cell2", "Cell3"] },
       cluster: { type: "category", value: { stale: [0, 1, 2] } },
@@ -1588,32 +1676,209 @@ describe("browser message handlers", () => {
       expect(overlay.textContent).toContain("Existing metadata is still shown");
       expect(latestInputValue("metaPatchProcessed")).toBeUndefined();
     });
+
+    testState.handlers.reglScatter_plot({
+      group_by: "batch",
+      split_by: "None",
+      moduleScore: null,
+    });
+    selectValues("renameCluster-chosenGroup", ["A"]);
+    expect(latestInputValue("renameCluster-categorySelectionContext")).toMatchObject({
+      metaVersion: 410,
+    });
   });
 
-  it("meta_patch_ready rejects reordered Cell IDs before merging by position", async () => {
+  it("meta_patch_ready rejects a compact identity for the wrong Analysis order", async () => {
     const arrowReader = await resetArrowReaderMocks();
     const existingBatch = { type: "category", value: { A: [0], B: [1, 2] } };
     testState.reglInstance.origData.cellMetaData = {
       cells: { type: "cell_id", value: ["Cell1", "Cell2", "Cell3"] },
       batch: existingBatch,
     };
-    arrowReader.readArrowIPC.mockResolvedValue({ table: "reordered-patch" });
-    arrowReader.parseMetaFromArrow.mockReturnValue({
-      cells: { type: "cell_id", value: ["Cell2", "Cell1", "Cell3"] },
-      batch: { type: "category", value: { A: [0, 2], B: [1] } },
+    arrowReader.readArrowIPC.mockResolvedValue({ table: "current-meta" });
+    arrowReader.parseMetaFromArrow.mockReturnValue(
+      testState.reglInstance.origData.cellMetaData,
+    );
+    testState.handlers.meta_ready({
+      metaFile: "current-meta-ipc",
+      metaVersion: 412,
     });
+    await vi.waitFor(() => {
+      expect(latestInputValue("metaProcessed")).toBe(true);
+    });
+    arrowReader.readArrowIPC.mockClear();
 
     testState.handlers.meta_patch_ready({
       metaFile: "reordered-meta-patch-ipc",
-      metaVersion: 412,
+      metaVersion: 9999,
       cols: ["batch"],
+      cellIdentity: "ffffffffffffffffffffffffffffffff",
     });
 
-    await vi.waitFor(() => {
-      expect(testState.reglInstance.updateCellMetaDataPatchCalls).toHaveLength(0);
-      expect(testState.reglInstance.origData.cellMetaData.batch).toBe(existingBatch);
-      expect(getPlotTransferError().textContent).toContain("Metadata update could not apply");
+    await Promise.resolve();
+    expect(arrowReader.readArrowIPC).not.toHaveBeenCalled();
+    expect(testState.reglInstance.updateCellMetaDataPatchCalls).toHaveLength(0);
+    expect(testState.reglInstance.origData.cellMetaData.batch).toBe(existingBatch);
+    expect(getPlotTransferError().textContent).toContain("Metadata update could not apply");
+
+    testState.handlers.reglScatter_plot({
+      group_by: "batch",
+      split_by: "None",
+      moduleScore: null,
     });
+    selectValues("renameCluster-chosenGroup", ["A"]);
+    expect(latestInputValue("renameCluster-categorySelectionContext")).toMatchObject({
+      metaVersion: 412,
+    });
+  });
+
+  it("defers a newer compact patch until its full metadata identity commits", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    const fullRead = createDeferred();
+    const nextCellIdentity = "11111111111111111111111111111111";
+    testState.reglInstance.origData.cellMetaData = {
+      cells: { type: "cell_id", value: ["Cell1", "Cell2", "Cell3"] },
+      batch: { type: "category", value: { old: [0, 1, 2] } },
+    };
+    arrowReader.readArrowIPC.mockImplementation((url) => {
+      if (url.includes("replacement-meta")) return fullRead.promise;
+      if (url.includes("deferred-meta-patch")) return Promise.resolve({ kind: "patch" });
+      throw new Error(`Unexpected metadata URL ${url}`);
+    });
+    arrowReader.parseMetaFromArrow.mockImplementation((table) => (
+      table.kind === "full"
+        ? {
+          cells: { type: "cell_id", value: ["New1", "New2", "New3"] },
+          batch: { type: "category", value: { full: [0, 1, 2] } },
+        }
+        : { batch: { type: "category", value: { patched: [0, 1, 2] } } }
+    ));
+
+    testState.handlers.meta_ready({
+      metaFile: "replacement-meta-ipc",
+      metaVersion: 413,
+      cellIdentity: nextCellIdentity,
+    });
+    testState.handlers.meta_patch_ready({
+      metaFile: "deferred-meta-patch-ipc",
+      metaVersion: 414,
+      cols: ["batch"],
+      cellIdentity: nextCellIdentity,
+    });
+
+    await Promise.resolve();
+    expect(arrowReader.readArrowIPC).toHaveBeenCalledTimes(1);
+
+    fullRead.resolve({ kind: "full" });
+    await vi.waitFor(() => {
+      expect(testState.reglInstance.origData.cellMetaData.cells.value).toEqual([
+        "New1", "New2", "New3",
+      ]);
+      expect(testState.reglInstance.origData.cellMetaData.batch.value).toEqual({
+        patched: [0, 1, 2],
+      });
+    });
+
+    expect(arrowReader.readArrowIPC).toHaveBeenCalledTimes(2);
+    expect(testState.reglInstance.plotMetaData.cellIdentity).toBe(nextCellIdentity);
+    expect(testState.reglInstance.updateCellMetaDataPatchCalls).toHaveLength(1);
+    expect(latestInputValue("metaProcessed")).toBe(true);
+    expect(latestInputValue("metaPatchProcessed")).toEqual({
+      cols: ["batch"],
+      refreshMainPlot: false,
+      timestamp: expect.any(Number),
+    });
+    expect(getPlotTransferError()).toBeNull();
+  });
+
+  it("keeps a full metadata transfer current after a newer patch write fails", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    const fullRead = createDeferred();
+    const nextCellIdentity = "22222222222222222222222222222222";
+    arrowReader.readArrowIPC.mockReturnValue(fullRead.promise);
+    arrowReader.parseMetaFromArrow.mockReturnValue({
+      cells: { type: "cell_id", value: ["Next1", "Next2", "Next3"] },
+      batch: { type: "category", value: { full: [0, 1, 2] } },
+    });
+
+    testState.handlers.meta_ready({
+      metaFile: "full-after-patch-error-ipc",
+      metaVersion: 415,
+      cellIdentity: nextCellIdentity,
+    });
+    testState.handlers.transfer_error({
+      payloadType: "metadata_patch",
+      reasonCode: "write_failed",
+      version: 416,
+      cols: ["batch"],
+    });
+    fullRead.resolve({ kind: "full" });
+
+    await vi.waitFor(() => {
+      expect(testState.reglInstance.origData.cellMetaData.cells.value).toEqual([
+        "Next1", "Next2", "Next3",
+      ]);
+    });
+    expect(testState.reglInstance.plotMetaData.cellIdentity).toBe(nextCellIdentity);
+    expect(latestInputValue("metaProcessed")).toBe(true);
+    expect(getPlotTransferError()).toBeNull();
+
+    testState.handlers.reglScatter_plot({
+      group_by: "batch",
+      split_by: "None",
+      moduleScore: null,
+    });
+    selectValues("renameCluster-chosenGroup", ["full"]);
+    expect(latestInputValue("renameCluster-categorySelectionContext")).toMatchObject({
+      metaVersion: 415,
+    });
+  });
+
+  it("replays a newer applied patch after an older same-identity full snapshot", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    testState.reglInstance.origData.cellMetaData = {
+      cells: { type: "cell_id", value: ["Cell1", "Cell2", "Cell3"] },
+      batch: { type: "category", value: { old: [0, 1, 2] } },
+    };
+    arrowReader.readArrowIPC.mockImplementation((url) => (
+      Promise.resolve({ kind: url.includes("meta-patch") ? "patch" : "full" })
+    ));
+    arrowReader.parseMetaFromArrow.mockImplementation((table) => (
+      table.kind === "patch"
+        ? { batch: { type: "category", value: { patched: [0, 1, 2] } } }
+        : {
+          cells: { type: "cell_id", value: ["Cell1", "Cell2", "Cell3"] },
+          cluster: { type: "category", value: { refreshed: [0, 1, 2] } },
+          batch: { type: "category", value: { full: [0, 1, 2] } },
+        }
+    ));
+
+    testState.handlers.meta_patch_ready({
+      metaFile: "same-identity-meta-patch-ipc",
+      metaVersion: 418,
+      cols: ["batch"],
+    });
+    await vi.waitFor(() => {
+      expect(testState.reglInstance.origData.cellMetaData.batch.value).toEqual({
+        patched: [0, 1, 2],
+      });
+    });
+
+    testState.handlers.meta_ready({
+      metaFile: "older-same-identity-full-ipc",
+      metaVersion: 417,
+    });
+    await vi.waitFor(() => {
+      expect(testState.reglInstance.origData.cellMetaData.cluster.value).toEqual({
+        refreshed: [0, 1, 2],
+      });
+      expect(testState.reglInstance.origData.cellMetaData.batch.value).toEqual({
+        patched: [0, 1, 2],
+      });
+    });
+
+    expect(testState.reglInstance.updateCellMetaDataPatchCalls).toHaveLength(2);
+    expect(getPlotTransferError()).toBeNull();
   });
 
   it("delayed stale meta_patch_ready results are ignored after fetch", async () => {
@@ -1624,6 +1889,18 @@ describe("browser message handlers", () => {
       cluster: { type: "category", value: { old: [0, 1, 2] } },
     };
     testState.reglInstance.plotMetaData.group_by = "cluster";
+    arrowReader.readArrowIPC.mockResolvedValue({ table: "baseline-meta" });
+    arrowReader.parseMetaFromArrow.mockReturnValue(
+      testState.reglInstance.origData.cellMetaData,
+    );
+    testState.handlers.meta_ready({
+      metaFile: "baseline-meta-ipc",
+      metaVersion: 419,
+    });
+    await vi.waitFor(() => {
+      expect(latestInputValue("metaProcessed")).toBe(true);
+    });
+
     arrowReader.readArrowIPC
       .mockImplementationOnce(() => staleRead.promise)
       .mockResolvedValueOnce({ table: "current" });
@@ -1650,6 +1927,9 @@ describe("browser message handlers", () => {
       expect(testState.reglInstance.origData.cellMetaData.cluster.value).toEqual({
         current: [0, 1, 2],
       });
+      expect(latestInputValue("metaSidebarState")).toMatchObject({
+        metaVersion: 421,
+      });
     });
 
     staleRead.resolve({ table: "stale" });
@@ -1661,6 +1941,454 @@ describe("browser message handlers", () => {
       current: [0, 1, 2],
     });
     expect(getPlotTransferError()).toBeNull();
+  });
+
+  it("applies out-of-order metadata patches for disjoint columns", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    const phaseRead = createDeferred();
+    const scoreRead = createDeferred();
+    testState.reglInstance.origData.cellMetaData = {
+      cells: { type: "cell_id", value: ["Cell1", "Cell2", "Cell3"] },
+      phase: { type: "category", value: { old: [0, 1, 2] } },
+      score: { type: "number", value: new Float32Array([0, 0, 0]) },
+    };
+    arrowReader.readArrowIPC.mockImplementation((url) => {
+      if (url.includes("phase")) return phaseRead.promise;
+      if (url.includes("score")) return scoreRead.promise;
+      throw new Error(`Unexpected metadata patch URL ${url}`);
+    });
+    arrowReader.parseMetaFromArrow.mockImplementation((table) => ({
+      cells: { type: "cell_id", value: ["Cell1", "Cell2", "Cell3"] },
+      ...(table.column === "phase"
+        ? { phase: { type: "category", value: { G1: [0], S: [1], G2M: [2] } } }
+        : { score: { type: "number", value: new Float32Array([1, 2, 3]) } }),
+    }));
+
+    testState.handlers.meta_patch_ready({
+      metaFile: "phase-meta-patch-ipc",
+      metaVersion: 422,
+      cols: ["phase"],
+    });
+    testState.handlers.meta_patch_ready({
+      metaFile: "score-meta-patch-ipc",
+      metaVersion: 423,
+      cols: ["score"],
+    });
+
+    scoreRead.resolve({ column: "score" });
+    await vi.waitFor(() => {
+      expect(Array.from(testState.reglInstance.origData.cellMetaData.score.value)).toEqual([
+        1, 2, 3,
+      ]);
+      expect(latestInputValue("metaSidebarState")).toMatchObject({
+        metaVersion: 421,
+      });
+    });
+
+    phaseRead.resolve({ column: "phase" });
+    await vi.waitFor(() => {
+      expect(testState.reglInstance.origData.cellMetaData.phase.value).toEqual({
+        G1: [0],
+        S: [1],
+        G2M: [2],
+      });
+      expect(latestInputValue("metaSidebarState")).toMatchObject({
+        metaVersion: 423,
+      });
+    });
+
+    expect(testState.reglInstance.updateCellMetaDataPatchCalls).toHaveLength(2);
+  });
+
+  it("supersedes an older same-column metadata patch at the same version", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    const staleRead = createDeferred();
+    const currentRead = createDeferred();
+    testState.reglInstance.origData.cellMetaData = {
+      cells: { type: "cell_id", value: ["Cell1", "Cell2", "Cell3"] },
+      cluster: { type: "category", value: { old: [0, 1, 2] } },
+    };
+    arrowReader.readArrowIPC
+      .mockImplementationOnce(() => staleRead.promise)
+      .mockImplementationOnce(() => currentRead.promise);
+    arrowReader.parseMetaFromArrow.mockImplementation((table) => ({
+      cells: { type: "cell_id", value: ["Cell1", "Cell2", "Cell3"] },
+      cluster: {
+        type: "category",
+        value: table.request === "current" ? { current: [0, 1, 2] } : { stale: [0, 1, 2] },
+      },
+    }));
+
+    testState.handlers.meta_patch_ready({
+      metaFile: "cluster-stale-same-version-ipc",
+      metaVersion: 424,
+      cols: ["cluster"],
+    });
+    testState.handlers.meta_patch_ready({
+      metaFile: "cluster-current-same-version-ipc",
+      metaVersion: 424,
+      cols: ["cluster"],
+    });
+
+    currentRead.resolve({ request: "current" });
+    await vi.waitFor(() => {
+      expect(testState.reglInstance.origData.cellMetaData.cluster.value).toEqual({
+        current: [0, 1, 2],
+      });
+    });
+
+    staleRead.resolve({ request: "stale" });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(testState.reglInstance.updateCellMetaDataPatchCalls).toHaveLength(1);
+    expect(testState.reglInstance.origData.cellMetaData.cluster.value).toEqual({
+      current: [0, 1, 2],
+    });
+  });
+
+  it("scopes metadata patch errors to matching in-flight columns", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    const phaseRead = createDeferred();
+    const scoreRead = createDeferred();
+    testState.reglInstance.origData.cellMetaData = {
+      cells: { type: "cell_id", value: ["Cell1", "Cell2", "Cell3"] },
+      phase: { type: "category", value: { old: [0, 1, 2] } },
+      score: { type: "number", value: new Float32Array([0, 0, 0]) },
+    };
+    arrowReader.readArrowIPC.mockImplementation((url) => {
+      if (url.includes("phase")) return phaseRead.promise;
+      if (url.includes("score")) return scoreRead.promise;
+      throw new Error(`Unexpected metadata patch URL ${url}`);
+    });
+    arrowReader.parseMetaFromArrow.mockImplementation((table) => ({
+      cells: { type: "cell_id", value: ["Cell1", "Cell2", "Cell3"] },
+      ...(table.column === "phase"
+        ? { phase: { type: "category", value: { current: [0, 1, 2] } } }
+        : { score: { type: "number", value: new Float32Array([4, 5, 6]) } }),
+    }));
+
+    testState.handlers.meta_patch_ready({
+      metaFile: "phase-error-meta-patch-ipc",
+      metaVersion: 425,
+      cols: ["phase"],
+    });
+    testState.handlers.meta_patch_ready({
+      metaFile: "score-current-meta-patch-ipc",
+      metaVersion: 426,
+      cols: ["score"],
+    });
+    testState.handlers.transfer_error({
+      payloadType: "metadata_patch",
+      reasonCode: "write_failed",
+      version: 425,
+      cols: ["phase"],
+    });
+
+    phaseRead.resolve({ column: "phase" });
+    scoreRead.resolve({ column: "score" });
+    await vi.waitFor(() => {
+      expect(Array.from(testState.reglInstance.origData.cellMetaData.score.value)).toEqual([
+        4, 5, 6,
+      ]);
+    });
+
+    expect(testState.reglInstance.origData.cellMetaData.phase.value).toEqual({
+      old: [0, 1, 2],
+    });
+    expect(testState.reglInstance.updateCellMetaDataPatchCalls).toHaveLength(1);
+    expect(getPlotTransferError().textContent).toContain("phase");
+    expect(latestInputValue("metaSidebarState")).toMatchObject({
+      metaVersion: 424,
+    });
+
+    testState.handlers.meta_patch_ready({
+      metaFile: "phase-recovery-meta-patch-ipc",
+      metaVersion: 427,
+      cols: ["phase"],
+    });
+    await vi.waitFor(() => {
+      expect(testState.reglInstance.origData.cellMetaData.phase.value).toEqual({
+        current: [0, 1, 2],
+      });
+      expect(latestInputValue("metaSidebarState")).toMatchObject({
+        metaVersion: 427,
+      });
+    });
+  });
+
+  it("drops a deferred patch when a newer full identity supersedes its prerequisite", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    const staleFullRead = createDeferred();
+    const currentFullRead = createDeferred();
+    const staleIdentity = "44444444444444444444444444444444";
+    const currentIdentity = "55555555555555555555555555555555";
+    arrowReader.readArrowIPC.mockImplementation((url) => {
+      if (url.includes("stale-full")) return staleFullRead.promise;
+      if (url.includes("current-full")) return currentFullRead.promise;
+      if (url.includes("recovery-full")) {
+        return Promise.resolve({
+          cells: { type: "cell_id", value: ["Current1", "Current2", "Current3"] },
+          batch: { type: "category", value: { recovered: [0, 1, 2] } },
+        });
+      }
+      throw new Error(`Unexpected metadata URL ${url}`);
+    });
+    arrowReader.parseMetaFromArrow.mockImplementation((table) => table);
+
+    testState.handlers.meta_ready({
+      metaFile: "stale-full-ipc",
+      metaVersion: 428,
+      cellIdentity: staleIdentity,
+    });
+    testState.handlers.meta_patch_ready({
+      metaFile: "stale-full-meta-patch-ipc",
+      metaVersion: 430,
+      cols: ["batch"],
+      cellIdentity: staleIdentity,
+    });
+    testState.handlers.meta_ready({
+      metaFile: "current-full-ipc",
+      metaVersion: 429,
+      cellIdentity: currentIdentity,
+    });
+
+    currentFullRead.resolve({
+      cells: { type: "cell_id", value: ["Current1", "Current2", "Current3"] },
+      batch: { type: "category", value: { current: [0, 1, 2] } },
+    });
+    await vi.waitFor(() => {
+      expect(testState.reglInstance.origData.cellMetaData.cells.value).toEqual([
+        "Current1", "Current2", "Current3",
+      ]);
+    });
+
+    staleFullRead.resolve({
+      cells: { type: "cell_id", value: ["Stale1", "Stale2", "Stale3"] },
+      batch: { type: "category", value: { stale: [0, 1, 2] } },
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(arrowReader.readArrowIPC).toHaveBeenCalledTimes(2);
+    expect(testState.reglInstance.origData.cellMetaData.batch.value).toEqual({
+      current: [0, 1, 2],
+    });
+    expect(testState.reglInstance.plotMetaData.cellIdentity).toBe(currentIdentity);
+
+    testState.handlers.transfer_error({
+      payloadType: "metadata",
+      reasonCode: "write_failed",
+      version: 431,
+    });
+    testState.handlers.reglScatter_plot({
+      group_by: "batch",
+      split_by: "None",
+      moduleScore: null,
+    });
+    selectValues("renameCluster-chosenGroup", ["current"]);
+    expect(latestInputValue("renameCluster-categorySelectionContext")).toMatchObject({
+      metaVersion: 429,
+    });
+
+    testState.handlers.meta_ready({
+      metaFile: "recovery-full-ipc",
+      metaVersion: 432,
+      cellIdentity: currentIdentity,
+    });
+    await vi.waitFor(() => {
+      expect(testState.reglInstance.origData.cellMetaData.batch.value).toEqual({
+        recovered: [0, 1, 2],
+      });
+    });
+    testState.handlers.reglScatter_plot({
+      group_by: "batch",
+      split_by: "None",
+      moduleScore: null,
+    });
+    selectValues("renameCluster-chosenGroup", ["recovered"]);
+    expect(latestInputValue("renameCluster-categorySelectionContext")).toMatchObject({
+      metaVersion: 432,
+    });
+  });
+
+  it("heals a late older same-column notification from the newer applied patch", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    testState.reglInstance.origData.cellMetaData = {
+      cells: { type: "cell_id", value: ["Cell1", "Cell2", "Cell3"] },
+      cluster: { type: "category", value: { old: [0, 1, 2] } },
+    };
+    arrowReader.readArrowIPC.mockImplementation((url) => {
+      if (url.includes("baseline-meta")) return Promise.resolve({ table: "baseline" });
+      if (url.includes("current-meta-patch")) return Promise.resolve({ table: "current" });
+      throw new Error(`Unexpected metadata URL ${url}`);
+    });
+    arrowReader.parseMetaFromArrow.mockImplementation((table) => (
+      table.table === "baseline"
+        ? testState.reglInstance.origData.cellMetaData
+        : { cluster: { type: "category", value: { current: [0, 1, 2] } } }
+    ));
+    testState.handlers.meta_ready({
+      metaFile: "baseline-meta-ipc",
+      metaVersion: 432,
+    });
+    await vi.waitFor(() => {
+      expect(latestInputValue("metaProcessed")).toBe(true);
+    });
+    arrowReader.readArrowIPC.mockClear();
+
+    testState.handlers.meta_patch_ready({
+      metaFile: "current-meta-patch-ipc",
+      metaVersion: 434,
+      cols: ["cluster"],
+    });
+    await vi.waitFor(() => {
+      expect(testState.reglInstance.origData.cellMetaData.cluster.value).toEqual({
+        current: [0, 1, 2],
+      });
+      expect(latestInputValue("metaSidebarState")).toMatchObject({
+        metaVersion: 432,
+      });
+    });
+
+    testState.handlers.meta_patch_ready({
+      metaFile: "late-stale-meta-patch-ipc",
+      metaVersion: 433,
+      cols: ["cluster"],
+    });
+    await Promise.resolve();
+
+    testState.handlers.reglScatter_plot({
+      group_by: "cluster",
+      split_by: "None",
+      moduleScore: null,
+    });
+    selectValues("renameCluster-chosenGroup", ["current"]);
+    expect(latestInputValue("renameCluster-categorySelectionContext")).toMatchObject({
+      metaVersion: 434,
+    });
+    expect(arrowReader.readArrowIPC).toHaveBeenCalledTimes(1);
+    expect(testState.reglInstance.origData.cellMetaData.cluster.value).toEqual({
+      current: [0, 1, 2],
+    });
+  });
+
+  it("does not carry an old-identity patch version across full object replacement", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    const replacementIdentity = "66666666666666666666666666666666";
+    testState.reglInstance.origData.cellMetaData = {
+      cells: { type: "cell_id", value: ["Cell1", "Cell2", "Cell3"] },
+      cluster: { type: "category", value: { old: [0, 1, 2] } },
+    };
+    arrowReader.readArrowIPC.mockImplementation((url) => {
+      if (url.includes("old-identity-meta-patch")) {
+        return Promise.resolve({ kind: "oldPatch" });
+      }
+      if (url.includes("replacement-full")) {
+        return Promise.resolve({ kind: "replacementFull" });
+      }
+      if (url.includes("replacement-meta-patch")) {
+        return Promise.resolve({ kind: "replacementPatch" });
+      }
+      if (url.includes("recovery-full")) {
+        return Promise.resolve({ kind: "recoveryFull" });
+      }
+      throw new Error(`Unexpected metadata URL ${url}`);
+    });
+    arrowReader.parseMetaFromArrow.mockImplementation((table) => {
+      if (table.kind === "oldPatch") {
+        return { cluster: { type: "category", value: { patchedOld: [0, 1, 2] } } };
+      }
+      if (table.kind === "replacementPatch") {
+        return { cluster: { type: "category", value: { patchedNew: [0, 1, 2] } } };
+      }
+      return {
+          cells: { type: "cell_id", value: ["New1", "New2", "New3"] },
+          cluster: {
+            type: "category",
+            value: table.kind === "recoveryFull"
+              ? { recovered: [0, 1, 2] }
+              : { replacement: [0, 1, 2] },
+          },
+        };
+    });
+
+    testState.handlers.meta_patch_ready({
+      metaFile: "old-identity-meta-patch-ipc",
+      metaVersion: 436,
+      cols: ["cluster"],
+    });
+    await vi.waitFor(() => {
+      expect(testState.reglInstance.origData.cellMetaData.cluster.value).toEqual({
+        patchedOld: [0, 1, 2],
+      });
+    });
+
+    testState.handlers.meta_ready({
+      metaFile: "replacement-full-ipc",
+      metaVersion: 435,
+      cellIdentity: replacementIdentity,
+    });
+    await vi.waitFor(() => {
+      expect(testState.reglInstance.origData.cellMetaData.cells.value).toEqual([
+        "New1", "New2", "New3",
+      ]);
+      expect(testState.reglInstance.origData.cellMetaData.cluster.value).toEqual({
+        replacement: [0, 1, 2],
+      });
+    });
+
+    testState.handlers.reglScatter_plot({
+      group_by: "cluster",
+      split_by: "None",
+      moduleScore: null,
+    });
+    selectValues("renameCluster-chosenGroup", ["replacement"]);
+    expect(latestInputValue("renameCluster-categorySelectionContext")).toMatchObject({
+      metaVersion: 436,
+    });
+    expect(testState.reglInstance.plotMetaData.cellIdentity).toBe(replacementIdentity);
+
+    testState.handlers.meta_patch_ready({
+      metaFile: "replacement-meta-patch-ipc",
+      metaVersion: 437,
+      cols: ["cluster"],
+      cellIdentity: replacementIdentity,
+    });
+    await vi.waitFor(() => {
+      expect(testState.reglInstance.origData.cellMetaData.cluster.value).toEqual({
+        patchedNew: [0, 1, 2],
+      });
+    });
+    testState.handlers.reglScatter_plot({
+      group_by: "cluster",
+      split_by: "None",
+      moduleScore: null,
+    });
+    selectValues("renameCluster-chosenGroup", ["patchedNew"]);
+    expect(latestInputValue("renameCluster-categorySelectionContext")).toMatchObject({
+      metaVersion: 437,
+    });
+
+    testState.handlers.meta_ready({
+      metaFile: "recovery-full-ipc",
+      metaVersion: 438,
+      cellIdentity: replacementIdentity,
+    });
+    await vi.waitFor(() => {
+      expect(testState.reglInstance.origData.cellMetaData.cluster.value).toEqual({
+        recovered: [0, 1, 2],
+      });
+    });
+    testState.handlers.reglScatter_plot({
+      group_by: "cluster",
+      split_by: "None",
+      moduleScore: null,
+    });
+    selectValues("renameCluster-chosenGroup", ["recovered"]);
+    expect(latestInputValue("renameCluster-categorySelectionContext")).toMatchObject({
+      metaVersion: 438,
+    });
   });
 
   it("pca_ready stores Float32Array stdev data and clears on null stdevFile", async () => {
@@ -1888,6 +2616,38 @@ describe("browser message handlers", () => {
     expect(Array.from(testState.reglInstance.origData.reductionData.X)).toEqual([203]);
   });
 
+  it("does not let a same-version error for another reduction cancel the active request", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    const activeFetch = createDeferred();
+    arrowReader.fetchArrowIPCBuffer.mockReturnValue(activeFetch.promise);
+    arrowReader.decodeArrowIPC.mockImplementation((buffer) => ({
+      url: decodeLabelBuffer(buffer),
+    }));
+    arrowReader.getFloat32Column.mockImplementation((table, colName) => {
+      const value = numericValueFromResourceUrl(table.url);
+      return new Float32Array([colName === "X" ? value : value + 0.5]);
+    });
+
+    testState.handlers.reduction_ready({
+      reductionFile: "pca-v204",
+      reductionName: "pca",
+      reductionVersion: 204,
+    });
+    testState.handlers.transfer_error({
+      payloadType: "reduction",
+      reasonCode: "write_failed",
+      version: 204,
+      reductionName: "umap",
+    });
+
+    expect(getPlotTransferError()).toBeNull();
+
+    activeFetch.resolve(encodeLabelBuffer("pca-v204"));
+    await vi.waitFor(() => {
+      expect(Array.from(testState.reglInstance.origData.reductionData.X)).toEqual([204]);
+    });
+  });
+
   it("rejects an older same-version reduction attempt after a newer attempt starts", async () => {
     const arrowReader = await resetArrowReaderMocks();
     const currentFetch = createDeferred();
@@ -1921,6 +2681,57 @@ describe("browser message handlers", () => {
       expect(Array.from(testState.reglInstance.origData.reductionData.X)).toEqual([205]);
     });
     expect(arrowReader.fetchArrowIPCBuffer).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a cached reduction selected when an older same-version fetch resolves", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    const staleFetch = createDeferred();
+    arrowReader.fetchArrowIPCBuffer.mockImplementation((url) => {
+      if (url.includes("pca-v206")) return Promise.resolve(encodeLabelBuffer("pca-v206"));
+      if (url.includes("umap-v999")) return staleFetch.promise;
+      throw new Error(`Unexpected reduction URL ${url}`);
+    });
+    arrowReader.decodeArrowIPC.mockImplementation((buffer) => ({
+      url: decodeLabelBuffer(buffer),
+    }));
+    arrowReader.getFloat32Column.mockImplementation((table, colName) => {
+      const value = table.url.includes("pca-v206") ? 206 : 999;
+      return new Float32Array([colName === "X" ? value : value + 0.5]);
+    });
+
+    testState.handlers.reduction_ready({
+      reductionFile: "pca-v206",
+      reductionName: "pca",
+      reductionVersion: 206,
+    });
+    await vi.waitFor(() => {
+      expect(Array.from(testState.reglInstance.origData.reductionData.X)).toEqual([206]);
+    });
+
+    testState.handlers.reduction_ready({
+      reductionFile: "umap-v999",
+      reductionName: "umap",
+      reductionVersion: 206,
+    });
+    await vi.waitFor(() => {
+      expect(arrowReader.fetchArrowIPCBuffer).toHaveBeenCalledTimes(2);
+    });
+
+    document.getElementById("updateReduction-reduction").innerHTML = `
+      <option value="pca" selected>pca</option>
+    `;
+    testState.handlers.reduction_cached({
+      reductionName: "pca",
+      reductionVersion: 206,
+    });
+    await vi.waitFor(() => {
+      expect(Array.from(testState.reglInstance.origData.reductionData.X)).toEqual([206]);
+    });
+
+    staleFetch.resolve(encodeLabelBuffer("umap-v999"));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(Array.from(testState.reglInstance.origData.reductionData.X)).toEqual([206]);
   });
 
   it("rejects a delayed same-version transfer notification after a cache selection", async () => {
@@ -1966,6 +2777,99 @@ describe("browser message handlers", () => {
     expect(Array.from(testState.reglInstance.origData.reductionData.X)).toEqual([208]);
   });
 
+  it("does not re-open the spinner for a rejected older reduction attempt", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    const currentFetch = createDeferred();
+    arrowReader.fetchArrowIPCBuffer.mockImplementation((url) => {
+      if (url.includes("pca-attempt-2")) return currentFetch.promise;
+      throw new Error(`Older same-version attempt should not fetch: ${url}`);
+    });
+    arrowReader.decodeArrowIPC.mockImplementation((buffer) => ({
+      url: decodeLabelBuffer(buffer),
+    }));
+    arrowReader.getFloat32Column.mockImplementation((table, colName) => {
+      const value = table.url.includes("pca-attempt-2") ? 209 : -1;
+      return new Float32Array([colName === "X" ? value : value + 0.5]);
+    });
+
+    testState.handlers.reduction_ready({
+      reductionFile: "pca-attempt-2",
+      reductionName: "pca",
+      reductionVersion: 209,
+      transferAttemptId: 2,
+    });
+    await vi.waitFor(() => {
+      expect(arrowReader.fetchArrowIPCBuffer).toHaveBeenCalledTimes(1);
+    });
+    const mainPlotSpinner = testState.spinners["mainClusterPlot-clusterPlot"];
+    mainPlotSpinner.style.display = "none";
+
+    testState.handlers.reduction_ready({
+      reductionFile: "umap-attempt-1",
+      reductionName: "umap",
+      reductionVersion: 209,
+      transferAttemptId: 1,
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(mainPlotSpinner.style.display).toBe("none");
+    expect(arrowReader.fetchArrowIPCBuffer).toHaveBeenCalledTimes(1);
+
+    currentFetch.resolve(encodeLabelBuffer("pca-attempt-2"));
+    await vi.waitFor(() => {
+      expect(Array.from(testState.reglInstance.origData.reductionData.X)).toEqual([209]);
+    });
+  });
+
+  it("keeps a cache-miss selection when a different same-version transfer arrives", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    arrowReader.fetchArrowIPCBuffer.mockImplementation((url) => {
+      if (url.includes("pca-cache-miss-v210")) {
+        return Promise.resolve(encodeLabelBuffer("pca-cache-miss-v210"));
+      }
+      throw new Error(`Delayed transfer should not fetch: ${url}`);
+    });
+    arrowReader.decodeArrowIPC.mockImplementation((buffer) => ({
+      url: decodeLabelBuffer(buffer),
+    }));
+    arrowReader.getFloat32Column.mockImplementation((table, colName) => {
+      const value = table.url.includes("pca-cache-miss-v210") ? 210 : -1;
+      return new Float32Array([colName === "X" ? value : value + 0.5]);
+    });
+    document.getElementById("updateReduction-reduction").innerHTML = `
+      <option value="pca" selected>pca</option>
+    `;
+
+    testState.handlers.reduction_cached({
+      reductionName: "pca",
+      reductionVersion: 210,
+    });
+    await vi.waitFor(() => {
+      expect(latestInputValue("updateReduction-cacheMissReduction")).toBe("pca");
+    });
+
+    testState.handlers.reduction_ready({
+      reductionFile: "umap-delayed-v210",
+      reductionName: "umap",
+      reductionVersion: 210,
+      transferAttemptId: 1,
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(arrowReader.fetchArrowIPCBuffer).not.toHaveBeenCalled();
+
+    testState.handlers.reduction_ready({
+      reductionFile: "pca-cache-miss-v210",
+      reductionName: "pca",
+      reductionVersion: 210,
+      transferAttemptId: 2,
+    });
+    await vi.waitFor(() => {
+      expect(Array.from(testState.reglInstance.origData.reductionData.X)).toEqual([210]);
+    });
+  });
+
   it("prefers the current dropdown reduction over the stale prefetch selection", async () => {
     const arrowReader = await resetArrowReaderMocks();
     arrowReader.fetchArrowIPCBuffer.mockImplementation((url) => (
@@ -1985,10 +2889,9 @@ describe("browser message handlers", () => {
     testState.handlers.reductions_ready({
       reductionVersion: 210,
       activeReduction: "umap",
-      transferAttemptId: 1,
       reductions: [
-        { reductionName: "umap", reductionFile: "umap-v210", transferAttemptId: 1 },
-        { reductionName: "pca", reductionFile: "pca-v210", transferAttemptId: 1 },
+        { reductionName: "umap", reductionFile: "umap-v210" },
+        { reductionName: "pca", reductionFile: "pca-v210" },
       ],
     });
 
@@ -2019,10 +2922,9 @@ describe("browser message handlers", () => {
     testState.handlers.reductions_ready({
       reductionVersion: 211,
       activeReduction: "pca",
-      transferAttemptId: 1,
       reductions: [
-        { reductionName: "pca", reductionFile: "pca-v211", transferAttemptId: 1 },
-        { reductionName: "umap", reductionFile: "umap-v211", transferAttemptId: 1 },
+        { reductionName: "pca", reductionFile: "pca-v211" },
+        { reductionName: "umap", reductionFile: "umap-v211" },
       ],
     });
 
@@ -2034,6 +2936,7 @@ describe("browser message handlers", () => {
     await Promise.resolve();
 
     expect(getPlotTransferError()).toBeNull();
+    expect(latestInputValue("reductionProcessed")).toBe(true);
     expect(warn).toHaveBeenCalledWith(
       "Could not prefetch inactive reduction umap",
       expect.any(Error),
@@ -2430,5 +3333,90 @@ describe("browser message handlers", () => {
     await vi.waitFor(() => {
       expect(Array.from(testState.reglInstance.origData.expressionData.GeneA)).toEqual([6, 7]);
     });
+  });
+
+  it("requests a full metadata recovery instead of silently dropping deferred patches", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    const fullRead = createDeferred();
+    const nextCellIdentity = "12121212121212121212121212121212";
+    testState.reglInstance.origData.cellMetaData = {
+      cells: { type: "cell_id", value: ["Cell1", "Cell2", "Cell3"] },
+      batch: { type: "category", value: { old: [0, 1, 2] } },
+    };
+    arrowReader.readArrowIPC.mockImplementation((url) => {
+      if (url.includes("overflow-full")) return fullRead.promise;
+      throw new Error(`Deferred patch should not fetch before full metadata: ${url}`);
+    });
+
+    testState.handlers.meta_ready({
+      metaFile: "overflow-full-ipc",
+      metaVersion: 60000,
+      cellIdentity: nextCellIdentity,
+    });
+    for (let version = 60001; version <= 60065; version += 1) {
+      testState.handlers.meta_patch_ready({
+        metaFile: `overflow-patch-${version}`,
+        metaVersion: version,
+        cols: [`column_${version}`],
+        cellIdentity: nextCellIdentity,
+      });
+    }
+
+    await vi.waitFor(() => {
+      expect(latestInputValue("updateMetaData-requestFullRefresh")).toEqual({
+        version: 60001,
+        timestamp: expect.any(Number),
+      });
+    });
+    expect(arrowReader.readArrowIPC).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps an unresolved metadata patch error visible after a reduction succeeds", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    arrowReader.fetchArrowIPCBuffer.mockResolvedValue(encodeLabelBuffer("umap-v90000"));
+    arrowReader.decodeArrowIPC.mockImplementation((buffer) => ({
+      url: decodeLabelBuffer(buffer),
+    }));
+    arrowReader.getFloat32Column.mockImplementation((table, colName) => {
+      const value = numericValueFromResourceUrl(table.url);
+      return new Float32Array([colName === "X" ? value : value + 0.5]);
+    });
+
+    testState.handlers.transfer_error({
+      payloadType: "metadata_patch",
+      reasonCode: "write_failed",
+      version: 89999,
+      cols: ["batch"],
+    });
+    testState.handlers.reduction_ready({
+      reductionFile: "umap-v90000",
+      reductionName: "umap",
+      reductionVersion: 90000,
+    });
+
+    await vi.waitFor(() => {
+      expect(Array.from(testState.reglInstance.origData.reductionData.X)).toEqual([90000]);
+    });
+    expect(getPlotTransferError().textContent).toContain("Metadata update could not apply");
+  });
+
+  it("rejects dot and data resource prefixes before IPC fetches", async () => {
+    const arrowReader = await resetArrowReaderMocks();
+    testState.handlers.meta_ready({
+      resourcePrefix: ".",
+      metaFile: "invalid-prefix-meta",
+      metaVersion: 91000,
+    });
+    await Promise.resolve();
+    expect(arrowReader.readArrowIPC).not.toHaveBeenCalled();
+    expect(getPlotTransferError().textContent).toContain("Metadata could not load");
+
+    testState.handlers.meta_ready({
+      resourcePrefix: "data",
+      metaFile: "invalid-prefix-meta-data",
+      metaVersion: 91001,
+    });
+    await Promise.resolve();
+    expect(arrowReader.readArrowIPC).not.toHaveBeenCalled();
   });
 });

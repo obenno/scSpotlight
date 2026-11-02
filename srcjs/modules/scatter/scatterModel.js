@@ -39,6 +39,7 @@ export class ScatterModel {
       selectedMeta: null,
       viewFilter: null,
       viewFilterVersion: 0,
+      cellIdentity: null,
     };
   }
 
@@ -321,6 +322,213 @@ export class ScatterModel {
     };
   }
 
+  buildFilteredPlotPanels(
+    reductionData,
+    metaData,
+    expressionData,
+    visibilityMask,
+    {
+      selectedFeature,
+      moduleScore,
+      group_by,
+      split_by,
+      mode,
+      nPanels,
+      catColors,
+    },
+  ) {
+    const expandMeta = this.utils.expandMeta;
+    const getMetaLevels = this.utils.getMetaLevels;
+    const rgbToHex = this.utils.rgbToHex;
+    const cellsArray = expandMeta(metaData.cells) || [];
+    const groupByArray = expandMeta(metaData[group_by]) || [];
+    const splitByArray = split_by ? (expandMeta(metaData[split_by]) || []) : [];
+    const xColumn = reductionData.X || [];
+    const yColumn = reductionData.Y || [];
+    const xmin = d3.min(xColumn);
+    const xmax = d3.max(xColumn);
+    const ymin = d3.min(yColumn);
+    const ymax = d3.max(yColumn);
+    const centerX = (xmin + xmax) / 2;
+    const centerY = (ymin + ymax) / 2;
+    const xyRange = Math.max(xmax - xmin, ymax - ymin, 1e-9);
+    const precisionScale = 1e4;
+    const scaleXYValue = (value, center) => Math.fround(
+      Math.round((((value - center) / xyRange) * 2) * precisionScale) /
+        precisionScale,
+    );
+    const groupLevels = getMetaLevels(metaData[group_by]);
+    const groupLevelIndexes = new Map(groupLevels.map((level, index) => [level, index]));
+    const exprColorMap = Array(51)
+      .fill()
+      .map((_, i) => i / 50)
+      .map((e) => rgbToHex(d3.interpolate("#E5E4E2", "#800080")(e)));
+    const exprTitle = moduleScore ? "ModuleScore" : selectedFeature;
+    const panelSpecs = [];
+
+    const addPanel = ({ title, zType, colorData, splitLevel = null }) => {
+      panelSpecs.push({ title, zType, colorData, splitLevel });
+    };
+    if (mode === "clusterOnly" && nPanels === 1) {
+      addPanel({ title: group_by, zType: "category", colorData: catColors });
+    } else if (mode === "cluster+expr+noSplit" && nPanels === 2) {
+      addPanel({ title: group_by, zType: "category", colorData: catColors });
+      addPanel({ title: exprTitle, zType: "expr", colorData: exprColorMap });
+    } else {
+      const splitLevels = getMetaLevels(metaData[split_by]);
+      splitLevels.forEach((level) => {
+        if (mode === "cluster+expr+twoSplit") {
+          addPanel({
+            title: `${level} : ${group_by}`,
+            zType: "category",
+            colorData: catColors,
+            splitLevel: level,
+          });
+          addPanel({
+            title: `${level} : ${exprTitle}`,
+            zType: "expr",
+            colorData: exprColorMap,
+            splitLevel: level,
+          });
+        } else if (mode === "cluster+multiSplit") {
+          addPanel({
+            title: level,
+            zType: "category",
+            colorData: catColors,
+            splitLevel: level,
+          });
+        } else if (mode === "cluster+expr+multiSplit") {
+          addPanel({
+            title: level,
+            zType: "expr",
+            colorData: exprColorMap,
+            splitLevel: level,
+          });
+        }
+      });
+    }
+
+    const panelIndexesBySplit = new Map();
+    const unsplitPanelIndexes = [];
+    panelSpecs.forEach((spec, panelIdx) => {
+      if (spec.splitLevel === null) {
+        unsplitPanelIndexes.push(panelIdx);
+        return;
+      }
+      if (!panelIndexesBySplit.has(spec.splitLevel)) {
+        panelIndexesBySplit.set(spec.splitLevel, []);
+      }
+      panelIndexesBySplit.get(spec.splitLevel).push(panelIdx);
+    });
+
+    const panelCounts = new Int32Array(panelSpecs.length);
+    const panelAcceptsSource = (spec, sourceIdx) => (
+      sourceIdx < cellsArray.length &&
+      sourceIdx < xColumn.length &&
+      sourceIdx < yColumn.length &&
+      (spec.zType === "category"
+        ? sourceIdx < groupByArray.length
+        : sourceIdx < expressionData.length)
+    );
+    for (let sourceIdx = 0; sourceIdx < cellsArray.length; sourceIdx++) {
+      if (visibilityMask[sourceIdx] !== 1) {
+        continue;
+      }
+      const panelIndexes = unsplitPanelIndexes.length > 0
+        ? unsplitPanelIndexes
+        : (panelIndexesBySplit.get(splitByArray[sourceIdx]) || []);
+      for (const panelIdx of panelIndexes) {
+        if (panelAcceptsSource(panelSpecs[panelIdx], sourceIdx)) {
+          panelCounts[panelIdx] += 1;
+        }
+      }
+    }
+
+    const expressionRanges = new Map();
+    if (selectedFeature) {
+      for (let sourceIdx = 0; sourceIdx < expressionData.length; sourceIdx++) {
+        const value = expressionData[sourceIdx];
+        if (value == null || value !== value) {
+          continue;
+        }
+        const splitLevel = split_by ? splitByArray[sourceIdx] : null;
+        const range = expressionRanges.get(splitLevel) || {
+          minValue: Infinity,
+          maxValue: -Infinity,
+        };
+        if (value < range.minValue) range.minValue = value;
+        if (value > range.maxValue) range.maxValue = value;
+        expressionRanges.set(splitLevel, range);
+      }
+    }
+    const expressionScales = panelSpecs.map((spec) => {
+      if (spec.zType !== "expr") {
+        return null;
+      }
+      const range = expressionRanges.get(spec.splitLevel) || {};
+      const { minValue, maxValue } = range;
+      if (!Number.isFinite(minValue) || !Number.isFinite(maxValue) || minValue === maxValue) {
+        return () => 0;
+      }
+      const scale = minValue < 0
+        ? d3.scaleLinear([minValue, maxValue], [0, 1]).nice()
+        : d3.scaleLinear([0, maxValue], [0, 1]).nice();
+      return (value) => scale(value);
+    });
+
+    const pointsData = [];
+    const zData = {
+      point_Z_data: [],
+      colorData: [],
+      zType: [],
+      cells: [],
+      panelTitles: [],
+      sourceIndices: [],
+    };
+    const outputOffsets = new Int32Array(panelSpecs.length);
+    panelSpecs.forEach((spec, panelIdx) => {
+      const x = new Float32Array(panelCounts[panelIdx]);
+      const y = new Float32Array(panelCounts[panelIdx]);
+      const z = spec.zType === "category"
+        ? new Int16Array(panelCounts[panelIdx])
+        : new Float32Array(panelCounts[panelIdx]);
+      const cells = new Array(panelCounts[panelIdx]);
+      pointsData[panelIdx] = { x, y, z };
+      zData.point_Z_data[panelIdx] = z;
+      zData.colorData[panelIdx] = spec.colorData;
+      zData.zType[panelIdx] = spec.zType;
+      zData.cells[panelIdx] = cells;
+      zData.panelTitles[panelIdx] = spec.title;
+      zData.sourceIndices[panelIdx] = new Int32Array(panelCounts[panelIdx]);
+    });
+
+    for (let sourceIdx = 0; sourceIdx < cellsArray.length; sourceIdx++) {
+      if (visibilityMask[sourceIdx] !== 1) {
+        continue;
+      }
+      const panelIndexes = unsplitPanelIndexes.length > 0
+        ? unsplitPanelIndexes
+        : (panelIndexesBySplit.get(splitByArray[sourceIdx]) || []);
+      for (const panelIdx of panelIndexes) {
+        const spec = panelSpecs[panelIdx];
+        if (!panelAcceptsSource(spec, sourceIdx)) {
+          continue;
+        }
+        const outputIdx = outputOffsets[panelIdx];
+        pointsData[panelIdx].x[outputIdx] = scaleXYValue(xColumn[sourceIdx], centerX);
+        pointsData[panelIdx].y[outputIdx] = scaleXYValue(yColumn[sourceIdx], centerY);
+        pointsData[panelIdx].z[outputIdx] = spec.zType === "category"
+          ? (groupLevelIndexes.get(groupByArray[sourceIdx]) ?? -1)
+          : expressionScales[panelIdx](expressionData[sourceIdx]);
+        zData.cells[panelIdx][outputIdx] = cellsArray[sourceIdx];
+        zData.sourceIndices[panelIdx][outputIdx] = sourceIdx;
+        outputOffsets[panelIdx] += 1;
+      }
+    }
+
+    return { pointsData, zData, sourceIndices: zData.sourceIndices };
+  }
+
   buildPlotData() {
     const metaData = this.origData.cellMetaData;
     const reductionData = this.origData.reductionData;
@@ -336,39 +544,58 @@ export class ScatterModel {
     } = this.plotMetaData;
 
     const selectedFeature = selectedFeatures[0];
-    const expressionData = selectedFeature ? expressionAll[selectedFeature] : [];
+    const expressionData = selectedFeature ? (expressionAll[selectedFeature] || []) : [];
     const viewFilter = this.buildViewFilterMask(metaData);
     const includeSourceIndices = viewFilter.mask !== null;
 
-    let pointsData = this.prepareXYData(
-      reductionData,
-      metaData,
-      mode,
-      nPanels,
-      split_by,
-    );
-
-    let zData = this.prepareZData(
-      metaData,
-      expressionData,
-      mode,
-      nPanels,
-      group_by,
-      split_by,
-      catColors,
-      selectedFeature,
-      moduleScore,
-      undefined,
-      includeSourceIndices,
-    );
-
-    for (let i = 0; i < pointsData.length; i++) {
-      pointsData[i].z = zData.point_Z_data[i];
+    let pointsData;
+    let zData;
+    let sourceIndices;
+    if (viewFilter.mask) {
+      const filtered = this.buildFilteredPlotPanels(
+        reductionData,
+        metaData,
+        expressionData,
+        viewFilter.mask,
+        {
+          selectedFeature,
+          moduleScore,
+          group_by,
+          split_by,
+          mode,
+          nPanels,
+          catColors,
+        },
+      );
+      pointsData = filtered.pointsData;
+      zData = filtered.zData;
+      sourceIndices = filtered.sourceIndices;
+    } else {
+      pointsData = this.prepareXYData(
+        reductionData,
+        metaData,
+        mode,
+        nPanels,
+        split_by,
+      );
+      zData = this.prepareZData(
+        metaData,
+        expressionData,
+        mode,
+        nPanels,
+        group_by,
+        split_by,
+        catColors,
+        selectedFeature,
+        moduleScore,
+        undefined,
+        includeSourceIndices,
+      );
+      for (let i = 0; i < pointsData.length; i++) {
+        pointsData[i].z = zData.point_Z_data[i];
+      }
+      sourceIndices = [];
     }
-
-    const filtered = this.filterPlotPanels(pointsData, zData, viewFilter.mask);
-    pointsData = filtered.pointsData;
-    zData = filtered.zData;
 
     const catLabelCoordinates = [];
     const groupTitles = group_by ? this.utils.getMetaLevels(metaData[group_by]) : [];
@@ -405,7 +632,7 @@ export class ScatterModel {
       panelTitles: zData.panelTitles,
       catLabelCoordinates,
       plotFeature: selectedFeature,
-      sourceIndices: filtered.sourceIndices,
+      sourceIndices,
       visibleCellCount: viewFilter.visibleCellCount,
     };
 

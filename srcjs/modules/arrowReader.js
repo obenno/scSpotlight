@@ -60,6 +60,26 @@ function getChunkIndices(chunk) {
   return values.subarray(start, end);
 }
 
+function getNullableFloat32Values(col) {
+  // ScatterModel treats non-finite numeric metadata as missing.
+  const out = new Float32Array(col.length);
+  let outputIndex = 0;
+
+  for (const chunk of col.data) {
+    const values = chunk.values;
+    for (let rowIndex = 0; rowIndex < chunk.length; rowIndex++) {
+      out[outputIndex] = isChunkValueValid(chunk, rowIndex)
+        // Arrow slices retain the logical offset for the validity bitmap, but
+        // expose a values view already rebased to the sliced chunk.
+        ? Number(values[rowIndex])
+        : Number.NaN;
+      outputIndex += 1;
+    }
+  }
+
+  return out;
+}
+
 /**
  * Fetch an Arrow IPC stream file and return the decoded Table.
  * @param {string} url - URL to the .arrow file served via addResourcePath
@@ -106,6 +126,9 @@ export function getFloat32Column(table, name) {
   const col = table.getChild(name);
   if (!col) {
     throw new Error(`Column "${name}" not found in Arrow table`);
+  }
+  if (col.nullCount > 0) {
+    return getNullableFloat32Values(col);
   }
   const arr = col.toArray();
   // If already Float32Array, return as-is (zero-copy)
@@ -214,6 +237,13 @@ export function parseMetaFromArrow(table) {
       out[field.name] = parseTextColumn(col);
     } else {
       // Numeric column
+      if (col.nullCount > 0) {
+        out[field.name] = {
+          type: "number",
+          value: getNullableFloat32Values(col),
+        };
+        continue;
+      }
       const dataArray = col.toArray();
       if (dataArray instanceof Int32Array) {
         out[field.name] = { type: "number", value: dataArray };

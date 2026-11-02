@@ -280,7 +280,37 @@ describe("ScatterModel panel data assembly", () => {
     ]);
   });
 
+  it("excludes missing numeric metadata from a View Filter", () => {
+    const model = buildModel();
+    model.origData.cellMetaData.nFeature_RNA.value = new Float32Array([
+      100, 200, Number.NaN, 400, 500, 600, 700, 800,
+    ]);
+    model.origData.cellMetaData.percent_mt.value = new Float32Array([
+      5, 10, 15, Number.NaN, 25, 30, 35, 40,
+    ]);
+    model.setConfig({
+      selectedFeatures: [],
+      moduleScore: false,
+      viewFilter: {
+        nFeature: { column: "nFeature_RNA", min: 50, max: 850 },
+        percentMt: { column: "percent_mt", max: 50 },
+      },
+    });
+    model.derivePlotMetaData("group", null, false);
+
+    const plot = model.buildPlotData();
+
+    expect(plot.visibleCellCount).toBe(6);
+    expect(plot.cells[0]).toEqual(["c1", "c2", "c5", "c6", "c7", "c8"]);
+    expect(Array.from(plot.sourceIndices[0])).toEqual([0, 1, 4, 5, 6, 7]);
+  });
+
   it("filters split and expression panels by canonical source indexes", () => {
+    const fullModel = buildModel();
+    fullModel.setConfig({ selectedFeatures: ["GeneA"], moduleScore: false });
+    fullModel.derivePlotMetaData("group", "split", false);
+    const fullPlot = fullModel.buildPlotData();
+
     const model = buildModel();
     model.setConfig({
       selectedFeatures: ["GeneA"],
@@ -303,6 +333,61 @@ describe("ScatterModel panel data assembly", () => {
     expect(Array.from(plot.sourceIndices[0])).toEqual([1, 2, 3]);
     expect(Array.from(plot.sourceIndices[2])).toEqual([4, 5]);
     expect(plot.pointsData.map((panel) => panel.x.length)).toEqual([3, 3, 2, 2]);
+    plot.pointsData.forEach((panel, panelIdx) => {
+      const fullCellIndexes = new Map(
+        fullPlot.cells[panelIdx].map((cell, index) => [cell, index]),
+      );
+      const expectedIndexes = plot.cells[panelIdx].map((cell) => fullCellIndexes.get(cell));
+      expect(Array.from(panel.x)).toEqual(
+        expectedIndexes.map((index) => fullPlot.pointsData[panelIdx].x[index]),
+      );
+      expect(Array.from(panel.y)).toEqual(
+        expectedIndexes.map((index) => fullPlot.pointsData[panelIdx].y[index]),
+      );
+      expect(Array.from(panel.z)).toEqual(
+        expectedIndexes.map((index) => fullPlot.pointsData[panelIdx].z[index]),
+      );
+    });
+  });
+
+  it("builds a filtered View without constructing full replacement panels", () => {
+    const model = buildModel();
+    model.setConfig({
+      selectedFeatures: ["GeneA"],
+      moduleScore: false,
+      viewFilter: {
+        nFeature: { column: "nFeature_RNA", min: 150, max: 650 },
+        percentMt: { column: "percent_mt", max: 31 },
+      },
+    });
+    model.derivePlotMetaData("group", "split", false);
+    model.prepareXYData = () => {
+      throw new Error("full XY panel allocation");
+    };
+    model.prepareZData = () => {
+      throw new Error("full Z panel allocation");
+    };
+    model.filterPlotPanels = () => {
+      throw new Error("post-allocation panel filtering");
+    };
+    model.scaleDataXY = () => {
+      throw new Error("full reduction scaling buffer");
+    };
+    model.scaleDataZ = () => {
+      throw new Error("full expression scaling buffer");
+    };
+
+    const plot = model.buildPlotData();
+
+    expect(plot.visibleCellCount).toBe(5);
+    expect(plot.cells).toEqual([
+      ["c2", "c3", "c4"],
+      ["c2", "c3", "c4"],
+      ["c5", "c6"],
+      ["c5", "c6"],
+    ]);
+    expect(Array.from(plot.sourceIndices[0])).toEqual([1, 2, 3]);
+    expect(Array.from(plot.sourceIndices[2])).toEqual([4, 5]);
   });
 
   it("renders an empty View when the filter excludes every cell", () => {

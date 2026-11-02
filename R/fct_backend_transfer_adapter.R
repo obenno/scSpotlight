@@ -20,6 +20,57 @@ transfer_error_context_fields <- list(
   expression = c("geneName", "assay")
 )
 
+normalize_transfer_resource_prefix <- function(resource_prefix) {
+  resource_prefix <- as.character(resource_prefix %||% character())
+  resource_prefix <- resource_prefix[!is.na(resource_prefix) & nzchar(resource_prefix)]
+  if (length(resource_prefix) != 1L || !grepl(
+    "^[A-Za-z0-9][A-Za-z0-9_-]*$",
+    resource_prefix[[1]],
+    perl = TRUE
+  ) || identical(resource_prefix[[1]], "data")) {
+    stop(
+      "File-backed browser transfers require a valid session resource prefix.",
+      call. = FALSE
+    )
+  }
+
+  resource_prefix[[1]]
+}
+
+validate_backend_metadata_patch_cols <- function(object, cols) {
+  cols <- normalize_transfer_cols(cols)
+  if (!length(cols)) {
+    return(character())
+  }
+
+  reserved_cols <- c("cells", ".scspotlight_cell_idx", ".scspotlight_cell_id")
+  invalid_reserved <- intersect(cols, reserved_cols)
+  if (length(invalid_reserved)) {
+    stop(
+      "Metadata patch columns cannot include reserved Cell ID fields: ",
+      paste(invalid_reserved, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  available_cols <- get_backend_metadata_columns(object)
+  invalid_cols <- setdiff(cols, available_cols)
+  if (length(invalid_cols)) {
+    stop(
+      "Metadata patch columns are not available: ",
+      paste(invalid_cols, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  cols
+}
+
+normalize_transfer_cols <- function(cols) {
+  cols <- unique(as.character(cols %||% character()))
+  cols[!is.na(cols) & nzchar(cols) & cols != "None"]
+}
+
 make_clear_expr_payload <- function(invalidate_version = NULL) {
   if (is.null(invalidate_version)) {
     # Shiny serializes a named empty list as the contract's empty JSON object.
@@ -39,7 +90,7 @@ make_clear_expr_payload <- function(invalidate_version = NULL) {
   list(invalidateVersion = unname(as.numeric(invalidate_version)))
 }
 
-sanitize_transfer_error_value <- function(value) {
+sanitize_transfer_error_value <- function(value, field) {
   value <- as.character(value)
   value <- vapply(
     value,
@@ -48,8 +99,13 @@ sanitize_transfer_error_value <- function(value) {
         return(NA_character_)
       }
 
-      if (grepl("[/\\\\]", item)) {
-        item <- basename(item)
+      pattern <- if (identical(field, "geneName")) {
+        "^[A-Za-z0-9][A-Za-z0-9_.+-]*(?:/[A-Za-z0-9][A-Za-z0-9_.+-]*)*$"
+      } else {
+        "^[A-Za-z0-9][A-Za-z0-9_.+-]*$"
+      }
+      if (!grepl(pattern, item, perl = TRUE)) {
+        return(NA_character_)
       }
 
       item
@@ -80,7 +136,7 @@ make_transfer_error_payload <- function(
   )
 
   if (isTruthy(resource_prefix)) {
-    payload$resourcePrefix <- basename(as.character(resource_prefix)[[1]])
+    payload$resourcePrefix <- normalize_transfer_resource_prefix(resource_prefix)
   }
 
   fields <- transfer_error_context_fields[[payload_type]]
@@ -99,7 +155,7 @@ make_transfer_error_payload <- function(
       next
     }
 
-    value <- sanitize_transfer_error_value(value)
+    value <- sanitize_transfer_error_value(value, field = field)
     if (!length(value)) {
       next
     }
@@ -117,7 +173,13 @@ prepare_backend_metadata_transfer <- function(
   cols = NULL,
   resource_prefix = NULL
 ) {
-  if (isTruthy(cols)) {
+  resource_prefix <- normalize_transfer_resource_prefix(resource_prefix)
+  cols <- normalize_transfer_cols(cols)
+  is_patch <- length(cols) > 0L
+  if (is_patch) {
+    cols <- validate_backend_metadata_patch_cols(object, cols)
+  }
+  if (is_patch) {
     patch_key <- paste(sort(cols), collapse = "|")
     file_name <- hash_md5(paste0(
       "meta_patch_",
@@ -127,7 +189,7 @@ prepare_backend_metadata_transfer <- function(
     ))
     payload <- list(
       metaFile = file_name,
-      cols = cols,
+      cols = unname(as.list(cols)),
       metaVersion = meta_version
     )
   } else {
@@ -135,26 +197,40 @@ prepare_backend_metadata_transfer <- function(
     payload <- list(metaFile = file_name, metaVersion = meta_version)
   }
 
-  if (isTruthy(resource_prefix)) {
-    payload$resourcePrefix <- basename(as.character(resource_prefix)[[1]])
-  }
+  payload$resourcePrefix <- resource_prefix
 
   if (is_scspotlight_explore_bundle(object)) {
     query_plan <- explore_bundle_metadata_query_plan(object, cols = cols)
+    payload$cellIdentity <- query_plan$cell_identity
     return(list(
       backend = "explore_bundle",
       metadata_path = query_plan$metadata_path,
       cols = query_plan$cols,
       cell_count = query_plan$cell_count,
+      include_cells = !is_patch,
       filePath = file.path(dir_path, file_name),
       payload = payload
     ))
   }
 
+  metadata <- get_backend_metadata(object, cols = cols)
+  cell_ids <- rownames(metadata)
+  if (
+    is.null(cell_ids) ||
+      length(cell_ids) != nrow(metadata) ||
+      any(is.na(cell_ids) | !nzchar(cell_ids))
+  ) {
+    stop(
+      "Metadata transfer requires canonical Cell IDs in row names.",
+      call. = FALSE
+    )
+  }
+  payload$cellIdentity <- rlang::hash(as.character(cell_ids))
   list(
     backend = "data_frame",
-    data = clean_meta_frame(get_backend_metadata(object, cols = cols)),
+    data = clean_meta_frame(metadata),
     cols = cols,
+    include_cells = !is_patch,
     filePath = file.path(dir_path, file_name),
     payload = payload
   )
@@ -166,12 +242,17 @@ write_backend_metadata_transfer <- function(transfer) {
       metadata_path = transfer$metadata_path,
       output_file = transfer$filePath,
       cols = transfer$cols,
-      expected_cell_count = transfer$cell_count
+      expected_cell_count = transfer$cell_count,
+      include_cells = transfer$include_cells
     )
     return(transfer$payload)
   }
 
-  write_ipc_stream(as_arrow_table(transfer$data), transfer$filePath)
+  data <- transfer$data
+  if (!transfer$include_cells) {
+    data$cells <- NULL
+  }
+  write_ipc_stream(as_arrow_table(data), transfer$filePath)
   transfer$payload
 }
 
@@ -181,6 +262,7 @@ write_backend_pca_stdev_transfer <- function(
   reduction_version,
   resource_prefix = NULL
 ) {
+  resource_prefix <- normalize_transfer_resource_prefix(resource_prefix)
   file_name <- hash_md5(paste0("pca_stdev_", reduction_version))
   file_path <- file.path(dir_path, file_name)
   pca_stdev <- get_backend_pca_stdev(object)
@@ -191,9 +273,7 @@ write_backend_pca_stdev_transfer <- function(
       file_path
     )
     payload <- list(stdevFile = file_name, reductionVersion = reduction_version)
-    if (isTruthy(resource_prefix)) {
-      payload$resourcePrefix <- basename(as.character(resource_prefix)[[1]])
-    }
+    payload$resourcePrefix <- resource_prefix
     return(payload)
   }
 
@@ -201,9 +281,7 @@ write_backend_pca_stdev_transfer <- function(
     file.remove(file_path)
   }
   payload <- list(stdevFile = NULL, reductionVersion = reduction_version)
-  if (isTruthy(resource_prefix)) {
-    payload$resourcePrefix <- basename(as.character(resource_prefix)[[1]])
-  }
+  payload$resourcePrefix <- resource_prefix
   payload
 }
 
@@ -213,8 +291,9 @@ prepare_backend_reduction_transfer <- function(
   dir_path,
   reduction_version,
   resource_prefix = NULL,
-  transfer_attempt_id = 1L
+  transfer_attempt_id
 ) {
+  resource_prefix <- normalize_transfer_resource_prefix(resource_prefix)
   transfer_attempt_id <- suppressWarnings(as.numeric(transfer_attempt_id[[1]]))
   if (!is.finite(transfer_attempt_id) || transfer_attempt_id < 1) {
     stop("transfer_attempt_id must be a positive finite number.", call. = FALSE)
@@ -232,11 +311,8 @@ prepare_backend_reduction_transfer <- function(
     reductionName = reduction_name,
     reductionVersion = reduction_version
   )
+  payload$resourcePrefix <- resource_prefix
   payload$transferAttemptId <- transfer_attempt_id
-
-  if (isTruthy(resource_prefix)) {
-    payload$resourcePrefix <- basename(as.character(resource_prefix)[[1]])
-  }
 
   if (is_scspotlight_explore_bundle(object)) {
     query_plan <- explore_bundle_reduction_query_plan(
@@ -294,10 +370,9 @@ prepare_backend_expression_transfer <- function(
   backend_root = NULL,
   resource_prefix = NULL
 ) {
+  resource_prefix <- normalize_transfer_resource_prefix(resource_prefix)
   add_resource_prefix <- function(payload) {
-    if (isTruthy(resource_prefix)) {
-      payload$resourcePrefix <- basename(as.character(resource_prefix)[[1]])
-    }
+    payload$resourcePrefix <- resource_prefix
     payload
   }
 

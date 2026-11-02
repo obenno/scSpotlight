@@ -1484,7 +1484,7 @@ list_tar_archive_entries <- function(filePath) {
       is.finite(archive_size) &&
         preflight_expanded_size / max(archive_size, 1) >
           limits$max_compression_ratio
-      ) {
+    ) {
       stop("Compressed archive exceeds the compression-ratio limit.", call. = FALSE)
     }
   }
