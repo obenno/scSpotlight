@@ -10,8 +10,12 @@ scspotlight_reduction_transfer_chunk_size <- 100000L
 scspotlight_metadata_transfer_chunk_size <- 100000L
 scspotlight_expression_transfer_chunk_size <- 100000L
 scspotlight_expression_export_cell_chunk_size <- 100000L
-scspotlight_expression_export_feature_batch_size <- 4L
-scspotlight_expression_export_row_group_size <- 1000000L
+# Read a substantially wider batch than the historical default of four
+# features, without allowing the per-feature staging buffers to scale with the
+# full block width. Reading 256 features cuts repeated BPCells/H5AD scans while
+# the 10,000-row flush limit bounds staged rows at 2.56 million per batch.
+scspotlight_expression_export_feature_batch_size <- 256L
+scspotlight_expression_export_row_group_size <- 10000L
 
 duckdb_parquet_sql_path <- function(path) {
   gsub(
@@ -722,17 +726,18 @@ explore_sparse_summary <- function(mat) {
     )
   }
 
-  sparse <- methods::as(
-    methods::as(sparse, Class = "generalMatrix"),
-    Class = "TsparseMatrix"
-  )
   if (!length(sparse@x)) {
     return(explore_empty_expression_frame())
   }
 
+  # A dgCMatrix already stores non-zero entries in cell-major order. Derive
+  # the one-based cell positions directly from its column pointers instead of
+  # allocating a second TsparseMatrix and recalculating its triplet vectors.
+  # The writer groups these rows by feature, so this preserves cell order
+  # within every feature row group.
   return(data.frame(
     i = sparse@i + 1L,
-    j = sparse@j + 1L,
+    j = rep.int(seq_len(ncol(sparse)), diff(sparse@p)),
     x = sparse@x
   ))
 }
@@ -768,11 +773,14 @@ explore_write_expression_block <- function(
   }
 
   dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
-  if (file.exists(path)) {
-    file.remove(path)
-  }
+  temporary_path <- tempfile(
+    pattern = paste0(".", basename(path), "."),
+    tmpdir = dirname(path),
+    fileext = ".tmp"
+  )
+  committed <- FALSE
 
-  sink <- arrow::FileOutputStream$create(path)
+  sink <- arrow::FileOutputStream$create(temporary_path)
   sink_closed <- FALSE
   writer <- NULL
   writer_closed <- FALSE
@@ -783,6 +791,9 @@ explore_write_expression_block <- function(
       }
       if (!sink_closed) {
         try(sink$close(), silent = TRUE)
+      }
+      if (!committed) {
+        unlink(temporary_path, force = TRUE)
       }
     },
     add = TRUE
@@ -822,6 +833,51 @@ explore_write_expression_block <- function(
         rm(table)
         invisible(NULL)
       }
+      append_feature_rows <- function(local_feature_idx, feature_rows) {
+        next_row <- 1L
+        feature_row_total <- length(feature_rows)
+        while (next_row <= feature_row_total) {
+          buffered_rows <- feature_row_counts[[local_feature_idx]]
+          available_rows <- row_group_size - buffered_rows
+          take_rows <- min(
+            available_rows,
+            feature_row_total - next_row + 1L
+          )
+          row_end <- next_row + take_rows - 1L
+          selected_rows <- feature_rows[seq.int(next_row, row_end)]
+          expression_batch <- arrow::RecordBatch$create(
+            feature_idx = arrow::Array$create(
+              rep.int(
+                as.integer(
+                  row_idx[[feature_positions[[local_feature_idx]]]] - 1L
+                ),
+                length(selected_rows)
+              ),
+              type = arrow::int32()
+            ),
+            cell_idx = arrow::Array$create(
+              as.integer(cell_start + sparse_summary$j[selected_rows] - 2L),
+              type = arrow::int32()
+            ),
+            value = arrow::Array$create(
+              sparse_summary$x[selected_rows],
+              type = arrow::float64()
+            ),
+            schema = explore_expression_parquet_schema()
+          )
+          feature_batches[[local_feature_idx]] <<- c(
+            feature_batches[[local_feature_idx]],
+            list(expression_batch)
+          )
+          feature_row_counts[[local_feature_idx]] <<-
+            buffered_rows + length(selected_rows)
+          if (feature_row_counts[[local_feature_idx]] >= row_group_size) {
+            flush_feature_row_group(local_feature_idx)
+          }
+          next_row <- row_end + 1L
+        }
+        invisible(NULL)
+      }
       for (cell_start in seq.int(1L, cell_count, by = cell_chunk_size)) {
         cell_end <- min(cell_count, cell_start + cell_chunk_size - 1L)
         feature_chunk <- mat[
@@ -841,37 +897,7 @@ explore_write_expression_block <- function(
             if (is.null(feature_rows)) {
               next
             }
-            expression_batch <- arrow::RecordBatch$create(
-              feature_idx = arrow::Array$create(
-                rep.int(
-                  as.integer(
-                    row_idx[[feature_positions[[local_feature_idx]]]] - 1L
-                  ),
-                  length(feature_rows)
-                ),
-                type = arrow::int32()
-              ),
-              cell_idx = arrow::Array$create(
-                as.integer(
-                  cell_start + sparse_summary$j[feature_rows] - 2L
-                ),
-                type = arrow::int32()
-              ),
-              value = arrow::Array$create(
-                sparse_summary$x[feature_rows],
-                type = arrow::float64()
-              ),
-              schema = explore_expression_parquet_schema()
-            )
-            feature_batches[[local_feature_idx]] <- c(
-              feature_batches[[local_feature_idx]],
-              list(expression_batch)
-            )
-            feature_row_counts[[local_feature_idx]] <-
-              feature_row_counts[[local_feature_idx]] + length(feature_rows)
-            if (feature_row_counts[[local_feature_idx]] >= row_group_size) {
-              flush_feature_row_group(local_feature_idx)
-            }
+            append_feature_rows(local_feature_idx, feature_rows)
           }
           rm(rows_by_feature)
         }
@@ -896,6 +922,20 @@ explore_write_expression_block <- function(
   writer_closed <- TRUE
   sink$close()
   sink_closed <- TRUE
+
+  # Commit only after Parquet has written its footer. The temporary file lives
+  # beside the destination, so the normal POSIX rename is atomic. On platforms
+  # that refuse replacing an existing file, remove the old complete file only
+  # after the new file is finalized, then retry the rename.
+  if (!file.rename(temporary_path, path)) {
+    if (file.exists(path) && !file.remove(path)) {
+      stop("Failed to replace Explore expression block: ", path, call. = FALSE)
+    }
+    if (!file.rename(temporary_path, path)) {
+      stop("Failed to commit Explore expression block: ", path, call. = FALSE)
+    }
+  }
+  committed <- TRUE
 
   invisible(path)
 }

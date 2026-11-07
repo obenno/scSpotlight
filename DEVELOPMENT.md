@@ -2461,3 +2461,87 @@ Final checkpoint validation:
 - `npm ci` completed successfully and reported nine dependency audit findings
   (one low, two moderate, six high). Dependency remediation was not part of this
   checkpoint; the lockfile's current versions were retained.
+
+## Explore expression conversion bounded writer optimization — November 6, 2026
+
+### Scope
+
+- Optimize the expression writer in `R/fct_explore_bundle.R` at the pinned
+  scSpotlight revision `35e4ad5a8782cfa934226f0d713d4910e774f155`.
+- Preserve the schema-v2 Explore bundle format, feature-oriented Parquet row
+  groups, zero-based feature/cell indexes, sparse absence semantics, and the
+  existing browser/query contracts.
+- Keep the change isolated in `/data/tmp/opencode/scspotlight-explore-optimization`;
+  no source change was made in the scLuma checkout.
+
+### Root cause and adopted design
+
+- The historical default staged only four features per pass. For a BPCells/H5AD
+  matrix, that caused repeated reads and sparse coercions of the same cell spans
+  across every feature block. Profiling showed the expression writer dominated
+  bundle writing and garbage collection consumed most of the sampled self time.
+- The writer now processes 256 features per batch and flushes each feature at
+  10,000 rows. This reduces repeated backend scans while bounding pending Arrow
+  rows per batch to at most 2.56 million before Parquet writes, subject to the
+  source chunk's sparse occupancy.
+- `dgCMatrix` summaries derive cell positions directly from the column-pointer
+  vector. The prior conversion to `TsparseMatrix` was removed because it made an
+  additional sparse allocation without changing the required feature/cell
+  coordinates.
+- Each expression block is written to a same-directory temporary file and
+  renamed only after the Parquet footer is closed. Failed writes remove the
+  temporary file and preserve an existing completed destination.
+
+### Important behavior rules
+
+- Row groups remain feature-pure and feature order follows the declared feature
+  order. Cell indexes remain ascending within each feature row group.
+- Values remain Float64 in the Explore Parquet schema. Missing sparse entries
+  remain absent and valid stored zeros remain represented according to the
+  existing sparse writer semantics.
+- A failed block write must not leave a partial destination that can be mistaken
+  for a valid Parquet block.
+
+### Performance evidence
+
+- On the synthetic 256-feature × 4,000-cell sparse fixture, optimized writer
+  timings for feature batches 4/16/32/256 were 6.201/3.294/2.877/2.389 seconds.
+- With feature batch 256, cell chunks 250/500/1,000/2,000/4,000 took
+  8.545/4.395/2.422/1.444/0.986 seconds.
+- Earlier pinned-baseline measurements on the same scale showed approximately
+  8.3 seconds at feature batch 4 and 4.1 seconds at feature batch 4 with a
+  4,000-cell chunk. These measurements support the repeated-scan diagnosis but
+  are microbenchmark evidence only.
+- No optimized full 9.6 GB H5AD Explore admission completed. The prior run and
+  overlapping reruns were stopped or failed before final `artifact.json` and
+  `results.json`; no full-run speedup or admission claim is made.
+
+### Validation performed
+
+- Added regression coverage for direct sparse-summary coordinates, forced small
+  feature-pure row groups and cell ordering, atomic failure cleanup, existing
+  destination preservation, and source-level bounded-flush invariants.
+- Focused `explore-bundle` tests passed after the regression additions:
+  132 expectations.
+- The full R suite passed 1,397 assertions with 40 existing dependency/library
+  warnings. `pixi run r-check` completed with zero errors and zero warnings and
+  the repository's six existing CRAN/package-maintenance notes.
+- `devtools::load_all()` succeeded and `git diff --check` passed.
+
+### Files to check for future changes
+
+- `R/fct_explore_bundle.R` — bounded expression conversion and atomic block
+  commit behavior.
+- `tests/testthat/test-explore-bundle.R` — sparse coordinate, row-group, and
+  cleanup regressions.
+- `benchmarks/run_real_explore_processing_benchmark.R` — full conversion and
+  admission evidence producer.
+
+### Follow-up discipline
+
+- Rerun the focused and full R checks after the new regression tests pass.
+- Run one fresh full pinned conversion with the exact verified source artifact,
+  a new run ID, and recorded resource limits before making any admission claim.
+- Keep the source-artifact SHA-256/MD5 provenance separate from the historical
+  scLuma fixture record; do not rewrite an expected hash to admit a different
+  payload.

@@ -248,6 +248,31 @@ test_that("Explore bundle writer streams bounded expression chunks", {
     "rm(sparse_summary, feature_chunk)",
     fixed = TRUE
   )
+  expect_match(
+    paste(writer_helper_source, collapse = "\n"),
+    "append_feature_rows",
+    fixed = TRUE
+  )
+  expect_match(
+    paste(writer_helper_source, collapse = "\n"),
+    "row_group_size - buffered_rows",
+    fixed = TRUE
+  )
+  expect_false(any(grepl(
+    "Class = \"TsparseMatrix\"",
+    writer_helper_source,
+    fixed = TRUE
+  )))
+  expect_match(
+    paste(writer_helper_source, collapse = "\n"),
+    "temporary_path",
+    fixed = TRUE
+  )
+  expect_match(
+    paste(writer_helper_source, collapse = "\n"),
+    "file.rename(temporary_path, path)",
+    fixed = TRUE
+  )
 
   conversion_start <- grep(
     "convert_to_explore_bundle <- function",
@@ -264,6 +289,28 @@ test_that("Explore bundle writer streams bounded expression chunks", {
     "^  object <- read_explore_conversion_source",
     conversion_source
   )))
+})
+
+test_that("Explore sparse summaries preserve dgCMatrix coordinates", {
+  explore_sparse_summary <- getFromNamespace(
+    "explore_sparse_summary",
+    "scSpotlight"
+  )
+  mat <- Matrix::sparseMatrix(
+    i = c(3L, 1L, 2L, 1L, 3L),
+    j = c(1L, 1L, 2L, 4L, 4L),
+    x = c(2, 1, 3, 4, 5),
+    dims = c(3L, 4L)
+  )
+
+  expect_equal(
+    explore_sparse_summary(mat),
+    data.frame(
+      i = c(1L, 3L, 2L, 1L, 3L),
+      j = c(1L, 1L, 2L, 4L, 4L),
+      x = c(1, 2, 3, 4, 5)
+    )
+  )
 })
 
 test_that("Explore expression row groups are feature-oriented", {
@@ -301,7 +348,9 @@ test_that("Explore expression row groups are feature-oriented", {
     mat = mat,
     row_idx = c(1L, 3L),
     path = path,
-    cell_chunk_size = 2L
+    cell_chunk_size = 2L,
+    feature_batch_size = 1L,
+    row_group_size = 2L
   )
 
   actual <- as.data.frame(arrow::read_parquet(path))
@@ -313,17 +362,53 @@ test_that("Explore expression row groups are feature-oriented", {
   expect_equal(actual, expected)
 
   reader <- arrow::ParquetFileReader$create(path)
-  row_group_features <- vapply(
+  row_groups <- lapply(
     seq.int(0L, reader$num_row_groups - 1L),
     function(row_group) {
-      values <- as.integer(reader$ReadRowGroup(row_group)$feature_idx)
-      expect_length(unique(values), 1L)
-      values[[1]]
-    },
-    integer(1)
+      values <- as.data.frame(reader$ReadRowGroup(row_group))
+      expect_length(unique(values$feature_idx), 1L)
+      expect_true(all(diff(values$cell_idx) >= 0L))
+      values
+    }
   )
-  expect_equal(row_group_features, c(0L, 2L))
-  expect_lte(reader$num_row_groups, length(c(1L, 3L)))
+  expect_equal(
+    vapply(row_groups, function(values) values$feature_idx[[1]], integer(1)),
+    c(0L, 0L, 2L, 2L)
+  )
+  expect_equal(
+    vapply(row_groups, nrow, integer(1)),
+    c(2L, 1L, 2L, 1L)
+  )
+})
+
+test_that("Explore expression block failures preserve destinations and clean up", {
+  skip_if_not_installed("arrow")
+
+  explore_write_expression_block <- getFromNamespace(
+    "explore_write_expression_block",
+    "scSpotlight"
+  )
+  work_dir <- tempfile("explore_expression_atomic_")
+  dir.create(work_dir)
+  on.exit(unlink(work_dir, recursive = TRUE, force = TRUE), add = TRUE)
+
+  path <- file.path(work_dir, "block_00000.parquet")
+  writeLines("existing complete destination", path)
+  mat <- Matrix::Matrix(c(1, 0, 0, 2), nrow = 2, sparse = TRUE)
+
+  expect_error(
+    explore_write_expression_block(
+      mat = mat,
+      row_idx = seq_len(nrow(mat)),
+      path = path,
+      compression = "not-a-codec"
+    )
+  )
+  expect_identical(readLines(path, warn = FALSE), "existing complete destination")
+  expect_length(
+    list.files(work_dir, pattern = "\\.tmp$", all.files = TRUE),
+    0L
+  )
 })
 
 test_that("Explore bundle root discovery finds archives after extraction", {
